@@ -1,0 +1,22 @@
+{
+  "name": "rag-test",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "明日方舟基建 RAG 知识库与 Hy3 查询输出成本基准",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "build": "tsc -p tsconfig.build.json",
+    "bench": "node dist/cli.js",
+    "bench:dry": "pnpm run build && node dist/cli.js run --dry --limit 2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.5.0",
+    "typescript": "^5.5.0",
+    "vitest": "^2.1.0"
+  }
+}
