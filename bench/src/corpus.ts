@@ -35,15 +35,24 @@ export function splitChunks(filePath: string, corpusRoot: string): DocChunk[] {
   let heading = '（未分段）'
   let buf: string[] = []
   let headingLine = 0
+  // 当前 buf 首行在原文中的 1 基行号（用于溯源标注）
+  let contentStart = 0
 
   const flush = (): void => {
     const text = buf.join('\n').trim()
     if (text.length > 0) {
+      // trim 会剔除 buf 首尾空行，据此校正行号：startLine/endLine 指向 trim 后正文的实际原文行号
+      let first = 0
+      while (first < buf.length && buf[first].trim() === '') first++
+      let last = buf.length - 1
+      while (last >= 0 && buf[last].trim() === '') last--
       chunks.push({
         id: `${relPath}#${heading}`,
         file: relPath,
         heading: heading.replace(/^#{1,6}\s*/, '').trim(),
         text,
+        startLine: contentStart + first,
+        endLine: contentStart + last,
       })
     }
     buf = []
@@ -61,6 +70,7 @@ export function splitChunks(filePath: string, corpusRoot: string): DocChunk[] {
     }
     // 跳过文档 front matter 与模板注释（--- 围栏与 [//]: # 注释）
     if (line.startsWith('[//]: #') || line === '---') continue
+    if (buf.length === 0) contentStart = i + 1
     buf.push(line)
   }
   flush()

@@ -20,9 +20,9 @@ describe('retriever：分词与 BM25 检索', () => {
 
   it('BM25 命中相关片段并排首位', () => {
     const chunks: DocChunk[] = [
-      { id: 'a', file: 'a.md', heading: '发电站', text: '发电站无人机受到发电站干员影响，充能不设上限，溢满不停工。' },
-      { id: 'b', file: 'b.md', heading: '贸易站', text: '贸易站订单处理与订单上限受控制中枢影响。' },
-      { id: 'c', file: 'c.md', heading: '宿舍', text: '干员心情在宿舍恢复，恢复速度受寢室等级影响。' },
+      { id: 'a', file: 'a.md', heading: '发电站', text: '发电站无人机受到发电站干员影响，充能不设上限，溢满不停工。', startLine: 2, endLine: 2 },
+      { id: 'b', file: 'b.md', heading: '贸易站', text: '贸易站订单处理与订单上限受控制中枢影响。', startLine: 2, endLine: 2 },
+      { id: 'c', file: 'c.md', heading: '宿舍', text: '干员心情在宿舍恢复，恢复速度受寢室等级影响。', startLine: 2, endLine: 2 },
     ]
     const index = buildIndex(chunks)
     const top = search(index, '发电站无人机充能机制', 2)

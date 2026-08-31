@@ -6,6 +6,7 @@
  */
 import { loadConfig, type BenchConfig } from './config.js'
 import { buildIndex, search } from './retriever.js'
+import { grepSearch, buildGrepResult } from './grep-retriever.js'
 import type { DocChunk } from './types.js'
 import { callLLM, type ChatMessage, type ProviderOptions } from './provider.js'
 import { computeCosts } from './pricing.js'
@@ -35,7 +36,8 @@ export function buildSystemPrompt(): string {
   return [
     '你是「明日方舟基建」知识库问答助手，语料为干员基建技能、体系论证与排班策略。',
     `你可以调用 rag_search 检索知识库片段，每次回答最多允许检索 ${MAX_RAG_CALLS} 次，达到上限后请直接基于已返回的片段作答。`,
-    '回答必须基于检索到的内容，无法确认时明确说明；使用中文，结构化排版（要点列表/表格），不要编造数值。',
+    '严禁使用模型自身训练语料中的知识作答：所有答案必须严格基于本次 rag_search 返回的片段；片段未覆盖时明确说明「知识库未查到」，不得凭记忆补全，不得编造数值或机制。',
+    '输出使用中文，结构化排版（要点列表/表格）。',
   ].join('\n')
 }
 
@@ -121,14 +123,20 @@ export async function runQuery(
           } else {
             ragCalls++
             const q = safeParseQuery(tc.arguments)
-            const hits = search(index, q ?? query.question, config.topK)
-            resultText = hits
-              .map((idx) => {
-                const c = chunks[idx]
-                return `【${c.file} | ${c.heading}】\n${c.text}`
-              })
-              .join('\n\n')
-              .slice(0, config.maxContextChars)
+            const useGrep = config.retriever === 'grep'
+            if (useGrep) {
+              const hits = grepSearch(chunks, q ?? query.question, config.topK)
+              resultText = buildGrepResult(chunks, hits, q ?? query.question, config.maxContextChars)
+            } else {
+              const hits = search(index, q ?? query.question, config.topK)
+              resultText = hits
+                .map((idx) => {
+                  const c = chunks[idx]
+                  return `【${c.file} | ${c.heading} | L${c.startLine}-${c.endLine}】\n${c.text}`
+                })
+                .join('\n\n')
+                .slice(0, config.maxContextChars)
+            }
           }
         } else {
           resultText = `未知工具：${tc.name}`
@@ -139,6 +147,17 @@ export async function runQuery(
           content: resultText || '（无匹配片段）',
         })
       }
+      continue
+    }
+
+    // 无工具调用：若强制首检未达成，先引导检索而非直接作答（qwen 检索意愿实验用）
+    // 强制次数上限受 MAX_RAG_CALLS 约束，避免 minRagCalls 超上限造成引导死循环至轮次耗尽
+    const minRag = Math.min(config.minRagCalls, MAX_RAG_CALLS)
+    if (ragCalls < minRag) {
+      messages.push({
+        role: 'user',
+        content: `请先调用 rag_search 检索知识库（当前已检索 ${ragCalls} 次，需至少检索 ${minRag} 次）后再作答。`,
+      })
       continue
     }
 

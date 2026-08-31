@@ -47,6 +47,8 @@ export const PROVIDERS: Record<ProviderId, ProviderSpec> = {
   },
 }
 
+export type RetrieverId = 'bm25' | 'grep'
+
 export interface BenchConfig {
   /** 当前 provider 标识 */
   provider: ProviderId
@@ -74,6 +76,10 @@ export interface BenchConfig {
   topK: number
   /** 单次注入检索片段的最大字符数 */
   maxContextChars: number
+  /** 检索器：bm25（BM25 加权）| grep（字面命中计数，P3 对照） */
+  retriever: RetrieverId
+  /** 强制首检次数：模型直接作答前，至少先检索的次数（qwen 检索意愿实验用） */
+  minRagCalls: number
 }
 
 export function loadConfig(providerInput?: ProviderId): BenchConfig {
@@ -93,5 +99,7 @@ export function loadConfig(providerInput?: ProviderId): BenchConfig {
     maxRounds: Number(process.env.BENCH_MAX_ROUNDS ?? 3),
     topK: Number(process.env.BENCH_TOP_K ?? 5),
     maxContextChars: Number(process.env.BENCH_MAX_CONTEXT_CHARS ?? 12000),
+    retriever: (process.env.BENCH_RETRIEVER as RetrieverId) ?? 'bm25',
+    minRagCalls: Number(process.env.BENCH_MIN_RAG_CALLS ?? 0),
   }
 }

@@ -91,4 +91,8 @@ export interface DocChunk {
   heading: string
   /** 片段正文 */
   text: string
+  /** 正文起始行号（1 基，含标题行后首行） */
+  startLine: number
+  /** 正文结束行号（1 基） */
+  endLine: number
 }
