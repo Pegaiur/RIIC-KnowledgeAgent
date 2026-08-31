@@ -12,6 +12,7 @@
 - 不做检索质量 / 答案质量评估（仅抽样人工抽查）
 - 不做与 DeepSeek V4 Flash 等模型的横向对比（问题集与运行工具支持后续扩展，本期不实现）
 - 不实现向量检索 / embedding（BM25 关键词检索即可，成本评估不追求检索精度）
+- 不引入 RAG 框架（LangChain / LlamaIndex 等）：当前规模（27 篇语料、单模型、成本基准）下框架是纯负担，保持零运行时依赖；升级触发条件见「简单 RAG 架构」章节
 - 不接入 Concliude 全量 agent 能力（护栏 / Hook / 遥测 / subagent 全部裁掉）
 
 ## 架构分析
@@ -19,6 +20,69 @@
 - rag-test 现状：纯语料仓库（约 27 篇 Markdown），无检索代码、无问题集、无 git 仓库（本期已 init）。
 - Hy3 成本特征：输入 1 元/M、输出 4 元/M、缓存命中 0.25 元/M；默认 `no_think`，`reasoning_effort: low/medium/high` 控制思考深度。思考 token 计入输出——是输出成本最大变量。
 - 参照 Concliude：agent loop 核心 = `conversationLoop`（轮次预算 → provider.stream → 工具执行 → 结果回写），成本聚合 = `llm.done` 事件监听 usage。简化版保留循环骨架与 usage→费用映射，裁掉全部安全/遥测层。
+
+## 简单 RAG 架构
+
+本基准采用**手写的最小 RAG 管线**（零运行时依赖，无框架）。架构共 5 个环节，全部在 `bench/` 内实现：
+
+```
+┌─────────────┐ 离线构建（每次运行重建，~秒级）      ┌──────────────┐
+│ 语料层       │                                    │ 检索层        │
+│ arknights-  │──► corpus.ts ─── ► 分块(≈200) ──► retriever.ts │
+│ base-vault/ │    collectMarkdownFiles  splitChunks  buildIndex(BM25)
+│ docs/*.md   │    24 个文件            按 ## 标题     中文 bigram 分词
+└─────────────┘                                    └──────┬───────┘
+                                                        │ top-k 片段
+                                                        │ (默认 5, ≤12K 字符)
+┌────────────────────────────────────────────────────────▼───────────────────────┐
+│                         查询 Agent 循环（agent.ts，参照 Concliude 骨架）          │
+│   messages = [system, user]                                                    │
+│   for round in 1..maxRounds(默认 3):                                           │
+│     resp = hy3Chat(messages, tools=[rag_search])        ← provider.ts        │
+│     │  ├─ 记录成本 {round,input,output,cached,costIn,costOut} ← pricing.ts   │
+│     │  └─ 有 tool_calls → 执行 rag_search → 片段回写 messages → continue      │
+│     │     无 tool_calls → finalAnswer → break                                  │
+│   逐轮精确记账：思考 token、工具调用参数均计入 output                            │
+└──────────────────────────────────────────────────┬────────────────────────────┘
+                                                    │ 每次 LLM 调用 → 1 条 JSONL
+                                     ┌─────────────▼──────────────┐
+                                     │ 成本记录 runner.ts          │
+                                     │ bench/runs/<ts>-<thinking>/ │
+                                     │   records.jsonl + meta.json │
+                                     └─────────────┬──────────────┘
+                                                   │
+                                     ┌─────────────▼──────────────┐
+                                     │ 报告聚合 report.ts          │
+                                     │ Markdown + CSV：每查询输出  │
+                                     │ 分布 / P95 / 分档汇总       │
+                                     └────────────────────────────┘
+```
+
+### 环节职责与关键参数
+
+| 环节 | 模块 | 职责 | 关键参数 |
+|------|------|------|----------|
+| ① 语料加载 | `corpus.ts` | 递归收集 `docs/**/*.md`，按 `##`/`###` 标题分块，过滤 front matter 与模板注释；超长块首尾截断 | `CORPUS_DIR`（默认 `arknights-base-vault/docs`） |
+| ② 检索索引 | `retriever.ts` | 中文 bigram + 拉丁词元分词，BM25 打分（k1=1.5, b=0.75），top-k 片段 | `BENCH_TOP_K`（默认 5）、`BENCH_MAX_CONTEXT_CHARS`（12000） |
+| ③ LLM 调用 | `provider.ts` | TokenHub OpenAI 兼容端点（`model=hy3`），parse usage（prompt/completion/cached）；dry 模式确定值模拟 | `TOKENHUB_API_KEY`（必填，非 dry）、`HY3_MODEL`、`HY3_MAX_TOKENS=4096` |
+| ④ Agent 循环 | `agent.ts` | 轮次预算循环 + 单工具 `rag_search(query)` + 结果回写 messages；逐轮记成本 | `BENCH_MAX_ROUNDS`（默认 3） |
+| ⑤ 成本计量 | `pricing.ts` | 输入 1 / 输出 4 / 缓存 0.25 元每百万；cached clamp 防御；round6 取整 | 单价常量（官方定价） |
+
+### 架构边界（为什么它可以"简单"）
+
+- **检索精度不设门槛**：基准目标=成本，BM25 的排序质量不会改变"输出 token 量级"的结论；若未来要测检索质量，先加 embedding，不换框架。
+- **单模型单工具**：Hy3 是唯一 LLM，`rag_search` 是唯一工具——不需要模型抽象层与工具注册表。
+- **成本记账是内建职责**：`usage`（含思考 token、缓存命中、截断标记）在每次调用的返回路径上直接落 JSONL，不经事件总线/回调，路径最短、最可复现。
+- **dry 模式**：无密钥也能回归验证管线（假 usage 确定性返回），保证基准的可复现性。
+
+### 升级触发条件（来自框架评估，2026-08-31）
+
+| 信号出现时 | 动作 |
+|---|---|
+| BM25 检索质量成为瓶颈（同义/近义改写查不到） | 加 embedding（本地模型或混元 embedding API）+ 简单余弦扫描，仍不引入框架 |
+| 语料扩到 500+ 篇且多格式（PDF/网页） | 评估 `@llamaindex/core`（只取 core）或 Python 侧 LlamaIndex |
+| 多模型矩阵 + 统一调用层 | 优先评估 Vercel AI SDK / Mastra 类轻量层，而非 LangChain |
+| 生产化（并发服务、多用户、可观测性） | 才考虑 LangGraph 级编排 / LangSmith 类平台 |
 
 ## 实施方案
 
@@ -66,4 +130,4 @@
 
 ## 关联 ADR
 
-- 无（本期无架构级决策；若后续引入向量检索或对比基线再登记）
+- 无（本期无架构级决策；**简单 RAG 架构为既定决策**，理由与演进触发器见「简单 RAG 架构」章节；若后续引入向量检索/框架再登记 ADR）
