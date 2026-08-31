@@ -59,11 +59,24 @@
 
 ## 验收清单
 
-- [ ] Provider 参数化代码落地：`pnpm run typecheck` / `test` 全通过
-- [ ] dry run：hy3 与 qwen 双 provider 管线跑通（无真实请求）
-- [ ] 单题探针：确认 thinking 控制参数与 usage 字段（需 `DASHSCOPE_API_KEY`）
-- [ ] 全量 120 次查询 + byProvider 对比报告（需两个 API Key）
+- [x] Provider 参数化代码落地：`pnpm run typecheck` / `test` 全通过（21 用例）
+- [x] dry run：hy3 与 qwen 双 provider 管线跑通（无真实请求）
+- [x] 单题探针：确认 thinking 控制参数与 usage 字段（`enable_thinking` 接受、`reasoning_tokens` 正确解析、`cached_tokens` 缺失→按 0 保守计费）
+- [x] 首轮对比：20 题 × low 档 × hy3+qwen 跑通（byProvider 对比报告，跨模型 `compare` 子命令）
+- [ ] 全量 120 次查询（20 题 × 3 档 × 2 provider）补跑
 - [ ] 本草案与 hy3 草案合并结论（两草案各自验收完成后）
+
+## 首轮对比结论（2026-08-31）
+
+同 20 题同 low 档真实运行（均 failed 0、截断 0）：
+
+| 模型 | 调用数 | 平均轮数 | 总输出 | 思考 tokens | 总费用(元) | 输出费用(元) |
+|------|--------|----------|--------|-------------|-------------|--------------|
+| hy3 | 50 | 2.50 | 33,398 | 18,487 | 0.1701 | 0.1336 |
+| qwen | 42 | 2.10 | 31,541 | 17,915 | 0.0325 | 0.0252 |
+
+- **成本**：qwen 输出约为 hy3 的 **1/5**（¥0.0325 vs ¥0.1701），输出单价 4→0.8 元/M 是主因；且平均轮数更少、思考 token 略少。
+- **质量权衡（关键发现）**：见 `notes-qwen37-flash-bench.md`「成本-可靠性权衡」——qwen 便宜但检索更少、编造倾向更强；hy3 在检索上限下倾向诚实标注缺失，qwen 倾向跳过检索、凭训练记忆作答，导致 S07/S08/F04 等出现与语料直接冲突的编造。
 
 ## 关联
 

@@ -12,12 +12,12 @@
 - 不做检索质量 / 答案质量评估（仅抽样人工抽查）
 - 不做与 DeepSeek V4 Flash 等模型的横向对比（问题集与运行工具支持后续扩展，本期不实现）
 - 不实现向量检索 / embedding（BM25 关键词检索即可，成本评估不追求检索精度）
-- 不引入 RAG 框架（LangChain / LlamaIndex 等）：当前规模（27 篇语料、单模型、成本基准）下框架是纯负担，保持零运行时依赖；升级触发条件见「简单 RAG 架构」章节
+- 不引入 RAG 框架（LangChain / LlamaIndex 等）：当前规模（24 篇语料、单模型、成本基准）下框架是纯负担，保持零运行时依赖；升级触发条件见「简单 RAG 架构」章节
 - 不接入 Concliude 全量 agent 能力（护栏 / Hook / 遥测 / subagent 全部裁掉）
 
 ## 架构分析
 
-- rag-test 现状：纯语料仓库（约 27 篇 Markdown），无检索代码、无问题集、无 git 仓库（本期已 init）。
+- rag-test 现状：纯语料仓库（24 篇 Markdown），无检索代码、无问题集、无 git 仓库（本期已 init）。
 - Hy3 成本特征：输入 1 元/M、输出 4 元/M、缓存命中 0.25 元/M；默认 `no_think`，`reasoning_effort: low/medium/high` 控制思考深度。思考 token 计入输出——是输出成本最大变量。
 - 参照 Concliude：agent loop 核心 = `conversationLoop`（轮次预算 → provider.stream → 工具执行 → 结果回写），成本聚合 = `llm.done` 事件监听 usage。简化版保留循环骨架与 usage→费用映射，裁掉全部安全/遥测层。
 
@@ -125,8 +125,9 @@
 - [x] `pnpm run typecheck` 全通过
 - [x] `pnpm run test` 全通过（retriever / pricing / corpus / report）
 - [x] `pnpm run bench --dry` 干跑管线无真实请求
-- [ ] 真实探针：单题 `--thinking off` 校准 usage 字段（需 `TOKENHUB_API_KEY`）
-- [ ] 全量 60 次查询 + 报告产出（需 `TOKENHUB_API_KEY`）
+- [x] 真实探针：单题 `--thinking off/low/high` 校准 usage 字段（含 `reasoning_tokens` / `cached_tokens`）
+- [x] 全量 20 题 × low 档运行 + 报告产出（failed 0、截断 0）
+- [ ] 全量 60 次查询（20 题 × 3 档）补跑（已完成 low 档，off/high 待补）
 
 ## 关联 ADR
 
