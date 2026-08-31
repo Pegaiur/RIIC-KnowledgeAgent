@@ -30,3 +30,5 @@
 <!-- 完成后标记 [x]，发版时清理已完成条目；定期（如每季度）治理重估：确认暂缓原因仍成立、路由目标未悬空 -->
 
 - [x] **Hy3 查询输出成本基准** — 在 rag-test 搭建基于腾讯混元 Hy3（TokenHub）的 LLM 查询输出成本测量基准，简化版 Agent 参考 Concliude agent loop 骨架 — 2026-08-31 — 路由 `docs/draft-hy3-rag-bench.md`（架构实施完成，真实运行待 API Key 后转 plan）
+
+- [x] **Qwen3.7-Flash 候选模型接入** — 将 qwen3.7-flash（DashScope）接入 bench 作为候选模型（输出 ¥0.8/M 优于 qwen3.5-flash ¥2/M），与 Hy3 做同问题集成本对比 — 2026-08-31 — 路由 `docs/draft-qwen37-flash-bench.md`（草案已建，实施待确认）
