@@ -6,6 +6,7 @@ dist/
 .env
 .env.*
 !.env.example
+secret.yaml
 
 # 基准运行结果（JSONL 原始记录，不入库）
 bench/runs/
