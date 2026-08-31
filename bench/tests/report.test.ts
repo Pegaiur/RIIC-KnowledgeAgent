@@ -1,0 +1,63 @@
+import { describe, expect, it } from 'vitest'
+import { aggregate, renderMarkdown } from '../src/report.js'
+import type { CostRecord } from '../src/types.js'
+
+function rec(partial: Partial<CostRecord>): CostRecord {
+  return {
+    ts: '2026-08-31T00:00:00.000Z',
+    queryId: 'Q1',
+    category: 'fact',
+    round: 1,
+    thinking: 'off',
+    model: 'hy3',
+    input: 6000,
+    output: 800,
+    cached: 0,
+    costIn: 0.006,
+    costOut: 0.0032,
+    costTotal: 0.0092,
+    truncated: false,
+    ...partial,
+  }
+}
+
+describe('report：聚合与渲染', () => {
+  it('按查询聚合轮数与 tokens', () => {
+    const records = [
+      rec({ queryId: 'Q1', round: 1, output: 800 }),
+      rec({ queryId: 'Q1', round: 2, output: 1200 }),
+      rec({ queryId: 'Q2', round: 1, output: 500 }),
+    ]
+    const report = aggregate(records)
+    expect(report.totalCalls).toBe(3)
+    expect(report.totalQueries).toBe(2)
+    const q1 = report.byQuery.find((q) => q.queryId === 'Q1')!
+    expect(q1.rounds).toBe(2)
+    expect(q1.outputTokens).toBe(2000)
+    expect(report.totalOutput).toBe(2500)
+  })
+
+  it('按思考档位分组', () => {
+    const records = [
+      rec({ thinking: 'off', output: 800 }),
+      rec({ thinking: 'low', output: 5000 }),
+    ]
+    const report = aggregate(records)
+    const low = report.byThinking.find((t) => t.thinking === 'low')!
+    expect(low.outputTokens).toBe(5000)
+    expect(low.calls).toBe(1)
+  })
+
+  it('截断调用计数', () => {
+    const report = aggregate([rec({ truncated: true }), rec({ truncated: false })])
+    expect(report.truncatedCalls).toBe(1)
+  })
+
+  it('Markdown 渲染含表头与总数', () => {
+    const report = aggregate([rec({})])
+    const md = renderMarkdown(report)
+    expect(md).toContain('Hy3 查询输出成本基准报告')
+    expect(md).toContain('| 档位 |')
+    expect(md).toContain('| 查询 ID |')
+  })
+})
