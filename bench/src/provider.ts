@@ -176,7 +176,7 @@ function parseUsage(u: any): LlmUsage {
 }
 
 /**
- * dry 模式：首轮模拟工具调用（rag_search），次轮模拟最终回答。
+ * dry 模式：首轮模拟工具调用（rag_search/grep_search，随检索器切换），次轮模拟最终回答。
  * 输出确定值便于回归（usage 随轮次递增，模拟真实多轮形态）。
  */
 function dryResult(messages: ChatMessage[], opts: ProviderOptions): ProviderResult {
@@ -187,7 +187,12 @@ function dryResult(messages: ChatMessage[], opts: ProviderOptions): ProviderResu
     return {
       content: null,
       toolCalls: [
-        { id: 'call_dry_1', name: 'rag_search', arguments: '{"query":"占位查询"}' },
+        {
+          id: 'call_dry_1',
+          // 工具名随检索器切换，使 dry 也能走对应的路由分支
+          name: opts.config.retriever === 'grep' ? 'grep_search' : 'rag_search',
+          arguments: '{"query":"占位查询"}',
+        },
       ],
       usage: { input: 6000, output: 620, cached: 0, reasoning: 0 },
       model,
