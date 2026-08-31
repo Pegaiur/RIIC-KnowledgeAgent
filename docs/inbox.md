@@ -32,3 +32,5 @@
 - [x] **Hy3 查询输出成本基准** — 在 rag-test 搭建基于腾讯混元 Hy3（TokenHub）的 LLM 查询输出成本测量基准，简化版 Agent 参考 Concliude agent loop 骨架 — 2026-08-31 — 路由 `docs/draft-hy3-rag-bench.md`（架构实施 + 真实 low 档运行完成，待补 off/high 全量后转 plan）
 
 - [x] **Qwen3.7-Flash 候选模型接入** — 将 qwen3.7-flash（DashScope）接入 bench 作为候选模型（输出 ¥0.8/M 优于 qwen3.5-flash ¥2/M），与 Hy3 做同问题集成本对比 — 2026-08-31 — 路由 `docs/draft-qwen37-flash-bench.md`（Provider 参数化 + low 档对比完成；全量 3 档与质量核查发现见草案「首轮对比结论」）
+
+- [ ] **检索策略实测框架** — qwen3.7-flash 编造倾向与检索意愿不足相关（minRag=3 实测改善编造但轮次/成本代价大）；需受控实验实测 minRag=1 / 专名 boost / grep 式检索对质量×成本的影响，验证是否引入 grep 思路（参照 Concliude ripgrep 与其会话检索选型实测 trigram 0.78 的预判）— 2026-08-31 — 路由 `docs/draft-retrieval-experiment.md`（草案已建，实施待确认）
