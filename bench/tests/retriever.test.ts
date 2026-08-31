@@ -34,4 +34,17 @@ describe('retriever：分词与 BM25 检索', () => {
     const index = buildIndex([])
     expect(search(index, '任何查询', 5)).toEqual([])
   })
+
+  it('锚定：体系名经 anchor 可命中不含体系名的答案块', () => {
+    const anchored: DocChunk[] = [
+      { id: 'a', file: 'a.md', heading: '一句话结论', text: '核心双人产出木天蓼，缺一不可。', anchor: '怪猎中枢 火龙S黑角 麒麟R夜刀', startLine: 2, endLine: 2 },
+      { id: 'b', file: 'b.md', heading: '排班', text: '中枢干员随体系班次轮换。', startLine: 2, endLine: 2 },
+    ]
+    // 无锚定：答案块 a 不含体系名词元，查体系名命中的是含「中枢」的 b
+    const noAnchor = search(buildIndex(anchored.map(({ anchor, ...rest }) => rest)), '怪猎中枢', 1)
+    // 有锚定：a 经 anchor 命中体系名词元，排首位
+    const withAnchor = search(buildIndex(anchored), '怪猎中枢', 1)
+    expect(noAnchor[0]).toBe(1)
+    expect(withAnchor[0]).toBe(0)
+  })
 })

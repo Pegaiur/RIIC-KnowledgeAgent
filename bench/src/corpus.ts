@@ -30,6 +30,7 @@ export function splitChunks(filePath: string, corpusRoot: string): DocChunk[] {
   const raw = readFileSync(filePath, 'utf-8')
   const relPath = relative(corpusRoot, filePath).split(sep).join('/')
   const lines = raw.split(/\r?\n/)
+  const { docName, operators } = parseDocAnchors(lines)
 
   const chunks: DocChunk[] = []
   let heading = '（未分段）'
@@ -46,14 +47,18 @@ export function splitChunks(filePath: string, corpusRoot: string): DocChunk[] {
       while (first < buf.length && buf[first].trim() === '') first++
       let last = buf.length - 1
       while (last >= 0 && buf[last].trim() === '') last--
-      chunks.push({
+      const chunk: DocChunk = {
         id: `${relPath}#${heading}`,
         file: relPath,
         heading: heading.replace(/^#{1,6}\s*/, '').trim(),
         text,
         startLine: contentStart + first,
         endLine: contentStart + last,
-      })
+      }
+      // 检索锚点：文档 H1 体系名 + frontmatter operators（仅检索加权；空则不设）
+      const anchor = [docName, ...operators].filter(Boolean).join(' ')
+      if (anchor) chunk.anchor = anchor
+      chunks.push(chunk)
     }
     buf = []
   }
@@ -75,6 +80,32 @@ export function splitChunks(filePath: string, corpusRoot: string): DocChunk[] {
   }
   flush()
   return chunks
+}
+
+/**
+ * 提取文件的检索锚点：文档 H1 一级标题（体系名）+ frontmatter `operators: [...]` 干员列表。
+ * 无 H1 则 docName 为空；无 operators 则列表为空。均只用于检索加权，不影响展示。
+ */
+function parseDocAnchors(lines: string[]): { docName: string; operators: string[] } {
+  let docName = ''
+  let operators: string[] = []
+  let inFrontmatter = false
+  for (const line of lines) {
+    const trimmed = line.trim()
+    if (trimmed === '---') {
+      inFrontmatter = !inFrontmatter
+      continue
+    }
+    if (!docName) {
+      const h1 = /^#\s+(.+)$/.exec(trimmed)
+      if (h1) docName = h1[1].trim()
+    }
+    if (inFrontmatter) {
+      const m = /^operators:\s*\[(.*)\]$/.exec(trimmed)
+      if (m) operators = m[1].split(',').map((s) => s.trim()).filter(Boolean)
+    }
+  }
+  return { docName, operators }
 }
 
 /** 超长片段按段落截断，保证单块不超过 maxChars（保留首段信息） */

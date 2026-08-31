@@ -53,7 +53,7 @@ export function buildIndex(chunks: DocChunk[]): IndexEntry {
   const docLens: number[] = []
 
   chunks.forEach((chunk, idx) => {
-    const terms = tokenize(`${chunk.heading} ${chunk.text}`)
+    const terms = tokenize(`${chunk.anchor ?? ''} ${chunk.heading} ${chunk.text}`)
     const termSet = new Set<string>()
     const perDoc = new Map<string, number>()
     for (const t of terms) {
