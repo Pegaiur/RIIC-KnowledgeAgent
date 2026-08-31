@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { computeCosts, PRICE_CACHE_PER_M, PRICE_IN_PER_M, PRICE_OUT_PER_M } from '../src/pricing.js'
+import { QWEN_PRICES, computeCosts, PRICE_CACHE_PER_M, PRICE_IN_PER_M, PRICE_OUT_PER_M } from '../src/pricing.js'
 
 describe('pricing：Hy3 费用计算', () => {
   it('单价常量符合官方定价（输入 1 / 输出 4 / 缓存 0.25 元每百万）', () => {
@@ -30,5 +30,18 @@ describe('pricing：Hy3 费用计算', () => {
     const c = computeCosts(1000, 0, 5000)
     // clamp 后 cachedIn=1000 → 1000 × 0.25 / 1M
     expect(c.costIn).toBe(0.00025)
+  })
+})
+
+describe('pricing：Qwen3.7-Flash 费用计算', () => {
+  it('100 万输出 token 计 0.8 元', () => {
+    const c = computeCosts(0, 1_000_000, 0, QWEN_PRICES)
+    expect(c.costOut).toBe(0.8)
+    expect(c.costTotal).toBe(0.8)
+  })
+
+  it('输入按 0.2 元/M，缓存命中按 0.04 元/M（输入价 20%）', () => {
+    const c = computeCosts(1_000_000, 0, 500_000, QWEN_PRICES)
+    expect(c.costIn).toBeCloseTo(0.5 * 0.04 + 0.5 * 0.2, 6)
   })
 })

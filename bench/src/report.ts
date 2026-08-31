@@ -8,6 +8,7 @@ export interface QueryAgg {
   category: string
   rounds: number
   outputTokens: number
+  reasoningTokens: number
   inputTokens: number
   costOut: number
   costIn: number
@@ -21,6 +22,7 @@ export interface ThinkingAgg {
   calls: number
   avgRounds: number
   outputTokens: number
+  reasoningTokens: number
   inputTokens: number
   costOut: number
   costIn: number
@@ -38,6 +40,21 @@ export interface BenchReport {
   truncatedCalls: number
   byQuery: QueryAgg[]
   byThinking: ThinkingAgg[]
+  byProvider: ProviderAgg[]
+}
+
+/** 按 provider 聚合（跨模型对比用） */
+export interface ProviderAgg {
+  provider: string
+  queries: number
+  calls: number
+  avgRounds: number
+  outputTokens: number
+  reasoningTokens: number
+  inputTokens: number
+  costOut: number
+  costIn: number
+  costTotal: number
 }
 
 const sum = (vals: number[]) => vals.reduce((a, c) => a + c, 0)
@@ -64,6 +81,7 @@ export function aggregate(records: CostRecord[]): BenchReport {
       category: first.category,
       rounds: list.length,
       outputTokens: sum(list.map((r) => r.output)),
+      reasoningTokens: sum(list.map((r) => r.reasoning ?? 0)),
       inputTokens: sum(list.map((r) => r.input)),
       costOut: sum(list.map((r) => r.costOut)),
       costIn: sum(list.map((r) => r.costIn)),
@@ -90,6 +108,35 @@ export function aggregate(records: CostRecord[]): BenchReport {
       calls: list.length,
       avgRounds: mean(perQueryRounds),
       outputTokens: sum(list.map((r) => r.output)),
+      reasoningTokens: sum(list.map((r) => r.reasoning ?? 0)),
+      inputTokens: sum(list.map((r) => r.input)),
+      costOut: sum(list.map((r) => r.costOut)),
+      costIn: sum(list.map((r) => r.costIn)),
+      costTotal: sum(list.map((r) => r.costTotal)),
+    }
+  })
+
+  const byProvider = new Map<string, CostRecord[]>()
+  for (const r of records) {
+    // 旧记录可能无 provider 字段，回退用 model 标识
+    const key = r.provider ?? r.model
+    const list = byProvider.get(key) ?? []
+    list.push(r)
+    byProvider.set(key, list)
+  }
+
+  const providerAggs: ProviderAgg[] = [...byProvider.entries()].map(([provider, list]) => {
+    const qids = new Set(list.map((r) => r.queryId))
+    const perQueryRounds = [...qids].map(
+      (qid) => list.filter((r) => r.queryId === qid).length,
+    )
+    return {
+      provider,
+      queries: qids.size,
+      calls: list.length,
+      avgRounds: mean(perQueryRounds),
+      outputTokens: sum(list.map((r) => r.output)),
+      reasoningTokens: sum(list.map((r) => r.reasoning ?? 0)),
       inputTokens: sum(list.map((r) => r.input)),
       costOut: sum(list.map((r) => r.costOut)),
       costIn: sum(list.map((r) => r.costIn)),
@@ -108,6 +155,7 @@ export function aggregate(records: CostRecord[]): BenchReport {
     truncatedCalls: records.filter((r) => r.truncated).length,
     byQuery: queryAggs,
     byThinking: thinkingAggs,
+    byProvider: providerAggs,
   }
 }
 
@@ -119,7 +167,7 @@ export function renderMarkdown(report: BenchReport): string {
   const p95Out = p95(report.byQuery.map((q) => q.outputTokens))
   const avgOut = mean(report.byQuery.map((q) => q.outputTokens)).toFixed(1)
   const lines: string[] = [
-    '# Hy3 查询输出成本基准报告',
+    '# LLM 查询输出成本基准报告',
     '',
     `- 查询数：${report.totalQueries}｜LLM 调用数：${report.totalCalls}｜截断调用：${report.truncatedCalls}`,
     `- 总输入 tokens：${report.totalInput.toLocaleString()}｜总输出 tokens：${report.totalOutput.toLocaleString()}`,
@@ -128,20 +176,20 @@ export function renderMarkdown(report: BenchReport): string {
     '',
     '## 按思考档位',
     '',
-    '| 档位 | 查询数 | 调用数 | 平均轮数 | 输出 tokens | 输出费用(元) | 总费用(元) |',
-    '|------|--------|--------|----------|-------------|--------------|------------|',
+    '| 档位 | 查询数 | 调用数 | 平均轮数 | 输出 tokens | 思考 tokens | 输出费用(元) | 总费用(元) |',
+    '|------|--------|--------|----------|-------------|-------------|--------------|------------|',
     ...report.byThinking.map(
       (t) =>
-        `| ${t.thinking} | ${t.queries} | ${t.calls} | ${f2(t.avgRounds)} | ${t.outputTokens.toLocaleString()} | ${f4(t.costOut)} | ${f4(t.costTotal)} |`,
+        `| ${t.thinking} | ${t.queries} | ${t.calls} | ${f2(t.avgRounds)} | ${t.outputTokens.toLocaleString()} | ${t.reasoningTokens.toLocaleString()} | ${f4(t.costOut)} | ${f4(t.costTotal)} |`,
     ),
     '',
     '## 按查询',
     '',
-    '| 查询 ID | 类目 | 轮数 | 输出 tokens | 输出费用(元) | 总费用(元) | 截断 |',
-    '|---------|------|------|-------------|--------------|------------|------|',
+    '| 查询 ID | 类目 | 轮数 | 输出 tokens | 思考 tokens | 输出费用(元) | 总费用(元) | 截断 |',
+    '|---------|------|------|-------------|-------------|--------------|------------|------|',
     ...report.byQuery.map(
       (q) =>
-        `| ${q.queryId} | ${q.category} | ${q.rounds} | ${q.outputTokens} | ${f4(q.costOut)} | ${f4(q.costTotal)} | ${q.truncated} |`,
+        `| ${q.queryId} | ${q.category} | ${q.rounds} | ${q.outputTokens} | ${q.reasoningTokens} | ${f4(q.costOut)} | ${f4(q.costTotal)} | ${q.truncated} |`,
     ),
     '',
   ]
@@ -150,10 +198,26 @@ export function renderMarkdown(report: BenchReport): string {
 
 /** 渲染 CSV（每查询一行） */
 export function renderCsv(report: BenchReport): string {
-  const header = 'queryId,category,rounds,outputTokens,inputTokens,costOut,costIn,costTotal,truncated'
+  const header = 'queryId,category,rounds,outputTokens,reasoningTokens,inputTokens,costOut,costIn,costTotal,truncated'
   const rows = report.byQuery.map(
     (q) =>
-      `${q.queryId},${q.category},${q.rounds},${q.outputTokens},${q.inputTokens},${q.costOut},${q.costIn},${q.costTotal},${q.truncated}`,
+      `${q.queryId},${q.category},${q.rounds},${q.outputTokens},${q.reasoningTokens},${q.inputTokens},${q.costOut},${q.costIn},${q.costTotal},${q.truncated}`,
   )
   return [header, ...rows].join('\n')
+}
+
+/** 渲染跨模型对比总览（合并多个 provider 报告） */
+export function renderCrossProvider(reports: BenchReport[]): string {
+  const lines: string[] = [
+    '# 跨模型输出成本对比',
+    '',
+    '| 模型 | 查询数 | 调用数 | 平均轮数 | 总输入 | 总输出 | 思考 tokens | 总费用(元) | 输出费用(元) |',
+    '|------|--------|--------|----------|--------|--------|-------------|-------------|--------------|',
+    ...reports.map((r) => {
+      const p = r.byProvider[0]
+      return `| ${p?.provider ?? '?'} | ${r.totalQueries} | ${r.totalCalls} | ${f2(r.byThinking[0]?.avgRounds ?? 0)} | ${r.totalInput.toLocaleString()} | ${r.totalOutput.toLocaleString()} | ${(p?.reasoningTokens ?? 0).toLocaleString()} | ${f4(r.totalCost)} | ${f4(r.totalCostOut)} |`
+    }),
+    '',
+  ]
+  return lines.join('\n')
 }

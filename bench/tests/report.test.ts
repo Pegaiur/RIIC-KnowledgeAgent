@@ -9,10 +9,12 @@ function rec(partial: Partial<CostRecord>): CostRecord {
     category: 'fact',
     round: 1,
     thinking: 'off',
+    provider: 'hy3',
     model: 'hy3',
     input: 6000,
     output: 800,
     cached: 0,
+    reasoning: 0,
     costIn: 0.006,
     costOut: 0.0032,
     costTotal: 0.0092,
@@ -56,7 +58,7 @@ describe('report：聚合与渲染', () => {
   it('Markdown 渲染含表头与总数', () => {
     const report = aggregate([rec({})])
     const md = renderMarkdown(report)
-    expect(md).toContain('Hy3 查询输出成本基准报告')
+    expect(md).toContain('LLM 查询输出成本基准报告')
     expect(md).toContain('| 档位 |')
     expect(md).toContain('| 查询 ID |')
   })

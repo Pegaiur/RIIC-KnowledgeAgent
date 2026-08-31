@@ -15,7 +15,19 @@ export interface RunOutput {
   jsonlPath: string
   /** 汇总信息文件路径 */
   metaPath: string
+  /** 回答记录文件路径（人工抽查质量用） */
+  answersPath: string
   elapsedMs: number
+}
+
+/** 单题最终回答（供人工抽查质量，不参与成本评估） */
+export interface AnswerRecord {
+  queryId: string
+  category: string
+  question: string
+  rounds: number
+  toolRounds: number
+  answer: string | null
 }
 
 export async function runBenchmark(
@@ -29,7 +41,7 @@ export async function runBenchmark(
   const chunks = loadCorpus(config.corpusDir, config.maxContextChars)
   const index = buildIndex(chunks)
 
-  const runTag = `${new Date().toISOString().replace(/[:.]/g, '-')}-${opts.thinking}`
+  const runTag = `${new Date().toISOString().replace(/[:.]/g, '-')}-${config.provider}-${opts.thinking}`
   const outDir = opts.outDir ?? join(process.cwd(), 'bench', 'runs')
   const runDir = join(outDir, runTag)
   mkdirSync(runDir, { recursive: true })
@@ -39,13 +51,43 @@ export async function runBenchmark(
 
   const agentOpts: AgentOptions = { config, thinking: opts.thinking, dry: opts.dry, chunks, index }
   const lines: string[] = []
+  const answers: AnswerRecord[] = []
+  let failed = 0
 
   for (const q of questions) {
-    const result = await runQuery(q, agentOpts, chunks, index)
-    for (const r of result.records) lines.push(JSON.stringify(r))
+    try {
+      const result = await runQuery(q, agentOpts, chunks, index)
+      for (const r of result.records) lines.push(JSON.stringify(r))
+      if (result.finalAnswer != null) {
+        answers.push({
+          queryId: q.id,
+          category: q.category,
+          question: q.question,
+          rounds: result.rounds,
+          toolRounds: result.toolRounds,
+          answer: result.finalAnswer,
+        })
+      }
+      process.stderr.write(`问题 ${q.id} 完成：${result.rounds} 轮\n`)
+    } catch (err) {
+      // 单题失败不中断整批：记录失败原因，继续下一题
+      failed++
+      const msg = err instanceof Error ? err.message : String(err)
+      process.stderr.write(`问题 ${q.id} 失败：${msg}\n`)
+      answers.push({
+        queryId: q.id,
+        category: q.category,
+        question: q.question,
+        rounds: 0,
+        toolRounds: 0,
+        answer: `（查询失败：${msg}）`,
+      })
+    }
   }
 
   writeFileSync(jsonlPath, lines.join('\n') + '\n', 'utf-8')
+  const answersPath = join(runDir, 'answers.md')
+  writeFileSync(answersPath, renderAnswers(answers) + '\n', 'utf-8')
   writeFileSync(
     metaPath,
     JSON.stringify(
@@ -53,12 +95,14 @@ export async function runBenchmark(
         ts: new Date().toISOString(),
         thinking: opts.thinking,
         dry: opts.dry,
+        provider: config.provider,
         model: config.model,
         baseUrl: config.baseUrl,
         corpusDir: config.corpusDir,
         chunks: chunks.length,
         questions: questions.length,
         records: lines.length,
+        failed,
         elapsedMs: Date.now() - started,
       },
       null,
@@ -67,5 +111,20 @@ export async function runBenchmark(
     'utf-8',
   )
 
-  return { records: lines.map((l) => JSON.parse(l) as CostRecord), jsonlPath, metaPath, elapsedMs: Date.now() - started }
+  return {
+    records: lines.map((l) => JSON.parse(l) as CostRecord),
+    jsonlPath,
+    metaPath,
+    answersPath,
+    elapsedMs: Date.now() - started,
+  }
+}
+
+/** 渲染回答记录 Markdown（供人工抽查质量，不参与成本评估） */
+function renderAnswers(answers: AnswerRecord[]): string {
+  const blocks = answers.map(
+    (a) =>
+      `## ${a.queryId}（${a.category}）\n\n- 问题：${a.question}\n- 轮数：${a.rounds}｜检索次数：${a.toolRounds}\n\n${a.answer ?? '（无最终回答）'}`,
+  )
+  return ['# 查询回答记录', '', '> 供人工抽查答案质量，不参与成本评估。', '', ...blocks].join('\n')
 }
