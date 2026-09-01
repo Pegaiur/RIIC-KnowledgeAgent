@@ -3,8 +3,8 @@
  *
  * 单一数据源，供多处消费：
  *   - grep-retriever：查询构造「实体词优先」的字面模式
- *   - P2 专名 boost：BM25 精确命中加权 ×BENCH_ENTITY_BOOST
- *   - retriever.ts：jieba 自定义词典（BENCH_TOKENIZER=jieba 时 addWord，防领域词切碎）
+ *   - P2 专名 boost：BM25 精确命中加权 ×EXPERIMENT.entityBoost
+ *   - retriever.ts：jieba 自定义词典（分词器为 jieba 时 addWord，防领域词切碎）
  * 仅纯数据，无依赖、无副作用。
  *
  * 来源：arknights-base-vault/docs/ 全量体系与规则文档的 frontmatter operators + 正文专名。

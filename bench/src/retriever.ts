@@ -1,7 +1,7 @@
 /**
  * 中文文本分词 + BM25 检索
  *
- * 分词策略（env BENCH_TOKENIZER 分派，默认 bigram 保持兼容与可复现）：
+ * 分词策略（按 config EXPERIMENT.tokenizer 分派，默认 bigram 保持兼容与可复现）：
  *   - bigram：中文/日文连续字符 → 双字 bigram（含边界 unigram）；
  *     拉丁字母/数字连续串 → 单独词元（小写化）。零运行时依赖。
  *   - jieba：jieba-node 纯 JS 分词（ADR-001）。ENTITY_WORDS 注册自定义词典防领域词切碎；
@@ -12,6 +12,7 @@
  */
 import { addWord, lcut, lcutForSearch, setLogLevel } from 'jieba-node'
 import { ENTITY_WORDS } from './terms.js'
+import { EXPERIMENT } from './config.js'
 import type { DocChunk, TokenizerId } from './types.js'
 
 let jiebaReady = false
@@ -27,21 +28,20 @@ export function initTokenizer(): void {
   jiebaReady = true
 }
 
-/** 当前分词器（env BENCH_TOKENIZER，默认 bigram；索引与查询同用此函数） */
+/** 当前分词器（取 config 集中配置；索引与查询同用此函数） */
 export function currentTokenizer(): TokenizerId {
-  return process.env.BENCH_TOKENIZER === 'jieba' ? 'jieba' : 'bigram'
+  return EXPERIMENT.tokenizer
 }
 
 /** 实体词集合（查询词元精确命中时的加权判定；模块顶层构建无副作用） */
 const entityTermSet: ReadonlySet<string> = new Set(ENTITY_WORDS)
 
 /**
- * 实体词加权因子（env BENCH_ENTITY_BOOST，默认 0 = 关闭，保持基线；>0 时按倍率放大精确命中词元贡献）。
+ * 实体词加权因子（取 config 集中配置，默认 0 = 关闭，保持基线；>0 时按倍率放大精确命中词元贡献）。
  * P2 专名 boost：查询词元若精确命中 ENTITY_WORDS，则其 BM25 得分贡献 × 该因子。
  */
 export function currentEntityBoost(): number {
-  const raw = Number(process.env.BENCH_ENTITY_BOOST ?? 0)
-  return Number.isFinite(raw) && raw > 0 ? raw : 0
+  return Number.isFinite(EXPERIMENT.entityBoost) && EXPERIMENT.entityBoost > 0 ? EXPERIMENT.entityBoost : 0
 }
 
 /** 判断查询词元是否为领域实体词（精确命中）。单字专名（望/陈/砾/夕/令/孑/锏）在 bigram 下是 unigram、
@@ -90,7 +90,7 @@ function tokenizeJieba(text: string): string[] {
   return lcut(text, false, true).filter(validToken)
 }
 
-/** 文本 → 词元数组（按 BENCH_TOKENIZER 分派） */
+/** 文本 → 词元数组（按 EXPERIMENT.tokenizer 分派） */
 export function tokenize(text: string): string[] {
   return currentTokenizer() === 'jieba' ? tokenizeJieba(text) : tokenizeBigram(text)
 }

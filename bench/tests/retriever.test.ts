@@ -1,5 +1,6 @@
 import { describe, expect, it, afterEach, beforeEach } from 'vitest'
 import { buildIndex, currentEntityBoost, search, tokenize } from '../src/retriever.js'
+import { EXPERIMENT } from '../src/config.js'
 import type { DocChunk } from '../src/types.js'
 
 describe('retriever：分词与 BM25 检索', () => {
@@ -49,14 +50,13 @@ describe('retriever：分词与 BM25 检索', () => {
   })
 })
 
-describe('retriever：jieba 分词（BENCH_TOKENIZER=jieba，ADR-001）', () => {
-  const prev = process.env.BENCH_TOKENIZER
+describe('retriever：jieba 分词（EXPERIMENT.tokenizer=jieba，ADR-001）', () => {
+  const prev = EXPERIMENT.tokenizer
   beforeEach(() => {
-    process.env.BENCH_TOKENIZER = 'jieba'
+    EXPERIMENT.tokenizer = 'jieba'
   })
   afterEach(() => {
-    if (prev === undefined) delete process.env.BENCH_TOKENIZER
-    else process.env.BENCH_TOKENIZER = prev
+    EXPERIMENT.tokenizer = prev
   })
 
   it('词级分词与 bigram 的 token 集对照（无 bigram 跨词碎片）', () => {
@@ -92,29 +92,28 @@ describe('retriever：jieba 分词（BENCH_TOKENIZER=jieba，ADR-001）', () => 
   })
 })
 
-describe('retriever：P2 实体加权（BENCH_ENTITY_BOOST>0）', () => {
-  const prev = process.env.BENCH_ENTITY_BOOST
+describe('retriever：P2 实体加权（EXPERIMENT.entityBoost>0）', () => {
+  const prev = EXPERIMENT.entityBoost
   afterEach(() => {
-    if (prev === undefined) delete process.env.BENCH_ENTITY_BOOST
-    else process.env.BENCH_ENTITY_BOOST = prev
+    EXPERIMENT.entityBoost = prev
   })
 
-  it('默认（未设）时加权因子为 0，保持基线', () => {
-    delete process.env.BENCH_ENTITY_BOOST
+  it('默认（0）时加权因子为 0，保持基线', () => {
+    EXPERIMENT.entityBoost = 0
     expect(currentEntityBoost()).toBe(0)
   })
 
-  it('env 取正数倍率；非正数视为关闭', () => {
-    process.env.BENCH_ENTITY_BOOST = '1.5'
+  it('正数倍率生效；非正数视为关闭', () => {
+    EXPERIMENT.entityBoost = 1.5
     expect(currentEntityBoost()).toBe(1.5)
-    process.env.BENCH_ENTITY_BOOST = '0'
+    EXPERIMENT.entityBoost = 0
     expect(currentEntityBoost()).toBe(0)
-    process.env.BENCH_ENTITY_BOOST = '-2'
+    EXPERIMENT.entityBoost = -2
     expect(currentEntityBoost()).toBe(0)
   })
 
   it('含专名词元的块命中查询专名，权重放大后仍正确检索', () => {
-    process.env.BENCH_ENTITY_BOOST = '1.5'
+    EXPERIMENT.entityBoost = 1.5
     const chunks: DocChunk[] = [
       { id: 'a', file: 'a.md', heading: '红松林经验', text: '灰毫 红松骑士团 β 加百分之二十五。', startLine: 2, endLine: 2 },
       { id: 'b', file: 'b.md', heading: '制造', text: '制造站效率受赤金线影响。', startLine: 2, endLine: 2 },
@@ -133,9 +132,9 @@ describe('retriever：P2 实体加权（BENCH_ENTITY_BOOST>0）', () => {
       { id: 'b', file: 'b.md', heading: '贸易', text: '效率 效率 效率 效率 效率 效率 效率。', startLine: 2, endLine: 2 },
     ]
     const index = buildIndex(chunks)
-    delete process.env.BENCH_ENTITY_BOOST
+    EXPERIMENT.entityBoost = 0
     const baseOrder = search(index, '巫恋 效率', 2)
-    process.env.BENCH_ENTITY_BOOST = '1.5'
+    EXPERIMENT.entityBoost = 1.5
     const boostOrder = search(index, '巫恋 效率', 2)
     // boost 生效意味着排序被改写（而非维持基线排序）——若实现被删，本断言即失败
     expect(boostOrder.join(',')).not.toBe(baseOrder.join(','))
@@ -146,7 +145,7 @@ describe('retriever：P2 实体加权（BENCH_ENTITY_BOOST>0）', () => {
   })
 
   it('单字专名（望/砾/夕等）不参与放大，避免歧义词元误命中', () => {
-    process.env.BENCH_ENTITY_BOOST = '1.5'
+    EXPERIMENT.entityBoost = 1.5
     const chunks: DocChunk[] = [
       { id: 'a', file: 'a.md', heading: '中枢', text: '夕 在 中枢 产 感知。', startLine: 2, endLine: 2 },
       { id: 'b', file: 'b.md', heading: '杂谈', text: '夕 夕 夕 夕 夕 夕 夕。', startLine: 2, endLine: 2 },

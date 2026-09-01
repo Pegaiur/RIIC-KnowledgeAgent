@@ -1,5 +1,5 @@
 /**
- * 运行配置（环境变量读取，无副作用）
+ * 运行配置（密钥走 secret.yaml/env 兜底；实验参数集中 EXPERIMENT 常量，无副作用）
  *
  * 密钥来源（按优先级）：① 仓库根 `secret.yaml` 直读（未入库，config 主来源）；
  * ② 各 provider 对应环境变量（本地 .env，gitignore 已忽略，作兜底）。两者均不回显、不写入日志。
@@ -9,7 +9,6 @@
  */
 import type { ProviderId, TokenizerId } from './types.js'
 import { HY3_PRICES, QWEN_PRICES, type Prices } from './pricing.js'
-import { currentEntityBoost } from './retriever.js'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
@@ -57,6 +56,52 @@ export const PROVIDERS: Record<ProviderId, ProviderSpec> = {
 
 export type RetrieverId = 'bm25' | 'grep' | 'both'
 
+/**
+ * 实验参数集中配置（默认无污染）。
+ * 不再从环境变量读取——避免 shell 内残留（如 BENCH_ENTITY_BOOST=1.5）隐式污染基准结果。
+ * 实验时直接改此处的值；A/B 对照显式改 rules（meta.json 会记录读到的值）。
+ * （API Key 属密钥，仍走 secret.yaml/env 兜底，见 loadConfig。）
+ */
+export interface ExperimentConfig {
+  /** 启用的 provider（hy3 | qwen） */
+  provider: ProviderId
+  /** 规则前缀开关（B 组 A/B 对照置 true） */
+  rules: boolean
+  /** 实体词加权因子（P2 已不采纳，默认 0 = 关闭） */
+  entityBoost: number
+  /** 分词器（bigram | jieba） */
+  tokenizer: TokenizerId
+  /** 强制首检次数（minRag） */
+  minRagCalls: number
+  /** 检索 topK */
+  topK: number
+  /** 注入上下文最大字符数 */
+  maxContextChars: number
+  /** agent 最大轮次 */
+  maxRounds: number
+  /** 单次响应上限 */
+  maxTokens: number
+  /** 检索器（bm25 | grep | both） */
+  retriever: RetrieverId
+  /** 语料目录（相对仓库根） */
+  corpusDir: string
+}
+
+/** 实验参数默认值（集中于此，改值时全局生效） */
+export const EXPERIMENT: ExperimentConfig = {
+  provider: 'hy3',
+  rules: false,
+  entityBoost: 0,
+  tokenizer: 'bigram',
+  minRagCalls: 0,
+  topK: 5,
+  maxContextChars: 12000,
+  maxRounds: 3,
+  maxTokens: 4096,
+  retriever: 'bm25',
+  corpusDir: 'arknights-base-vault/docs',
+}
+
 export interface BenchConfig {
   /** 当前 provider 标识 */
   provider: ProviderId
@@ -88,16 +133,17 @@ export interface BenchConfig {
   retriever: RetrieverId
   /** 强制首检次数：模型直接作答前，至少先检索的次数（qwen 检索意愿实验用） */
   minRagCalls: number
-  /** 检索分词器：bigram（零依赖默认）| jieba（ADR-001，BENCH_TOKENIZER=jieba 开启） */
+  /** 检索分词器：bigram（零依赖默认）| jieba（ADR-001，EXPERIMENT.tokenizer=jieba） */
   tokenizer: TokenizerId
-  /** 实体词加权因子（0 = 关闭；>0 时 BM25 精确命中实体词元得分 × 该因子，env BENCH_ENTITY_BOOST） */
+  /** 实体词加权因子（0 = 关闭；>0 时 BM25 精确命中实体词元得分 × 该因子，见 EXPERIMENT.entityBoost） */
   entityBoost: number
-  /** 规则前缀开关（BENCH_RULES=1 显式开启；默认关，A/B 对照组为 0；规则段置顶注入 system prompt） */
+  /** 规则前缀开关（EXPERIMENT.rules 集中控制；默认关，A/B 对照组为 0；规则段置顶注入 system prompt） */
   rules: boolean
 }
 
 export function loadConfig(providerInput?: ProviderId): BenchConfig {
-  const provider = providerInput ?? (process.env.BENCH_PROVIDER as ProviderId) ?? 'hy3'
+  // 实验开关一律取自 EXPERIMENT（不读 env，防 shell 残留污染）；仅 API Key 走 secret/env 兜底（密钥约定）
+  const provider = providerInput ?? EXPERIMENT.provider
   const spec = PROVIDERS[provider] ?? PROVIDERS.hy3
   return {
     provider: spec.id,
@@ -108,16 +154,16 @@ export function loadConfig(providerInput?: ProviderId): BenchConfig {
     chatPath: spec.chatPath,
     model: spec.model,
     prices: spec.prices,
-    maxTokens: Number(process.env.BENCH_MAX_TOKENS ?? 4096),
-    corpusDir: process.env.CORPUS_DIR ?? 'arknights-base-vault/docs',
-    maxRounds: Number(process.env.BENCH_MAX_ROUNDS ?? 3),
-    topK: Number(process.env.BENCH_TOP_K ?? 5),
-    maxContextChars: Number(process.env.BENCH_MAX_CONTEXT_CHARS ?? 12000),
-    retriever: (process.env.BENCH_RETRIEVER as RetrieverId) ?? 'bm25',
-    minRagCalls: Number(process.env.BENCH_MIN_RAG_CALLS ?? 0),
-    rules: process.env.BENCH_RULES === '1' || process.env.BENCH_RULES === 'true',
-    tokenizer: (process.env.BENCH_TOKENIZER as TokenizerId) ?? 'bigram',
-    entityBoost: currentEntityBoost(),
+    maxTokens: EXPERIMENT.maxTokens,
+    corpusDir: EXPERIMENT.corpusDir,
+    maxRounds: EXPERIMENT.maxRounds,
+    topK: EXPERIMENT.topK,
+    maxContextChars: EXPERIMENT.maxContextChars,
+    retriever: EXPERIMENT.retriever,
+    minRagCalls: EXPERIMENT.minRagCalls,
+    rules: EXPERIMENT.rules,
+    tokenizer: EXPERIMENT.tokenizer,
+    entityBoost: EXPERIMENT.entityBoost,
   }
 }
 
