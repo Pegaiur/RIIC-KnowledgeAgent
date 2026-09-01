@@ -80,3 +80,40 @@
 ### 2026-09-01 — hitrate 结果无入库快照
 - **债务**：运行明细仅输出控制台 + `--out`（dev-temp 不入库），跨日复测对比需靠本笔记关键表。
 - **未来偿还**：若 R3 复测需要严格逐题对比，考虑让 hitrate 结果写入 `bench/runs/<ts>-hitrate/`（复用 runs 目录约定）。
+
+---
+
+## R3：jieba 中文分词复测（2026-09-01）
+
+> 对应草案：docs/draft-retrieval-tuning.md「R3 中文分词 jieba」；ADR：docs/adr/ADR-001-jieba-node-中文分词.md。
+> 前置：terms.ts 词表抽取完成（grep-retriever 迁移 + jieba 词典 + 后续 P2 共用）；`BENCH_TOKENIZER=bigram|jieba` 参数化，默认 bigram 不变，meta.json 增 tokenizer 字段。
+
+### 决策偏离
+- **initTokenizer 落在 retriever.ts 而非 terms.ts**：草案建议「terms.ts 暴露 initTokenizer()」，但 terms.ts 定位为纯数据（词表），initTokenizer 依赖 jieba-node——放 terms.ts 会让 grep-retriever 传递性引入 jieba。实际：terms.ts 纯数据，retriever.ts 持有 initTokenizer（幂等：setLogLevel SILENT + ENTITY_WORDS 逐词 addWord；addWord 触发词典惰性加载）。
+- **jieba-node 实测口径修订**：ADR 调研结论「纯 JS」经安装核实成立（package.json 自述 Pure JavaScript，无原生构建脚本）；`addWord` 无需显式 initialize 即触发词典加载（~0.23s）；INFO 日志需 setLogLevel('SILENT') 静默，否则污染 CLI 输出。
+
+### 复测数据（同口径：20 题 / 121 golden / 267 chunks / 含 L1 锚点）
+
+| topK | bigram（基线） | jieba | 差值 |
+|---|---|---|---|
+| 3 | 21.3% | 19.2% | −2.1pp |
+| 5 | **33.5%** | 29.4% | −4.1pp |
+| 10 | **50.3%** | 41.9% | −8.4pp |
+
+逐题（@5）关键变化：S04 4/9→1/9、S06 1/11→0/11、S02@10 3/9→1/9 显著退化；仅 F06 0/5→1/5、F07 2/5→3/5、F10 2/7→3/7 零星改善；G01 两版均为 0（第 20 位 → 视野外）。
+
+### 归因（S04 spot-check）
+
+- **bigram 的字符级部分匹配是隐性容错**：查询措辞 ≠ 语料措辞时（S04 问「如何运作/提升效率」，语料小节为「效率分档/缺人降级」），bigram 凭 裁缝/效率/运作 等双字碎片仍能累积部分证据；jieba 词级精确匹配后，这类模糊重叠大幅减少。
+- **疑问词成为高区分度词元反噬排序**：「为什么」在 jieba 下是低频高 IDF 词元，而 buff叠加模型.md 有 4 个「为什么……」标题小节——S04 top-8 被其占 3 席，体系文档自身小节（一句话结论/成套组成/效率分档）反而挤出前排。bigram 下「为什么」碎片化为 为什/什么，区分度被稀释，无此效应。
+- **与 R2 失败模式预判吻合**：R2 已判「jieba 对 a 类（泛化标题碰撞）无效、c 类（多节 golden）无效」；实测它还损害了原本依赖 bigram 模糊性的部分 b 类场景。MTEB 0.359→0.641 的先验来自查询与语料措辞高度一致的法律语料，本语料库不满足该前提。
+
+### 结论 / 判定
+
+- **jieba 复测无提升、全面略降 → 默认保持 bigram**（本就是默认值，无需回退动作）；依赖与参数化代码保留（ADR-001 后果条款：触发条件未消失，未来可作混合分词 / 词典调优的实验基座）。
+- ADR-001 状态更新为**已实施**，后果记录复测结论。
+- **R2/R3 联合指向**：检索器词元层的可改进空间已被压缩（bigram vs jieba 两端都不高），瓶颈回到 c 类（多节覆盖需多轮累积注入）与 b 类（实体词典命中，未测试 P2 专名 boost）——下一步按草案转 **R1 注入收敛矩阵（注入覆盖率口径）**，或先补 P2 专名 boost 实验。
+
+### 债务记录
+- jieba 与 bigram 的**混合分词**（token 并集）未实验——可能是兼顾词级精确与字符级容错的方向，另行评估。
+- ENTITY_WORDS 词表未经系统化全量校对（如 灰毫/远牙/野鬃 等体系干员缺失），P2 专名 boost 前需补全。

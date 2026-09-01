@@ -124,9 +124,9 @@ R2 命中率（bigram）< 90% 时实施；≥90% 时暂缓（记录为债务）�
 - [x] R2：`hitrate` 子命令实现 + 单测通过；产出 bigram 版 recall@3/5/10 基线（recall@5 = 33.5% ≪ 90%，R3 形式触发；失败模式分析见实施笔记「意外发现」）
 - [ ] R1：A/B/C 三组合运行 + 成本对比表 + 注入覆盖率对照 + 重点题核查（编造未复发）
 - [ ] R1：确定 topK/注入总量的推荐平衡点（写入 qwen 笔记）
-- [ ] R3 前置：`terms.ts` 词表抽取（grep-retriever 迁移，单测回归通过）
-- [ ] R3（条件触发）：jieba 接入 + ADR 登记 + 词典单测；R2 复测 recall 提升数据
-- [ ] 结论落盘：`docs/notes-hy3-rag-bench.md` 或新增实施笔记
+- [x] R3 前置：`terms.ts` 词表抽取（grep-retriever 迁移，单测回归通过）
+- [x] R3（条件触发）：jieba 接入 + ADR 登记 + 词典单测；R2 复测 recall 提升数据（**结论：jieba 全面略降（@5 29.4% vs bigram 33.5%），默认保持 bigram**，数据与归因见 `docs/notes-retrieval-tuning.md` R3 节 / ADR-001 复测结论）
+- [x] 结论落盘：`docs/notes-hy3-rag-bench.md` 或新增实施笔记（R2/R3 结论均落 `docs/notes-retrieval-tuning.md`）
 
 ## 关联
 
