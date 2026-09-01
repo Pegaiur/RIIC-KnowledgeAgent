@@ -36,3 +36,5 @@
 - [ ] **检索策略实测框架** — qwen3.7-flash 编造倾向与检索意愿不足相关（minRag=3 实测改善编造但轮次/成本代价大）；需受控实验实测 minRag=1 / 专名 boost / grep 式检索对质量×成本的影响，验证是否引入 grep 思路（参照 Concliude ripgrep 与其会话检索选型实测 trigram 0.78 的预判）— 2026-08-31 — 路由 `docs/draft-retrieval-experiment.md`（草案已建，实施待确认）
 
 - [ ] **检索质量与成本收敛** — 成本敏感下高 ROI 三项：命中率评测（gold 标注 + recall@K 工具，业界判据 ≥90% 无需向量）/ 检索注入收敛（topK 5→3 + 注入 12k→6k，倒 U 曲线与弱模型抗干扰证据）/ 中文分词 jieba（MTEB 0.359→0.641，触发制 + 新依赖 ADR）— 2026-09-01 — 路由 `docs/draft-retrieval-tuning.md`（草案已建，R2 先行，R1/R3 依结果推进）
+
+- [ ] **双检索器搭配实验（rag+grep 同时暴露，首轮强制 rag）** — 当前 agent 单工具暴露（bm25→rag_search / grep→grep_search 二选一）；实验改为**同时暴露** rag_search + grep_search：首轮经提示引导必须用 rag_search（minRag=1 语义，弱约束不拦截），后续轮次模型可自由调用 grep/rag，并**统计每轮实际工具调用**（rag vs grep 各多少、哪些题用了 grep）— 2026-09-01 — 路由 `docs/draft-retrieval-experiment.md`（P5 双工具方案，另需工具调用统计落地到 CostRecord/report/answers）

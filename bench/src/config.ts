@@ -47,7 +47,7 @@ export const PROVIDERS: Record<ProviderId, ProviderSpec> = {
   },
 }
 
-export type RetrieverId = 'bm25' | 'grep'
+export type RetrieverId = 'bm25' | 'grep' | 'both'
 
 export interface BenchConfig {
   /** 当前 provider 标识 */
@@ -70,13 +70,13 @@ export interface BenchConfig {
   maxTokens: number
   /** 语料目录（相对仓库根） */
   corpusDir: string
-  /** agent 最大轮次 */
+  /** agent 最大轮次：检索/工具轮预算；实际循环上限为 maxRounds+1（末位兜底强制作答轮，避免轮次耗尽无答案） */
   maxRounds: number
   /** 检索片段数量 */
   topK: number
   /** 单次注入检索片段的最大字符数 */
   maxContextChars: number
-  /** 检索器：bm25（BM25 加权）| grep（字面命中计数，P3 对照） */
+  /** 检索器：bm25（BM25 加权）| grep（字面命中计数，P3 对照）| both（双工具同时暴露，P5 搭配实验） */
   retriever: RetrieverId
   /** 强制首检次数：模型直接作答前，至少先检索的次数（qwen 检索意愿实验用） */
   minRagCalls: number

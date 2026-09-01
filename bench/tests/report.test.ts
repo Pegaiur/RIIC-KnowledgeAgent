@@ -55,6 +55,22 @@ describe('report：聚合与渲染', () => {
     expect(report.truncatedCalls).toBe(1)
   })
 
+  it('双工具模式统计工具调用次数（按调用计数）', () => {
+    const records = [
+      rec({ round: 1, tools: ['rag_search'] }),
+      rec({ round: 2, tools: ['grep_search'] }),
+      rec({ round: 3, tools: ['rag_search', 'grep_search'] }), // 一轮可能多工具
+      rec({ round: 4 }), // 无工具调用不计入
+    ]
+    const report = aggregate(records)
+    const rag = report.toolUsage.find((u) => u.tool === 'rag_search')!
+    const grep = report.toolUsage.find((u) => u.tool === 'grep_search')!
+    expect(rag.calls).toBe(2)
+    expect(grep.calls).toBe(2)
+    // 渲染含工具统计行
+    expect(renderMarkdown(report)).toContain('检索工具调用：')
+  })
+
   it('Markdown 渲染含表头与总数', () => {
     const report = aggregate([rec({})])
     const md = renderMarkdown(report)

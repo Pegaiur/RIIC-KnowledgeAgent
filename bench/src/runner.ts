@@ -27,6 +27,8 @@ export interface AnswerRecord {
   question: string
   rounds: number
   toolRounds: number
+  /** 每轮实际调用的检索工具序列（双工具模式统计；无工具调用为 []） */
+  toolTrace: string[]
   answer: string | null
 }
 
@@ -65,6 +67,7 @@ export async function runBenchmark(
           question: q.question,
           rounds: result.rounds,
           toolRounds: result.toolRounds,
+          toolTrace: result.toolTrace.flat(),
           answer: result.finalAnswer,
         })
       }
@@ -80,6 +83,7 @@ export async function runBenchmark(
         question: q.question,
         rounds: 0,
         toolRounds: 0,
+        toolTrace: [],
         answer: `（查询失败：${msg}）`,
       })
     }
@@ -124,9 +128,9 @@ export async function runBenchmark(
 
 /** 渲染回答记录 Markdown（供人工抽查质量，不参与成本评估） */
 function renderAnswers(answers: AnswerRecord[]): string {
-  const blocks = answers.map(
-    (a) =>
-      `## ${a.queryId}（${a.category}）\n\n- 问题：${a.question}\n- 轮数：${a.rounds}｜检索次数：${a.toolRounds}\n\n${a.answer ?? '（无最终回答）'}`,
-  )
+  const blocks = answers.map((a) => {
+    const toolLine = a.toolTrace.length > 0 ? `｜工具序列：${a.toolTrace.join('→')}` : '｜工具序列：无'
+    return `## ${a.queryId}（${a.category}）\n\n- 问题：${a.question}\n- 轮数：${a.rounds}｜检索次数：${a.toolRounds}${toolLine}\n\n${a.answer ?? '（无最终回答）'}`
+  })
   return ['# 查询回答记录', '', '> 供人工抽查答案质量，不参与成本评估。', '', ...blocks].join('\n')
 }

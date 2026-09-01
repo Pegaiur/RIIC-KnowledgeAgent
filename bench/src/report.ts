@@ -41,6 +41,8 @@ export interface BenchReport {
   byQuery: QueryAgg[]
   byThinking: ThinkingAgg[]
   byProvider: ProviderAgg[]
+  /** 检索工具调用统计（双工具模式；单工具模式返回空数组） */
+  toolUsage: ToolUsageAgg[]
 }
 
 /** 按 provider 聚合（跨模型对比用） */
@@ -55,6 +57,12 @@ export interface ProviderAgg {
   costOut: number
   costIn: number
   costTotal: number
+}
+
+/** 检索工具调用统计（双工具模式） */
+export interface ToolUsageAgg {
+  tool: string
+  calls: number
 }
 
 const sum = (vals: number[]) => vals.reduce((a, c) => a + c, 0)
@@ -156,7 +164,21 @@ export function aggregate(records: CostRecord[]): BenchReport {
     byQuery: queryAggs,
     byThinking: thinkingAggs,
     byProvider: providerAggs,
+    toolUsage: aggregateToolUsage(records),
   }
+}
+
+/** 聚合检索工具调用（双工具模式统计当前 run 内 rag/grep 各被调用多少轮） */
+function aggregateToolUsage(records: CostRecord[]): ToolUsageAgg[] {
+  const counter = new Map<string, number>()
+  for (const r of records) {
+    for (const t of r.tools ?? []) {
+      if (t === 'rag_search' || t === 'grep_search') counter.set(t, (counter.get(t) ?? 0) + 1)
+    }
+  }
+  return [...counter.entries()]
+    .map(([tool, calls]) => ({ tool, calls }))
+    .sort((a, b) => b.calls - a.calls || a.tool.localeCompare(b.tool))
 }
 
 const f2 = (v: number) => v.toFixed(2)
@@ -173,6 +195,9 @@ export function renderMarkdown(report: BenchReport): string {
     `- 总输入 tokens：${report.totalInput.toLocaleString()}｜总输出 tokens：${report.totalOutput.toLocaleString()}`,
     `- 总成本：¥${f4(report.totalCost)}（输入 ¥${f4(report.totalCostIn)} + 输出 ¥${f4(report.totalCostOut)}）`,
     `- 每查询输出 tokens：均值 ${avgOut}｜P95 ${p95Out.toLocaleString()}`,
+    ...(report.toolUsage.length > 0
+      ? [`- 检索工具调用：${report.toolUsage.map((u) => `${u.tool} ${u.calls} 次`).join('｜')}`]
+      : []),
     '',
     '## 按思考档位',
     '',
