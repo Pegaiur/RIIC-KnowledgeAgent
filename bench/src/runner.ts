@@ -104,6 +104,7 @@ export async function runBenchmark(
         baseUrl: config.baseUrl,
         retriever: config.retriever,
         minRagCalls: config.minRagCalls,
+        tokenizer: config.tokenizer,
         corpusDir: config.corpusDir,
         chunks: chunks.length,
         questions: questions.length,

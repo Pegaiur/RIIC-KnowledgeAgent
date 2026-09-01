@@ -7,6 +7,10 @@ settings:
 importers:
 
   .:
+    dependencies:
+      jieba-node:
+        specifier: ^1.0.1
+        version: 1.0.1
     devDependencies:
       '@types/node':
         specifier: ^22.5.0
@@ -389,6 +393,11 @@ packages:
     resolution: {integrity: sha512-5xoDfX+fL7faATnagmWPpbFtwh/R77WmMMqqHGS65C3vvB0YHrgF+B1YmZ3441tMj5n63k0212XNoJwzlhffQw==}
     engines: {node: ^8.16.0 || ^10.6.0 || >=11.0.0}
     os: [darwin]
+
+  jieba-node@1.0.1:
+    resolution: {integrity: sha512-gjijhMbpkrquujskc2x+jkCRz4EgQmVutUL9Kuz5lUMcX02aQ6HDKi5fAnd1pmR8pkIVLJfnM5ty4oQt2159+w==}
+    engines: {node: '>=16.0.0'}
+    hasBin: true
 
   loupe@3.2.1:
     resolution: {integrity: sha512-CdzqowRJCeLU72bHvWqwRBBlLcMEtIvGrlvef74kMnV2AolS9Y8xUv1I0U/MNAWMhBlKIoyuEgoJ0t/bbwHbLQ==}
@@ -781,6 +790,8 @@ snapshots:
 
   fsevents@2.3.3:
     optional: true
+
+  jieba-node@1.0.1: {}
 
   loupe@3.2.1: {}
 

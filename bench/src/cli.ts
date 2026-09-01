@@ -202,6 +202,7 @@ async function main(): Promise<void> {
       gold,
       topKs,
     )
+    process.stdout.write(`分词器：${config.tokenizer}｜语料 chunks：${chunks.length}｜问题：${questions.length}\n`)
     const md = renderHitrate(result)
     if (args.out) {
       const { writeFileSync } = await import('node:fs')

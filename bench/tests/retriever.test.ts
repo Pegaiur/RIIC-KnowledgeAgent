@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, afterEach, beforeEach } from 'vitest'
 import { buildIndex, search, tokenize } from '../src/retriever.js'
 import type { DocChunk } from '../src/types.js'
 
@@ -46,5 +46,48 @@ describe('retriever：分词与 BM25 检索', () => {
     const withAnchor = search(buildIndex(anchored), '怪猎中枢', 1)
     expect(noAnchor[0]).toBe(1)
     expect(withAnchor[0]).toBe(0)
+  })
+})
+
+describe('retriever：jieba 分词（BENCH_TOKENIZER=jieba，ADR-001）', () => {
+  const prev = process.env.BENCH_TOKENIZER
+  beforeEach(() => {
+    process.env.BENCH_TOKENIZER = 'jieba'
+  })
+  afterEach(() => {
+    if (prev === undefined) delete process.env.BENCH_TOKENIZER
+    else process.env.BENCH_TOKENIZER = prev
+  })
+
+  it('词级分词与 bigram 的 token 集对照（无 bigram 跨词碎片）', () => {
+    const tokens = tokenize('发电站无人机')
+    expect(tokens).toContain('发电站')
+    expect(tokens).toContain('无人机')
+    expect(tokens).not.toContain('人机') // bigram 跨词碎片不应出现
+    expect(tokens).not.toContain('电站')
+  })
+
+  it('词典词不被切开（ENTITY_WORDS 注册生效）', () => {
+    const tokens = tokenize('承曦格雷伊驱动虚拟电站')
+    expect(tokens).toContain('承曦格雷伊') // 默认 jieba 会切碎为 承曦/格雷/伊，词典后保持单 token
+    expect(tokens).toContain('虚拟电站')
+    expect(tokens).not.toContain('格雷')
+  })
+
+  it('jieba 模式 BM25 命中相关片段并排首位', () => {
+    const chunks: DocChunk[] = [
+      { id: 'a', file: 'a.md', heading: '发电站', text: '发电站无人机受到发电站干员影响，充能不设上限。', startLine: 2, endLine: 2 },
+      { id: 'b', file: 'b.md', heading: '贸易站', text: '贸易站订单处理与订单上限受控制中枢影响。', startLine: 2, endLine: 2 },
+    ]
+    const top = search(buildIndex(chunks), '发电站无人机充能机制', 2)
+    expect(top[0]).toBe(0)
+  })
+
+  it('无相关查询返回空数组（回退宽化后仍无命中不崩溃）', () => {
+    const chunks: DocChunk[] = [
+      { id: 'a', file: 'a.md', heading: '发电站', text: '发电站无人机充能机制。', startLine: 2, endLine: 2 },
+    ]
+    const index = buildIndex(chunks)
+    expect(search(index, '巫恋裁缝核订单分布', 3)).toEqual([])
   })
 })
