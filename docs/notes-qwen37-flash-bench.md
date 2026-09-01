@@ -55,7 +55,7 @@
 
 ### 2026-08-31 — secret.yaml 双密钥管理
 - **症状**：hy3 与 qwen 各需一个 key，`secret.yaml` 内已有 `hy3-api-key` 与 `qwen-api-key`。
-- **解决**：config 注册表按 `apiKeyEnv` 读取（hy3→`TOKENHUB_API_KEY`，qwen→`DASHSCOPE_API_KEY`），运行前从 `secret.yaml` 导入到对应环境变量。密钥仍不入库（gitignore 已忽略 secret.yaml）。
+- **解决**：config 注册表按 `apiKeyEnv` 声明对应环境变量（hy3→`TOKENHUB_API_KEY`，qwen→`DASHSCOPE_API_KEY`），`loadConfig` 优先直读仓库根 `secret.yaml`（`readSecretKey` 按 secretKey 字段剥离引号解析），env 变量作兜底；密钥不入库（gitignore 已忽略 secret.yaml）。
 
 ### 2026-08-31 — 跨模型对比中旧运行无 provider 字段
 - **症状**：hy3 早期运行记录无 `provider` 字段，`aggregate` 按 `r.provider` 分组会得到 undefined。
