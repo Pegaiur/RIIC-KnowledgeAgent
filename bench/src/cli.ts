@@ -4,11 +4,14 @@
  * 用法：
  *   node dist/cli.js run   [--thinking off|low|high] [--limit N] [--dry] [--questions <path>] [--out <dir>]
  *   node dist/cli.js report <runDir> [--out <path>]
+ *   node dist/cli.js hitrate [--topk 3,5,10] [--gold <path>] [--check-gold] [--out <path>]
  */
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { loadConfig, type RetrieverId } from './config.js'
-import { corpusStats } from './corpus.js'
+import { corpusStats, loadCorpus } from './corpus.js'
+import { checkGold, loadGold, renderHitrate, runHitrate } from './hitrate.js'
+import { buildIndex } from './retriever.js'
 import { runBenchmark } from './runner.js'
 import { aggregate, renderCrossProvider, renderCsv, renderMarkdown } from './report.js'
 import type { BenchQuery, CostRecord, ProviderId, ThinkingMode } from './types.js'
@@ -26,6 +29,12 @@ interface ParsedArgs {
   retriever: RetrieverId | null
   /** 强制首检次数 */
   minRag: number | null
+  /** hitrate：topK 列表（逗号分隔，如 3,5,10） */
+  topk: string | null
+  /** hitrate：gold.json 路径 */
+  gold: string | null
+  /** hitrate：仅校验 gold ↔ 语料对应关系 */
+  checkGold: boolean
   /** 位置参数（compare 收集多个 runDir） */
   positional: string[]
   help: boolean
@@ -43,6 +52,9 @@ function parseArgs(argv: string[]): ParsedArgs {
     runDir: null,
     retriever: null,
     minRag: null,
+    topk: null,
+    gold: null,
+    checkGold: false,
     positional: [],
     help: false,
   }
@@ -50,6 +62,9 @@ function parseArgs(argv: string[]): ParsedArgs {
     const a = argv[i]
     if (a === '--help' || a === '-h') parsed.help = true
     else if (a === '--dry') parsed.dry = true
+    else if (a === '--check-gold') parsed.checkGold = true
+    else if (a === '--topk') parsed.topk = argv[++i] ?? null
+    else if (a === '--gold') parsed.gold = argv[++i] ?? null
     else if (a === '--provider') parsed.provider = (argv[++i] as ProviderId) ?? 'hy3'
     else if (a === '--thinking') parsed.thinking = (argv[++i] as ThinkingMode) ?? 'off'
     else if (a === '--retriever') parsed.retriever = (argv[++i] as RetrieverId) ?? null
@@ -59,6 +74,7 @@ function parseArgs(argv: string[]): ParsedArgs {
     else if (a === '--out' && parsed.command === 'run') parsed.out = argv[++i] ?? null
     else if (a === '--out' && parsed.command === 'report') parsed.out = argv[++i] ?? null
     else if (a === '--out' && parsed.command === 'compare') parsed.out = argv[++i] ?? null
+    else if (a === '--out' && parsed.command === 'hitrate') parsed.out = argv[++i] ?? null
     else if (!parsed.runDir && !a.startsWith('-')) parsed.runDir = a
     else if (!a.startsWith('-')) parsed.positional.push(a)
   }
@@ -74,6 +90,7 @@ function printUsage(): void {
       '  node dist/cli.js run [--provider hy3|qwen] [--thinking off|low|high] [--retriever bm25|grep] [--min-rag N] [--limit N] [--dry] [--questions <path>] [--out <dir>]',
       '  node dist/cli.js report <runDir> [--out <path>]',
       '  node dist/cli.js compare <runDir1> <runDir2> [--out <path>]',
+      '  node dist/cli.js hitrate [--topk 3,5,10] [--gold <path>] [--check-gold] [--out <path>]',
       '',
       '示例：',
       '  node dist/cli.js run --dry --limit 2          # 干跑验证管线（不发请求）',
@@ -81,6 +98,8 @@ function printUsage(): void {
       '  node dist/cli.js run --provider qwen --thinking low --retriever grep --min-rag 1   # grep 对照（P3）',
       '  node dist/cli.js report bench/runs/xxx        # 聚合最近一次运行',
       '  node dist/cli.js compare bench/runs/<hy3> bench/runs/<qwen>   # 跨模型对比',
+      '  node dist/cli.js hitrate --check-gold         # 仅校验 gold ↔ 语料对应关系',
+      '  node dist/cli.js hitrate                      # bigram 检索 recall@3/5/10 基线',
       '',
     ].join('\n'),
   )
@@ -141,9 +160,57 @@ async function main(): Promise<void> {
     process.stdout.write(`JSONL：${out.jsonlPath}\n`)
     process.stdout.write(`元信息：${out.metaPath}\n`)
     process.stdout.write(`回答：${out.answersPath}\n`)
+    process.stdout.write(`注入记录：${out.injectedPath}\n`)
 
     const report = aggregate(out.records)
     process.stdout.write(renderMarkdown(report))
+    return
+  }
+
+  if (args.command === 'hitrate') {
+    const config = loadConfig()
+    const goldPath = args.gold ?? join(process.cwd(), 'bench', 'gold.json')
+    const gold = loadGold(goldPath)
+    // 语料加载与 runner 生产路径一致（maxContextChars 同源，当前语料不会触发截断）
+    const chunks = loadCorpus(config.corpusDir, config.maxContextChars)
+
+    if (args.checkGold) {
+      const { missing } = checkGold(gold, chunks)
+      if (missing.length > 0) {
+        process.stderr.write(`gold ↔ 语料校验失败（${missing.length} 项无法解析）：\n`)
+        for (const m of missing) process.stderr.write(`  - ${m.queryId}: ${m.key}\n`)
+        process.exitCode = 1
+        return
+      }
+      const total = Object.values(gold).reduce((acc, e) => acc + e.golden.length, 0)
+      process.stdout.write(`gold ↔ 语料校验通过：${Object.keys(gold).length} 题 / ${total} 项 golden 全部可解析\n`)
+      return
+    }
+
+    const questionsPath = args.questions ?? join(process.cwd(), 'bench', 'questions.json')
+    const questions = loadQuestions(questionsPath)
+    const topKs = (args.topk ?? '3,5,10')
+      .split(',')
+      .map((s) => Number(s.trim()))
+    if (topKs.some((n) => !Number.isInteger(n) || n <= 0)) {
+      throw new Error('--topk 格式错误（应为逗号分隔正整数，如 3,5,10）')
+    }
+
+    const result = runHitrate(
+      buildIndex(chunks),
+      chunks,
+      questions,
+      gold,
+      topKs,
+    )
+    process.stdout.write(`分词器：${config.tokenizer}｜语料 chunks：${chunks.length}｜问题：${questions.length}\n`)
+    const md = renderHitrate(result)
+    if (args.out) {
+      const { writeFileSync } = await import('node:fs')
+      writeFileSync(args.out, md + '\n', 'utf-8')
+      process.stdout.write(`已写入：${args.out}\n`)
+    }
+    process.stdout.write(md + '\n')
     return
   }
 

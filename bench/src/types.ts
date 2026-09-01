@@ -11,6 +11,9 @@ export type ProviderId = 'hy3' | 'qwen'
 /** 检索工具标识（bm25→rag_search；grep→grep_search；both 双工具同时暴露） */
 export type ToolId = 'rag_search' | 'grep_search'
 
+/** 检索分词器标识（bigram 零依赖默认；jieba 见 ADR-001） */
+export type TokenizerId = 'bigram' | 'jieba'
+
 /** 单次 LLM 调用的 token 用量（TokenHub OpenAI 兼容口径） */
 export interface LlmUsage {
   /** prompt_tokens（含缓存命中部分） */

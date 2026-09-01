@@ -6,7 +6,7 @@
  *   - Hy3：TOKENHUB_API_KEY（TokenHub 端点）
  *   - Qwen3.7-Flash：DASHSCOPE_API_KEY（DashScope / 阿里云百炼，OpenAI 兼容端点）
  */
-import type { ProviderId } from './types.js'
+import type { ProviderId, TokenizerId } from './types.js'
 import { HY3_PRICES, QWEN_PRICES, type Prices } from './pricing.js'
 
 export interface ProviderSpec {
@@ -80,6 +80,8 @@ export interface BenchConfig {
   retriever: RetrieverId
   /** 强制首检次数：模型直接作答前，至少先检索的次数（qwen 检索意愿实验用） */
   minRagCalls: number
+  /** 检索分词器：bigram（零依赖默认）| jieba（ADR-001，BENCH_TOKENIZER=jieba 开启） */
+  tokenizer: TokenizerId
 }
 
 export function loadConfig(providerInput?: ProviderId): BenchConfig {
@@ -101,5 +103,6 @@ export function loadConfig(providerInput?: ProviderId): BenchConfig {
     maxContextChars: Number(process.env.BENCH_MAX_CONTEXT_CHARS ?? 12000),
     retriever: (process.env.BENCH_RETRIEVER as RetrieverId) ?? 'bm25',
     minRagCalls: Number(process.env.BENCH_MIN_RAG_CALLS ?? 0),
+    tokenizer: (process.env.BENCH_TOKENIZER as TokenizerId) ?? 'bigram',
   }
 }

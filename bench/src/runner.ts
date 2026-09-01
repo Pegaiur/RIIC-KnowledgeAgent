@@ -17,6 +17,8 @@ export interface RunOutput {
   metaPath: string
   /** 回答记录文件路径（人工抽查质量用） */
   answersPath: string
+  /** 注入片段记录路径（queryId → 实际注入 chunk id 列表，R1 注入覆盖率用） */
+  injectedPath: string
   elapsedMs: number
 }
 
@@ -54,12 +56,15 @@ export async function runBenchmark(
   const agentOpts: AgentOptions = { config, thinking: opts.thinking, dry: opts.dry, chunks, index }
   const lines: string[] = []
   const answers: AnswerRecord[] = []
+  /** 每题实际注入上下文的 chunk id（R1 注入覆盖率判定用） */
+  const injectedMap: Record<string, string[]> = {}
   let failed = 0
 
   for (const q of questions) {
     try {
       const result = await runQuery(q, agentOpts, chunks, index)
       for (const r of result.records) lines.push(JSON.stringify(r))
+      injectedMap[q.id] = result.injectedIds
       if (result.finalAnswer != null) {
         answers.push({
           queryId: q.id,
@@ -75,6 +80,7 @@ export async function runBenchmark(
     } catch (err) {
       // 单题失败不中断整批：记录失败原因，继续下一题
       failed++
+      injectedMap[q.id] = []
       const msg = err instanceof Error ? err.message : String(err)
       process.stderr.write(`问题 ${q.id} 失败：${msg}\n`)
       answers.push({
@@ -92,6 +98,8 @@ export async function runBenchmark(
   writeFileSync(jsonlPath, lines.join('\n') + '\n', 'utf-8')
   const answersPath = join(runDir, 'answers.md')
   writeFileSync(answersPath, renderAnswers(answers) + '\n', 'utf-8')
+  const injectedPath = join(runDir, 'injected.json')
+  writeFileSync(injectedPath, JSON.stringify(injectedMap, null, 2) + '\n', 'utf-8')
   writeFileSync(
     metaPath,
     JSON.stringify(
@@ -104,6 +112,9 @@ export async function runBenchmark(
         baseUrl: config.baseUrl,
         retriever: config.retriever,
         minRagCalls: config.minRagCalls,
+        tokenizer: config.tokenizer,
+        topK: config.topK,
+        maxContextChars: config.maxContextChars,
         corpusDir: config.corpusDir,
         chunks: chunks.length,
         questions: questions.length,
@@ -122,6 +133,7 @@ export async function runBenchmark(
     jsonlPath,
     metaPath,
     answersPath,
+    injectedPath,
     elapsedMs: Date.now() - started,
   }
 }
