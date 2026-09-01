@@ -44,7 +44,8 @@ R2 命中率评测（先行：度量工具 + gold 标注）
     "S07": { "golden": ["2-体系/红松林经验.md#制造站#L45-53", "2-体系/红松林经验.md#缺人降级路径#L65-76"] }
   }
   ```
-- 标注来源：直接复用 11:30 / 12:37 运行 answers.md 的**检索来源**（人工核验过的）与 qwen/hy3 质量核查结论——20 题每题 1–3 个期望块，以 chunk ID（file#heading）为键，行号可省略（分层匹配：file+heading 即可）
+- **标注来源（直接转录，无需重新标注）**：`docs/notes-rag-answer-baseline.md`（20 题回答核查基线 v2 详版）——每题「参考要点」已带 `file#小节` 出处，逐题转录为 golden 数组即可（file+heading 为匹配键，行号省略；转录时校验 chunk 存在）
+- 补充来源：11:30 / 12:37 运行 answers.md 的检索来源（人工核验过的）
 
 ### 实现
 - 新文件：`bench/src/hitrate.ts`
@@ -102,6 +103,7 @@ R2 命中率（bigram）< 90% 时实施；≥90% 时暂缓（记录为债务）�
 
 ## 关联
 
-- 上游：`docs/draft-retrieval-experiment.md`（P1 minRag=1 / P2 专名 boost——词表共用）
+- R2 先行，gold 标注直接转录自 `docs/notes-rag-answer-baseline.md`（20 题回答核查基线 v2，含参考要点与 file#小节 出处）
+- 上游：`docs/draft-retrieval-experiment.md`（P1 minRag=1 / P2 专名 boost——词表共用）；grep 检索器实现已在 main（`bench/src/grep-retriever.ts`）
 - 依据：成本敏感 ROI 调研（Batch/思考预算/缓存为另三条高 ROI 线，本期不做）
 - 参考：Concliude 会话检索选型实测（jieba 召回 1.00 vs trigram 0.78）、MTEB BM25 官方数据（0.359→0.641）
