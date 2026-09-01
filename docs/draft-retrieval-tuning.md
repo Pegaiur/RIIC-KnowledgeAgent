@@ -92,6 +92,21 @@ R2 命中率（bigram）< 90% 时实施；≥90% 时暂缓（记录为债务）�
 - 单测：jieba 分词与 bigram 的 token 集抽样对照、词典词不被切开（如"灰毫""红松林"单 token）
 - 验证：R2 工具跑 jieba 版 recall@K 对比 bigram 版 → 落盘差值
 
+### Concliude jieba 经验提炼（避免重复试错）
+
+来源：packages/platform/storage/src/session-search.ts（生产在用，jieba-node ^1.0.1 纯 JS）+ 其会话检索 ADR 实测（jieba 召回 1.00 vs trigram 0.78）。以下经验直接映射到本草案实现：
+
+| Concliude 经验 | 映射到 R3 |
+|---|---|
+| **API 参数**：jieba.lcut(text, false, true)——第三参 HMM=true 必须开（未登录词/新词发现），否则领域新词切碎 | 索引与查询侧都用 lcut(text, false, true) |
+| **标点过滤**：alidToken——token 须含字母/数字（/[\p{L}\p{N}]/u），纯标点滤掉（FTS5 中 - 会被解析为 NOT；BM25 虽无语法问题但纯标点 token 无检索价值） | 同款过滤函数放进 etriever.ts（bigram 版已有类似语义：非 CJK/字母数字连续串即跳过，保持统一） |
+| **查询宽化回退**：精确切分（lcut）→ 空结果时 lcutForSearch(text, true) 细粒度扩展子词兜底——应对「未登录词边界」：「工具链」被切 [工具,链] 而索引侧粘连导致 AND 漏召回 | BM25 虽为求和打分（天生 OR 语义），但保留**同款降级**：lcut 切分后 topK 全空 → lcutForSearch 宽化重查一次（防「检索空结果→模型编造」的极端场景） |
+| **用户词典**：jieba.addWord 补领域词（干员名/机制名）是解决未登录词的正道 | 与 ench/src/terms.ts 干员词典一致；**词典必须在 buildIndex 前加载**（建索引与查询共享同一分词状态），建议 terms.ts 暴露 initTokenizer() 幂等初始化 |
+| **纯 JS 已验证**：Windows 无编译风险、词典内置零外部依赖 | 无需再验证环境兼容性（Concliude 生产在用）；package.json 按运行时依赖登记 |
+| **性能**：80 会话 → 1477 tokens，索引秒级 | 267 chunks 规模更小，构建与查询分词开销可忽略；注意 BM25 打分器（k1=1.5/b=0.75）**只换 token 层，不改打分** |
+| **可复现性**：索引侧稳定（lcut 固定分词） | 保持 BENCH_TOKENIZER 默认 bigram；jieba 切换后运行记录标注分词器版本（meta.json 增 	okenizer 字段） |
+
+
 ## 验收清单
 
 - [ ] R2：`gold.json` 20 题标注完成（含 chunk 存在性校验）
