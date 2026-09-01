@@ -203,7 +203,9 @@ async function main(): Promise<void> {
       gold,
       topKs,
     )
-    process.stdout.write(`分词器：${config.tokenizer}｜语料 chunks：${chunks.length}｜问题：${questions.length}\n`)
+    // 落盘/输出携带运行参数上下文，保证 --out 文件可复现（分词器 + 实体加权）
+    result.note = `分词器：${config.tokenizer}｜实体加权：${config.entityBoost === 0 ? '关' : `×${config.entityBoost}`}｜语料 chunks：${chunks.length}｜问题：${questions.length}`
+    process.stdout.write(`分词器：${config.tokenizer}｜实体加权：${config.entityBoost === 0 ? '关' : `×${config.entityBoost}`}｜语料 chunks：${chunks.length}｜问题：${questions.length}\n`)
     const md = renderHitrate(result)
     if (args.out) {
       const { writeFileSync } = await import('node:fs')

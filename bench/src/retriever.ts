@@ -32,6 +32,24 @@ export function currentTokenizer(): TokenizerId {
   return process.env.BENCH_TOKENIZER === 'jieba' ? 'jieba' : 'bigram'
 }
 
+/** 实体词集合（查询词元精确命中时的加权判定；模块顶层构建无副作用） */
+const entityTermSet: ReadonlySet<string> = new Set(ENTITY_WORDS)
+
+/**
+ * 实体词加权因子（env BENCH_ENTITY_BOOST，默认 0 = 关闭，保持基线；>0 时按倍率放大精确命中词元贡献）。
+ * P2 专名 boost：查询词元若精确命中 ENTITY_WORDS，则其 BM25 得分贡献 × 该因子。
+ */
+export function currentEntityBoost(): number {
+  const raw = Number(process.env.BENCH_ENTITY_BOOST ?? 0)
+  return Number.isFinite(raw) && raw > 0 ? raw : 0
+}
+
+/** 判断查询词元是否为领域实体词（精确命中）。单字专名（望/陈/砾/夕/令/孑/锏）在 bigram 下是 unigram、
+ * 任何含该字符的查询都被命中，易误放大歧义词元；故仅对长度 ≥2 的实体词加权。 */
+function isEntityTerm(term: string): boolean {
+  return term.length >= 2 && entityTermSet.has(term)
+}
+
 /** 有效词元：须含字母或数字（纯标点无检索价值） */
 function validToken(token: string): boolean {
   return /[\p{L}\p{N}]/u.test(token)
@@ -120,18 +138,21 @@ export function search(
   const n = docLens.length
   if (n === 0) return []
   const avgLen = docLens.reduce((a, c) => a + c, 0) / n
+  // P2 专名 boost：查询词元精确命中实体词表时放大其得分贡献（因子为 0 时退化为原打分）
+  const entityBoost = currentEntityBoost()
 
   const scoring = (qTerms: string[]): Map<number, number> => {
     const scores = new Map<number, number>()
     for (const t of qTerms) {
       if (!df.has(t)) continue
+      const mult = entityBoost > 0 && isEntityTerm(t) ? entityBoost : 1
       const idf = Math.log(1 + (n - df.get(t)! + 0.5) / (df.get(t)! + 0.5))
       for (const [docIdx, perDoc] of tf) {
         const f = perDoc.get(t)
         if (!f) continue
         const len = docLens[docIdx]
         const denom = f + k1 * (1 - b + b * (len / avgLen))
-        const score = idf * ((f * (k1 + 1)) / denom)
+        const score = idf * ((f * (k1 + 1)) / denom) * mult
         scores.set(docIdx, (scores.get(docIdx) ?? 0) + score)
       }
     }

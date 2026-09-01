@@ -1,13 +1,17 @@
 /**
  * 运行配置（环境变量读取，无副作用）
  *
- * 密钥来源：各 provider 对应的环境变量（本地可放 .env，gitignore 已忽略）。
+ * 密钥来源（按优先级）：① 仓库根 `secret.yaml` 直读（未入库，config 主来源）；
+ * ② 各 provider 对应环境变量（本地 .env，gitignore 已忽略，作兜底）。两者均不回显、不写入日志。
  * 当前支持：
  *   - Hy3：TOKENHUB_API_KEY（TokenHub 端点）
  *   - Qwen3.7-Flash：DASHSCOPE_API_KEY（DashScope / 阿里云百炼，OpenAI 兼容端点）
  */
 import type { ProviderId, TokenizerId } from './types.js'
 import { HY3_PRICES, QWEN_PRICES, type Prices } from './pricing.js'
+import { currentEntityBoost } from './retriever.js'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 
 export interface ProviderSpec {
   id: ProviderId
@@ -15,6 +19,8 @@ export interface ProviderSpec {
   label: string
   /** API Key 环境变量名 */
   apiKeyEnv: string
+  /** secret.yaml 中对应字段名（apiKeyEnv 缺失时的本地兜底读取） */
+  secretKey: string
   /** OpenAI 兼容基础端点（不含 chat 路径） */
   baseUrl: string
   /** chat completions 路径（端点差异在此） */
@@ -31,6 +37,7 @@ export const PROVIDERS: Record<ProviderId, ProviderSpec> = {
     id: 'hy3',
     label: '腾讯混元 Hy3',
     apiKeyEnv: 'TOKENHUB_API_KEY',
+    secretKey: 'hy3-api-key',
     baseUrl: 'https://tokenhub.tencentmaas.com',
     chatPath: '/v1/chat/completions',
     model: 'hy3',
@@ -40,6 +47,7 @@ export const PROVIDERS: Record<ProviderId, ProviderSpec> = {
     id: 'qwen',
     label: 'Qwen3.7-Flash',
     apiKeyEnv: 'DASHSCOPE_API_KEY',
+    secretKey: 'qwen-api-key',
     baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
     chatPath: '/chat/completions',
     model: 'qwen3.7-flash',
@@ -82,6 +90,8 @@ export interface BenchConfig {
   minRagCalls: number
   /** 检索分词器：bigram（零依赖默认）| jieba（ADR-001，BENCH_TOKENIZER=jieba 开启） */
   tokenizer: TokenizerId
+  /** 实体词加权因子（0 = 关闭；>0 时 BM25 精确命中实体词元得分 × 该因子，env BENCH_ENTITY_BOOST） */
+  entityBoost: number
 }
 
 export function loadConfig(providerInput?: ProviderId): BenchConfig {
@@ -90,7 +100,7 @@ export function loadConfig(providerInput?: ProviderId): BenchConfig {
   return {
     provider: spec.id,
     providerLabel: spec.label,
-    apiKey: process.env[spec.apiKeyEnv],
+    apiKey: readSecretKey(spec.secretKey) ?? process.env[spec.apiKeyEnv],
     apiKeyEnv: spec.apiKeyEnv,
     baseUrl: spec.baseUrl,
     chatPath: spec.chatPath,
@@ -104,5 +114,32 @@ export function loadConfig(providerInput?: ProviderId): BenchConfig {
     retriever: (process.env.BENCH_RETRIEVER as RetrieverId) ?? 'bm25',
     minRagCalls: Number(process.env.BENCH_MIN_RAG_CALLS ?? 0),
     tokenizer: (process.env.BENCH_TOKENIZER as TokenizerId) ?? 'bigram',
+    entityBoost: currentEntityBoost(),
   }
+}
+
+/**
+ * 从仓库根 `secret.yaml` 直读密钥字段（env 缺失时的本地兜底）。
+ * 解析规则：`<key>: <value>`（value 可带引号，自动剥离）；解析失败/无匹配返回 undefined，
+ * 不抛错、不回显、不写日志（密钥不进 stdout）。带内存缓存避免重复读盘。
+ */
+const secretCache = new Map<string, string | undefined>()
+
+function readSecretKey(secretKey: string): string | undefined {
+  if (secretCache.has(secretKey)) return secretCache.get(secretKey)
+  let value: string | undefined
+  try {
+    const raw = readFileSync(join(process.cwd(), 'secret.yaml'), 'utf-8')
+    for (const line of raw.split(/\r?\n/)) {
+      const m = /^([A-Za-z0-9_-]+)\s*:\s*"?([^"\n]+)"?\s*$/.exec(line.trim())
+      if (m && m[1] === secretKey) {
+        value = m[2].trim()
+        break
+      }
+    }
+  } catch {
+    // secret.yaml 不存在或不可读：静默返回 undefined（走 --dry）
+  }
+  secretCache.set(secretKey, value)
+  return value
 }

@@ -113,6 +113,7 @@ export async function runBenchmark(
         retriever: config.retriever,
         minRagCalls: config.minRagCalls,
         tokenizer: config.tokenizer,
+        entityBoost: config.entityBoost,
         topK: config.topK,
         maxContextChars: config.maxContextChars,
         corpusDir: config.corpusDir,
