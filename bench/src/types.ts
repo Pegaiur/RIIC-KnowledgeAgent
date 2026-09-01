@@ -8,6 +8,9 @@ export type ThinkingMode = 'off' | 'low' | 'high'
 /** LLM Provider 标识 */
 export type ProviderId = 'hy3' | 'qwen'
 
+/** 检索工具标识（bm25→rag_search；grep→grep_search；both 双工具同时暴露） */
+export type ToolId = 'rag_search' | 'grep_search'
+
 /** 单次 LLM 调用的 token 用量（TokenHub OpenAI 兼容口径） */
 export interface LlmUsage {
   /** prompt_tokens（含缓存命中部分） */
@@ -52,6 +55,8 @@ export interface CostRecord {
   costTotal: number
   /** 是否因 max_tokens 截断 */
   truncated: boolean
+  /** 本轮实际调用的检索工具名（双工具模式下统计；无工具调用则省略） */
+  tools?: ToolId[]
 }
 
 /** 基准问题 */
