@@ -92,6 +92,8 @@ export interface BenchConfig {
   tokenizer: TokenizerId
   /** 实体词加权因子（0 = 关闭；>0 时 BM25 精确命中实体词元得分 × 该因子，env BENCH_ENTITY_BOOST） */
   entityBoost: number
+  /** 规则前缀开关（BENCH_RULES=1 显式开启；默认关，A/B 对照组为 0；规则段置顶注入 system prompt） */
+  rules: boolean
 }
 
 export function loadConfig(providerInput?: ProviderId): BenchConfig {
@@ -113,6 +115,7 @@ export function loadConfig(providerInput?: ProviderId): BenchConfig {
     maxContextChars: Number(process.env.BENCH_MAX_CONTEXT_CHARS ?? 12000),
     retriever: (process.env.BENCH_RETRIEVER as RetrieverId) ?? 'bm25',
     minRagCalls: Number(process.env.BENCH_MIN_RAG_CALLS ?? 0),
+    rules: process.env.BENCH_RULES === '1' || process.env.BENCH_RULES === 'true',
     tokenizer: (process.env.BENCH_TOKENIZER as TokenizerId) ?? 'bigram',
     entityBoost: currentEntityBoost(),
   }

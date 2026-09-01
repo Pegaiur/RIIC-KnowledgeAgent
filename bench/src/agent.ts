@@ -10,6 +10,7 @@ import { grepSearch, buildGrepResult } from './grep-retriever.js'
 import type { DocChunk } from './types.js'
 import { callLLM, type ChatMessage, type ProviderOptions } from './provider.js'
 import { computeCosts } from './pricing.js'
+import { buildRulesPrefix } from './rules-prefix.js'
 import type { BenchQuery, CostRecord, ThinkingMode, ToolId } from './types.js'
 
 export interface AgentResult {
@@ -36,12 +37,15 @@ export interface AgentOptions {
 export const MAX_RAG_CALLS = 2
 
 /** 构建系统提示；工具名随检索器切换（双工具模式同时描述两个检索器及其定位） */
-export function buildSystemPrompt(retriever: RetrieverId = 'bm25'): string {
+export function buildSystemPrompt(retriever: RetrieverId = 'bm25', rulesEnabled = false): string {
   const tools = retriever === 'both' ? 'rag_search（BM25 相关性排序）与 grep_search（字面命中定位）' : retriever === 'grep' ? 'grep_search' : 'rag_search'
   const lines = [
     '你是「明日方舟基建」知识库问答助手，语料为干员基建技能、体系论证与排班策略。',
     `你可以调用 ${tools} 检索知识库片段，每次回答最多允许检索 ${MAX_RAG_CALLS} 次，达到上限后请直接基于已返回的片段作答。`,
-    `严禁使用模型自身训练语料中的知识作答：所有答案必须严格基于本次 ${retriever === 'both' ? 'rag_search/grep_search' : tools} 返回的片段；片段未覆盖时明确说明「知识库未查到」，不得凭记忆补全，不得编造数值或机制。`,
+    // 规则开启：检索契约从「严格基于片段」升级为「引导仅用于构造 query、不作依据，答案须引用原文片段」
+    rulesEnabled
+      ? `所有答案必须严格基于本次 ${retriever === 'both' ? 'rag_search/grep_search' : tools} 返回的语料片段并标注 file#小节；上方检索词引导仅为构造 query 的命中提示、不构成来源；片段未覆盖时明确说明「知识库未查到」，不得凭记忆补全，不得编造数值或机制。`
+      : `严禁使用模型自身训练语料中的知识作答：所有答案必须严格基于本次 ${retriever === 'both' ? 'rag_search/grep_search' : tools} 返回的片段；片段未覆盖时明确说明「知识库未查到」，不得凭记忆补全，不得编造数值或机制。`,
     '输出使用中文，结构化排版（要点列表/表格）。',
   ]
   if (retriever === 'both') {
@@ -50,7 +54,9 @@ export function buildSystemPrompt(retriever: RetrieverId = 'bm25'): string {
       '建议：第一轮先用 rag_search 快速定位主题片段；若后续需核实具体干员/数值/措辞的精确出处，或 rag 结果不足以覆盖，再调用 grep_search 补充。二者可结合使用，但总次数不超过上限。',
     )
   }
-  return lines.join('\n')
+  // 规则开启：规则段置顶注入（完全静态，保证前缀缓存命中；规则不构成来源见上方契约）
+  const head = rulesEnabled ? `${buildRulesPrefix()}\n\n` : ''
+  return head + lines.join('\n')
 }
 
 /** rag_search 工具定义（BM25 检索，OpenAI function calling 格式） */
@@ -105,7 +111,7 @@ export async function runQuery(
   const config = opts.config ?? loadConfig()
   const records: CostRecord[] = []
   const messages: ChatMessage[] = [
-    { role: 'system', content: buildSystemPrompt(config.retriever) },
+    { role: 'system', content: buildSystemPrompt(config.retriever, config.rules) },
     { role: 'user', content: query.question },
   ]
   const providerOpts: ProviderOptions = { config, thinking: opts.thinking, dry: opts.dry }

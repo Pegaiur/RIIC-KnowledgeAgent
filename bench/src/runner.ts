@@ -112,6 +112,7 @@ export async function runBenchmark(
         baseUrl: config.baseUrl,
         retriever: config.retriever,
         minRagCalls: config.minRagCalls,
+        rules: config.rules,
         tokenizer: config.tokenizer,
         entityBoost: config.entityBoost,
         topK: config.topK,
