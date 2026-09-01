@@ -98,6 +98,8 @@ export async function runBenchmark(
         provider: config.provider,
         model: config.model,
         baseUrl: config.baseUrl,
+        retriever: config.retriever,
+        minRagCalls: config.minRagCalls,
         corpusDir: config.corpusDir,
         chunks: chunks.length,
         questions: questions.length,

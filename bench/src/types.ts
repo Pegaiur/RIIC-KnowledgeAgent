@@ -91,4 +91,10 @@ export interface DocChunk {
   heading: string
   /** 片段正文 */
   text: string
+  /** 检索锚点：文档 H1 体系名 + frontmatter operators（仅用于检索加权，不注入展示给 LLM） */
+  anchor?: string
+  /** 正文起始行号（1 基，含标题行后首行） */
+  startLine: number
+  /** 正文结束行号（1 基） */
+  endLine: number
 }

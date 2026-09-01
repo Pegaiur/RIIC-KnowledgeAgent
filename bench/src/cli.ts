@@ -7,7 +7,7 @@
  */
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { loadConfig } from './config.js'
+import { loadConfig, type RetrieverId } from './config.js'
 import { corpusStats } from './corpus.js'
 import { runBenchmark } from './runner.js'
 import { aggregate, renderCrossProvider, renderCsv, renderMarkdown } from './report.js'
@@ -22,6 +22,10 @@ interface ParsedArgs {
   questions: string | null
   out: string | null
   runDir: string | null
+  /** 检索器（bm25 | grep） */
+  retriever: RetrieverId | null
+  /** 强制首检次数 */
+  minRag: number | null
   /** 位置参数（compare 收集多个 runDir） */
   positional: string[]
   help: boolean
@@ -37,6 +41,8 @@ function parseArgs(argv: string[]): ParsedArgs {
     questions: null,
     out: null,
     runDir: null,
+    retriever: null,
+    minRag: null,
     positional: [],
     help: false,
   }
@@ -46,6 +52,8 @@ function parseArgs(argv: string[]): ParsedArgs {
     else if (a === '--dry') parsed.dry = true
     else if (a === '--provider') parsed.provider = (argv[++i] as ProviderId) ?? 'hy3'
     else if (a === '--thinking') parsed.thinking = (argv[++i] as ThinkingMode) ?? 'off'
+    else if (a === '--retriever') parsed.retriever = (argv[++i] as RetrieverId) ?? null
+    else if (a === '--min-rag') parsed.minRag = Number(argv[++i]) || null
     else if (a === '--limit') parsed.limit = Number(argv[++i]) || null
     else if (a === '--questions') parsed.questions = argv[++i] ?? null
     else if (a === '--out' && parsed.command === 'run') parsed.out = argv[++i] ?? null
@@ -63,13 +71,14 @@ function printUsage(): void {
       'rag-test bench —— LLM 查询输出成本基准（Hy3 / Qwen3.7-Flash）',
       '',
       '用法：',
-      '  node dist/cli.js run [--provider hy3|qwen] [--thinking off|low|high] [--limit N] [--dry] [--questions <path>] [--out <dir>]',
+      '  node dist/cli.js run [--provider hy3|qwen] [--thinking off|low|high] [--retriever bm25|grep] [--min-rag N] [--limit N] [--dry] [--questions <path>] [--out <dir>]',
       '  node dist/cli.js report <runDir> [--out <path>]',
       '  node dist/cli.js compare <runDir1> <runDir2> [--out <path>]',
       '',
       '示例：',
       '  node dist/cli.js run --dry --limit 2          # 干跑验证管线（不发请求）',
       '  node dist/cli.js run --provider qwen --thinking low   # 真实跑（需 DASHSCOPE_API_KEY）',
+      '  node dist/cli.js run --provider qwen --thinking low --retriever grep --min-rag 1   # grep 对照（P3）',
       '  node dist/cli.js report bench/runs/xxx        # 聚合最近一次运行',
       '  node dist/cli.js compare bench/runs/<hy3> bench/runs/<qwen>   # 跨模型对比',
       '',
@@ -107,6 +116,8 @@ async function main(): Promise<void> {
 
   if (args.command === 'run') {
     const config = loadConfig(args.provider)
+    if (args.retriever) config.retriever = args.retriever
+    if (args.minRag !== null) config.minRagCalls = args.minRag
     const stats = corpusStats(config.corpusDir)
     if (stats.files === 0) {
       throw new Error(`语料目录为空：${config.corpusDir}（相对仓库根运行）`)
@@ -117,7 +128,7 @@ async function main(): Promise<void> {
     const picked = args.limit ? questions.slice(0, args.limit) : questions
 
     process.stdout.write(
-      `Provider：${config.providerLabel}｜语料：${stats.files} 个文件｜问题：${picked.length}/${questions.length}｜档位：${args.thinking}｜dry：${args.dry}\n`,
+      `Provider：${config.providerLabel}｜语料：${stats.files} 个文件｜问题：${picked.length}/${questions.length}｜档位：${args.thinking}｜检索器：${config.retriever}｜强制首检：${config.minRagCalls}｜dry：${args.dry}\n`,
     )
 
     const out = await runBenchmark(picked, {

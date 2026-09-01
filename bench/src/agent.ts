@@ -4,8 +4,9 @@
  * 保留要素：轮次预算（maxRounds）× provider 调用 × 工具执行 × 结果回写 messages。
  * 裁掉要素：Guardrail / Hook / 遥测 / 断路器 / subagent。
  */
-import { loadConfig, type BenchConfig } from './config.js'
+import { loadConfig, type BenchConfig, type RetrieverId } from './config.js'
 import { buildIndex, search } from './retriever.js'
+import { grepSearch, buildGrepResult } from './grep-retriever.js'
 import type { DocChunk } from './types.js'
 import { callLLM, type ChatMessage, type ProviderOptions } from './provider.js'
 import { computeCosts } from './pricing.js'
@@ -30,22 +31,24 @@ export interface AgentOptions {
 /** 单次查询允许的知识库检索次数上限（system prompt 与 tool 侧共同约束） */
 export const MAX_RAG_CALLS = 2
 
-/** 构建系统提示 */
-export function buildSystemPrompt(): string {
+/** 构建系统提示；工具名随检索器切换 */
+export function buildSystemPrompt(retriever: RetrieverId = 'bm25'): string {
+  const toolName = retriever === 'grep' ? 'grep_search' : 'rag_search'
   return [
     '你是「明日方舟基建」知识库问答助手，语料为干员基建技能、体系论证与排班策略。',
-    `你可以调用 rag_search 检索知识库片段，每次回答最多允许检索 ${MAX_RAG_CALLS} 次，达到上限后请直接基于已返回的片段作答。`,
-    '回答必须基于检索到的内容，无法确认时明确说明；使用中文，结构化排版（要点列表/表格），不要编造数值。',
+    `你可以调用 ${toolName} 检索知识库片段，每次回答最多允许检索 ${MAX_RAG_CALLS} 次，达到上限后请直接基于已返回的片段作答。`,
+    `严禁使用模型自身训练语料中的知识作答：所有答案必须严格基于本次 ${toolName} 返回的片段；片段未覆盖时明确说明「知识库未查到」，不得凭记忆补全，不得编造数值或机制。`,
+    '输出使用中文，结构化排版（要点列表/表格）。',
   ].join('\n')
 }
 
-/** rag_search 工具定义（OpenAI function calling 格式） */
+/** rag_search 工具定义（BM25 检索，OpenAI function calling 格式） */
 export function ragSearchTool(): Record<string, unknown> {
   return {
     type: 'function',
     function: {
       name: 'rag_search',
-      description: '在明日方舟基建知识库中检索相关文档片段，返回 top-k 原文',
+      description: '在明日方舟基建知识库中按关键词相关性（BM25）检索文档片段，返回 top-k 原文',
       parameters: {
         type: 'object',
         properties: {
@@ -55,6 +58,29 @@ export function ragSearchTool(): Record<string, unknown> {
       },
     },
   }
+}
+
+/** grep_search 工具定义（字面命中计数检索，P3 对照） */
+export function grepSearchTool(): Record<string, unknown> {
+  return {
+    type: 'function',
+    function: {
+      name: 'grep_search',
+      description: '在明日方舟基建知识库中按字面命中计数检索文档片段，返回 top-k 原文及命中行明细',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: '检索关键词（干员名/机制/体系名）' },
+        },
+        required: ['query'],
+      },
+    },
+  }
+}
+
+/** 按检索器选取要暴露给模型的工具 */
+function retrieverTool(retriever: RetrieverId): Record<string, unknown> {
+  return retriever === 'grep' ? grepSearchTool() : ragSearchTool()
 }
 
 /** 执行单次查询，逐轮记录成本 */
@@ -67,7 +93,7 @@ export async function runQuery(
   const config = opts.config ?? loadConfig()
   const records: CostRecord[] = []
   const messages: ChatMessage[] = [
-    { role: 'system', content: buildSystemPrompt() },
+    { role: 'system', content: buildSystemPrompt(config.retriever) },
     { role: 'user', content: query.question },
   ]
   const providerOpts: ProviderOptions = { config, thinking: opts.thinking, dry: opts.dry }
@@ -80,7 +106,7 @@ export async function runQuery(
 
   for (let round = 1; round <= config.maxRounds; round++) {
     rounds++
-    const resp = await callLLM(messages, [ragSearchTool()], providerOpts)
+    const resp = await callLLM(messages, [retrieverTool(config.retriever)], providerOpts)
     const costs = computeCosts(resp.usage.input, resp.usage.output, resp.usage.cached, config.prices)
     records.push({
       ts: now,
@@ -112,23 +138,28 @@ export async function runQuery(
           function: { name: tc.name, arguments: tc.arguments },
         })),
       })
-      // 执行工具：本基准仅 rag_search，逐个执行并回写结果
+      // 执行工具：rag_search（BM25）与 grep_search（字面命中）分别路由，逐个执行并回写结果
       for (const tc of resp.toolCalls) {
         let resultText: string
-        if (tc.name === 'rag_search') {
+        if (tc.name === 'rag_search' || tc.name === 'grep_search') {
           if (ragCalls >= MAX_RAG_CALLS) {
             resultText = `已达到知识库检索上限（${MAX_RAG_CALLS} 次），请直接基于已返回的片段作答，勿再检索。`
           } else {
             ragCalls++
             const q = safeParseQuery(tc.arguments)
-            const hits = search(index, q ?? query.question, config.topK)
-            resultText = hits
-              .map((idx) => {
-                const c = chunks[idx]
-                return `【${c.file} | ${c.heading}】\n${c.text}`
-              })
-              .join('\n\n')
-              .slice(0, config.maxContextChars)
+            if (tc.name === 'grep_search') {
+              const hits = grepSearch(chunks, q ?? query.question, config.topK)
+              resultText = buildGrepResult(chunks, hits, q ?? query.question, config.maxContextChars)
+            } else {
+              const hits = search(index, q ?? query.question, config.topK)
+              resultText = hits
+                .map((idx) => {
+                  const c = chunks[idx]
+                  return `【${c.file} | ${c.heading} | L${c.startLine}-${c.endLine}】\n${c.text}`
+                })
+                .join('\n\n')
+                .slice(0, config.maxContextChars)
+            }
           }
         } else {
           resultText = `未知工具：${tc.name}`
@@ -139,6 +170,17 @@ export async function runQuery(
           content: resultText || '（无匹配片段）',
         })
       }
+      continue
+    }
+
+    // 无工具调用：若强制首检未达成，先引导检索而非直接作答（qwen 检索意愿实验用）
+    // 强制次数上限受 MAX_RAG_CALLS 约束，避免 minRagCalls 超上限造成引导死循环至轮次耗尽
+    const minRag = Math.min(config.minRagCalls, MAX_RAG_CALLS)
+    if (ragCalls < minRag) {
+      messages.push({
+        role: 'user',
+        content: `请先调用 rag_search 检索知识库（当前已检索 ${ragCalls} 次，需至少检索 ${minRag} 次）后再作答。`,
+      })
       continue
     }
 

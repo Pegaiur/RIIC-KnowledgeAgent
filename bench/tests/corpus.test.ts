@@ -42,6 +42,11 @@ describe('corpus：语料收集与分块', () => {
     const anchor = chunks.find((c) => c.heading === '贸易锚点')!
     expect(anchor.text).toContain('焰狐龙梓兰')
     expect(anchor.text).not.toContain('模板注释')
+    // 标题后紧接正文，行号应指向正文实际行（跳过标题行与其后空行）
+    expect(anchor.startLine).toBe(7)
+    expect(anchor.endLine).toBe(7)
+    // 检索锚点取 H1 体系名（文档无 operators frontmatter）
+    expect(anchor.anchor).toBe('散件干员速查')
   })
 
   it('无标题文档归入（未分段）', () => {
@@ -49,5 +54,9 @@ describe('corpus：语料收集与分块', () => {
     const chunks = splitChunks(file, docsDir)
     expect(chunks).toHaveLength(1)
     expect(chunks[0].heading).toBe('（未分段）')
+    expect(chunks[0].startLine).toBe(1)
+    expect(chunks[0].endLine).toBe(2)
+    // 无 H1 / 无 operators → 不设锚点
+    expect(chunks[0].anchor).toBeUndefined()
   })
 })
