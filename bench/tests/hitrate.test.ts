@@ -89,6 +89,25 @@ describe('runHitrate', () => {
     expect(q1.total).toBe(2)
     // recall@1 = 1/2；Q2 = 1 → 宏平均 0.75
     expect(result.recallMacro[0]).toBeCloseTo(0.75)
+    // precision@1：两题 top1 均为 golden → 1.0（recall 只看覆盖，precision 看槽位纯度）
+    expect(result.precisionMacro[0]).toBeCloseTo(1)
+    // nDCG@1：golden 均在第 1 位 → 1.0
+    expect(result.ndcgMacro[0]).toBeCloseTo(1)
+  })
+
+  it('precision 惩罚污染：噪声块挤占槽位时 precision 降、nDCG 随位次衰减', () => {
+    // 噪声块「电力」词频更高 → 排 golden 之前
+    const polluted: DocChunk[] = [
+      { id: 'n', file: 'n.md', heading: '电力附注', text: '电力 电力 电力 电力 电力 电力', startLine: 1, endLine: 1 },
+      { id: 'g', file: 'g.md', heading: '电力', text: '电力充能一次', startLine: 1, endLine: 1 },
+    ]
+    const index = buildIndex(polluted)
+    const gold = { Q1: { golden: ['g.md#电力'] } }
+    const result = runHitrate(index, polluted, [{ id: 'Q1', category: 'fact', question: '电力' }], gold, [2])
+    // recall@2 = 1（golden 在 top2 内）；precision@2 = 1/2；nDCG@2 = (1/log2(3)) / (1/log2(2)) ≈ 0.631
+    expect(result.recallMacro[0]).toBeCloseTo(1)
+    expect(result.precisionMacro[0]).toBeCloseTo(0.5)
+    expect(result.ndcgMacro[0]).toBeCloseTo(1 / Math.log2(3), 3)
   })
 
   it('miss：golden 不在 topK 内时 recall 下降并记录 miss', () => {

@@ -1,8 +1,12 @@
 /**
- * 命中率评测（recall@K）
+ * 命中率评测（recall@K / precision@K / nDCG@K）
  *
- * 指标口径（唯一）：recall@K = |golden ∩ topK 检索结果| / |golden|，
- * 逐题计算后取宏平均；多 golden 题按比例计（含 1 个 golden 不算全中）。
+ * 指标口径：
+ *   - recall@K = |golden ∩ topK| / |golden|：键级（golden 键任一解析块进 topK 即算命中），
+ *     逐题按比例计后取宏平均。度量 golden 覆盖。
+ *   - precision@K = |topK 中 golden 块| / 实际填充槽位数 min(K, 检索返回数)：块级。
+ *     度量注入槽位的非 golden 污染率（1 − precision）。
+ *   - nDCG@K：binary relevance（块级，golden 解析块集合），排序质量（golden 越靠前越高）。
  *
  * golden 键格式：`file#清洗后标题`（splitChunks 产出的 heading，无 ## 前缀）。
  * 解析顺序：① 精确 chunk.id（file#原始标题行）；② 回退 file#清洗标题 匹配
@@ -89,6 +93,12 @@ export interface QuestionHit {
   total: number
   /** 各 topK 下的命中键数（与 topKs 对齐） */
   hits: number[]
+  /** 各 topK 下的 precision 分子：topK 槽位中 golden 解析块数（与 topKs 对齐） */
+  precHits: number[]
+  /** 各 topK 下的 precision 分母：实际填充槽位数 min(K, 检索返回数) */
+  precSlots: number[]
+  /** 各 topK 下的 nDCG（binary relevance，块级） */
+  ndcg: number[]
   /** 检索视野（max(topKs, 20)）内未进入任何 topK 的键及其最佳位次（1 基；视野外为 null） */
   misses: { key: string; bestRank: number | null }[]
 }
@@ -97,6 +107,10 @@ export interface HitrateResult {
   topKs: number[]
   /** 各 topK 的宏平均 recall（与 topKs 对齐） */
   recallMacro: number[]
+  /** 各 topK 的宏平均 precision（与 topKs 对齐） */
+  precisionMacro: number[]
+  /** 各 topK 的宏平均 nDCG（与 topKs 对齐） */
+  ndcgMacro: number[]
   perQuestion: QuestionHit[]
 }
 
@@ -127,6 +141,25 @@ export function runHitrate(
     ranked.forEach((chunkIdx, pos) => rankOf.set(chunkIdx, pos + 1))
 
     const hits = topKs.map(() => 0)
+    const precHits = topKs.map(() => 0)
+    const precSlots = topKs.map((k) => Math.min(k, ranked.length))
+    // nDCG：binary relevance（golden 解析块集合），DCG/IDCG 均按位次 1/log2(pos+1)
+    const goldenChunks = new Set(resolved.flat())
+    const ndcg = topKs.map((k) => {
+      let dcg = 0
+      for (let pos = 1; pos <= Math.min(k, ranked.length); pos++) {
+        if (goldenChunks.has(ranked[pos - 1])) dcg += 1 / Math.log2(pos + 1)
+      }
+      let idcg = 0
+      for (let i = 1; i <= Math.min(goldenChunks.size, k); i++) idcg += 1 / Math.log2(i + 1)
+      return idcg === 0 ? 0 : dcg / idcg
+    })
+    topKs.forEach((k, ki) => {
+      for (let pos = 0; pos < Math.min(k, ranked.length); pos++) {
+        if (goldenChunks.has(ranked[pos])) precHits[ki]++
+      }
+    })
+
     const misses: { key: string; bestRank: number | null }[] = []
     resolved.forEach((chunkIdxs, i) => {
       const bestRank = Math.min(...chunkIdxs.map((ci) => rankOf.get(ci) ?? Number.POSITIVE_INFINITY))
@@ -140,31 +173,40 @@ export function runHitrate(
       }
     })
 
-    perQuestion.push({ id: q.id, total: resolved.length, hits, misses })
+    perQuestion.push({ id: q.id, total: resolved.length, hits, precHits, precSlots, ndcg, misses })
   }
 
-  const recallMacro = topKs.map((_, ki) => {
-    const sum = perQuestion.reduce((acc, qh) => acc + qh.hits[ki] / qh.total, 0)
-    return sum / perQuestion.length
-  })
+  const macro = (pick: (qh: QuestionHit, ki: number) => number): number[] =>
+    topKs.map((_, ki) => {
+      const sum = perQuestion.reduce((acc, qh) => acc + pick(qh, ki), 0)
+      return sum / perQuestion.length
+    })
 
-  return { topKs, recallMacro, perQuestion }
+  return {
+    topKs,
+    recallMacro: macro((qh, ki) => qh.hits[ki] / qh.total),
+    precisionMacro: macro((qh, ki) => (qh.precSlots[ki] === 0 ? 0 : qh.precHits[ki] / qh.precSlots[ki])),
+    ndcgMacro: macro((qh, ki) => qh.ndcg[ki]),
+    perQuestion,
+  }
 }
 
 /** 渲染 Markdown 报告：汇总曲线 + 逐题明细 + miss 位次 */
 export function renderHitrate(result: HitrateResult): string {
   const lines: string[] = [
-    '# 命中率评测（recall@K）',
+    '# 命中率评测（recall@K / precision@K / nDCG@K）',
     '',
-    '> 口径：recall@K = |golden ∩ topK| / |golden|，逐题按比例计，宏平均汇总；golden 键为 file#清洗标题。',
+    '> 口径：recall@K 键级按比例计（golden 键任一解析块进 topK 即命中）；precision@K 块级，分母为实际填充槽位；nDCG@K 块级 binary relevance。均取宏平均；golden 键为 file#清洗标题。',
     '',
     '## 汇总',
     '',
-    '| topK | recall（宏平均） |',
-    '|---|---|',
+    '| topK | recall | precision | nDCG |',
+    '|---|---|---|---|',
   ]
   result.topKs.forEach((k, i) => {
-    lines.push(`| ${k} | ${(result.recallMacro[i] * 100).toFixed(1)}% |`)
+    lines.push(
+      `| ${k} | ${(result.recallMacro[i] * 100).toFixed(1)}% | ${(result.precisionMacro[i] * 100).toFixed(1)}% | ${result.ndcgMacro[i].toFixed(3)} |`,
+    )
   })
 
   lines.push('', '## 逐题明细', '', '| 题目 | golden 数 | ' + result.topKs.map((k) => `@${k}`).join(' | ') + ' | 未命中（最大视野最佳位次） |', `|---|---|${result.topKs.map(() => '---').join('|')}|---|`)
