@@ -160,6 +160,7 @@ async function main(): Promise<void> {
     process.stdout.write(`JSONL：${out.jsonlPath}\n`)
     process.stdout.write(`元信息：${out.metaPath}\n`)
     process.stdout.write(`回答：${out.answersPath}\n`)
+    process.stdout.write(`注入记录：${out.injectedPath}\n`)
 
     const report = aggregate(out.records)
     process.stdout.write(renderMarkdown(report))

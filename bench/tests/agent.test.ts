@@ -56,7 +56,8 @@ describe('runQuery：轮次耗尽兜底（末位强制作答轮）', () => {
   ]
 
   function toolCall(name: string, args = '{"query":"红松林 经验"}') {
-    return { id: 'call_1', type: 'function', function: { name, arguments: args } }
+    // ToolCall 为扁平形状（provider 层已把 OpenAI 原始 function.name 摊平），mock 直接对齐
+    return { id: 'call_1', name, arguments: args }
   }
 
   function providerResult(partial: Partial<ProviderResult>): ProviderResult {
@@ -97,6 +98,8 @@ describe('runQuery：轮次耗尽兜底（末位强制作答轮）', () => {
     // 兜底轮请求时 tools 应为空数组
     const fallbackArgs = mockCall.mock.calls[3]?.[1] ?? null
     expect(fallbackArgs).toEqual([])
+    // 注入记录：rag 与 grep 各成功注入同一块（去重），第 3 次检索超上限不注入
+    expect(result.injectedIds).toEqual(['2-体系/红松林经验.md#制造站'])
   })
 
   it('模型在某轮直接作答（无工具调用），不会多余跑兜底轮', async () => {
@@ -117,5 +120,72 @@ describe('runQuery：轮次耗尽兜底（末位强制作答轮）', () => {
 
     expect(result.finalAnswer).toBe('直接作答')
     expect(result.rounds).toBe(2) // 第 2 轮作答即结束，不触发兜底
+  })
+})
+
+describe('runQuery：注入片段记录（injectedIds）', () => {
+  function toolCall(name: string, args = '{"query":"甲乙"}') {
+    // ToolCall 为扁平形状（provider 层已把 OpenAI 原始 function.name 摊平），mock 直接对齐
+    return { id: 'call_1', name, arguments: args }
+  }
+
+  function providerResult(partial: Partial<ProviderResult>): ProviderResult {
+    return {
+      content: null,
+      toolCalls: [],
+      usage: { input: 100, output: 50, cached: 0, reasoning: 0 },
+      model: 'qwen',
+      truncated: false,
+      ...partial,
+    }
+  }
+
+  beforeEach(() => mockCall.mockReset())
+
+  it('rag 注入按 maxContextChars 预算判定：块起始偏移超预算不计入', async () => {
+    const chunks: DocChunk[] = [
+      { id: 'a#1', file: 'a.md', heading: '甲乙', text: 'x'.repeat(50), startLine: 1, endLine: 1 },
+      { id: 'b#2', file: 'b.md', heading: '乙', text: 'y'.repeat(50), startLine: 1, endLine: 1 },
+    ]
+    const config = loadConfig()
+    config.topK = 2
+    // 第一块（头部 ~18 字符 + 50 正文 ≈ 68）起点 0 < 60 计入；第二块起点 ~68 ≥ 60 不计入
+    config.maxContextChars = 60
+    const index = buildIndex(chunks)
+
+    mockCall
+      .mockResolvedValueOnce(providerResult({ toolCalls: [{ ...toolCall('rag_search') } as any] }))
+      .mockResolvedValueOnce(providerResult({ content: '答案' }))
+
+    const result = await runQuery(
+      { id: 'T03', category: 'fact', question: '甲乙是什么？' },
+      { config, thinking: 'off', dry: false },
+      chunks,
+      index,
+    )
+    expect(result.injectedIds).toEqual(['a#1'])
+  })
+
+  it('预算充足时全部命中块计入，按注入顺序去重', async () => {
+    const chunks: DocChunk[] = [
+      { id: 'a#1', file: 'a.md', heading: '甲乙', text: 'x'.repeat(10), startLine: 1, endLine: 1 },
+      { id: 'b#2', file: 'b.md', heading: '乙', text: 'y'.repeat(10), startLine: 1, endLine: 1 },
+    ]
+    const config = loadConfig()
+    config.topK = 2
+    config.maxContextChars = 12000
+    const index = buildIndex(chunks)
+
+    mockCall
+      .mockResolvedValueOnce(providerResult({ toolCalls: [{ ...toolCall('rag_search') } as any] }))
+      .mockResolvedValueOnce(providerResult({ content: '答案' }))
+
+    const result = await runQuery(
+      { id: 'T04', category: 'fact', question: '甲乙是什么？' },
+      { config, thinking: 'off', dry: false },
+      chunks,
+      index,
+    )
+    expect(result.injectedIds).toEqual(['a#1', 'b#2'])
   })
 })

@@ -19,6 +19,8 @@ export interface AgentResult {
   toolRounds: number
   /** 每轮实际调用的检索工具序列（双工具模式统计，供 answers.md 展示） */
   toolTrace: ToolId[][]
+  /** 实际注入上下文的 chunk id（按注入顺序去重；rag 路径按 maxContextChars 截断偏移判定，供注入覆盖率计算） */
+  injectedIds: string[]
 }
 
 export interface AgentOptions {
@@ -115,6 +117,8 @@ export async function runQuery(
   let rounds = 0
   /** 每轮实际调用的检索工具序列（双工具模式统计；供 answers.md 展示） */
   const toolTrace: ToolId[][] = []
+  /** 实际注入上下文的 chunk id（按注入顺序去重；供 R1 注入覆盖率计算） */
+  const injectedIds: string[] = []
 
   for (let round = 1; round <= config.maxRounds + 1; round++) {
     rounds++
@@ -169,16 +173,25 @@ export async function runQuery(
             const q = safeParseQuery(tc.arguments)
             if (tc.name === 'grep_search') {
               const hits = grepSearch(chunks, q ?? query.question, config.topK)
+              // grep 结果逐块组装、不整体截断 → 所有命中块均实际注入
+              for (const idx of hits) {
+                const id = chunks[idx].id
+                if (!injectedIds.includes(id)) injectedIds.push(id)
+              }
               resultText = buildGrepResult(chunks, hits, q ?? query.question, config.maxContextChars)
             } else {
               const hits = search(index, q ?? query.question, config.topK)
-              resultText = hits
-                .map((idx) => {
-                  const c = chunks[idx]
-                  return `【${c.file} | ${c.heading} | L${c.startLine}-${c.endLine}】\n${c.text}`
-                })
-                .join('\n\n')
-                .slice(0, config.maxContextChars)
+              // rag 结果 join 后整体 slice(maxContextChars)：按块起始偏移是否进入预算判定实际注入
+              //（块被截断仍算部分注入；整体被切掉的块不计入）
+              let offset = 0
+              const parts = hits.map((idx) => {
+                const c = chunks[idx]
+                if (offset < config.maxContextChars && !injectedIds.includes(c.id)) injectedIds.push(c.id)
+                const block = `【${c.file} | ${c.heading} | L${c.startLine}-${c.endLine}】\n${c.text}`
+                offset += block.length + 2 // '\n\n' 分隔符
+                return block
+              })
+              resultText = parts.join('\n\n').slice(0, config.maxContextChars)
             }
           }
         } else {
@@ -210,7 +223,7 @@ export async function runQuery(
     break
   }
 
-  return { records, finalAnswer, rounds, toolRounds, toolTrace }
+  return { records, finalAnswer, rounds, toolRounds, toolTrace, injectedIds }
 }
 
 function safeParseQuery(args: string): string | null {
