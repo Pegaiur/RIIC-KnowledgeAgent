@@ -98,7 +98,11 @@ function retrieverTools(retriever: RetrieverId): Record<string, unknown>[] {
   return retriever === 'grep' ? [grepSearchTool()] : [ragSearchTool()]
 }
 
-/** 执行单次查询，逐轮记录成本 */
+/**
+ * 执行单次查询，逐轮记录成本。
+ * TODO(tech-debt) A1：本函数体量较大，混合两套注入语义（grep 全量命中实注入 vs rag 按 maxContextChars 预算判定截断块），
+ * 重构需先抽检索门面承载差异，中风险，暂缓。
+ */
 export async function runQuery(
   query: BenchQuery,
   opts: AgentOptions,

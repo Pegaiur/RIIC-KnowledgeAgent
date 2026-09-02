@@ -119,6 +119,8 @@ export interface HitrateResult {
 /**
  * 跑命中率评测：每题一次检索（视野取 max(topKs, 20)），从同一排序派生各 K 的命中与位次。
  * gold 缺题或 golden 键不可解析即抛错（数据完整性优先，防 recall 分母静默缩小而虚高）。
+ * 边界：hitrate（基于 gold.json 的检索质量）与 agent run 的 injected.json 注入覆盖率是两条独立测量管线，职责不同，勿合并。
+ * TODO(tech-debt) D1：结果仅输出控制台 / --out，未落 bench-runs/<ts>-hitrate/；如需严格跨日逐题对比再实现落盘。
  */
 export function runHitrate(
   index: IndexEntry,
@@ -193,7 +195,10 @@ export function runHitrate(
   }
 }
 
-/** 渲染 Markdown 报告：汇总曲线 + 逐题明细 + miss 位次 */
+/**
+ * 渲染 Markdown 报告：汇总曲线 + 逐题明细 + miss 位次。
+ * TODO(tech-debt) D4：逐题 precision/nDCG 已在 QuestionHit 数据中算好，明细表仅渲染 recall 列；需要时补渲染。
+ */
 export function renderHitrate(result: HitrateResult): string {
   const lines: string[] = [
     '# 命中率评测（recall@K / precision@K / nDCG@K）',

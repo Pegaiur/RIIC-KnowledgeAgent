@@ -73,7 +73,10 @@ const p95 = (vals: number[]) => {
   return sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95))]
 }
 
-/** 从记录数组聚合 */
+/**
+ * 从记录数组聚合。
+ * TODO(tech-debt) A2：函数较长，可提取局部 groupBy/sum 助手收敛模板；收益低，暂缓。
+ */
 export function aggregate(records: CostRecord[]): BenchReport {
   const byQuery = new Map<string, CostRecord[]>()
   for (const r of records) {
