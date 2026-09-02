@@ -5,3 +5,9 @@
 
 | 完成日期 | 版本 | 文件 | 摘要 |
 |----------|------|------|------|
+
+| 2026-09-02 | — | [plan-retrieval-tuning.md](plan-retrieval-tuning.md) | 以命中率评测（R2，recall@5=33.5%）为基准，验证检索注入收敛（R1，权衡后维持 topK=5/maxContextChars=12000）与中文分词 jieba（R3 全面略降，维持 bigram），落盘三项结论 |
+| 2026-09-02 | — | [plan-retrieval-experiment.md](plan-retrieval-experiment.md) | 受控实验评估检索策略：P1 minRag=1 采纳（消除 0 检索、成本最优）；P2 专名 boost 与 P3 grep 不采纳；P5 双工具不采纳但保留末位强制作答轮 |
+| 2026-09-02 | — | [plan-rules-prefix.md](plan-rules-prefix.md) | R4 规则前缀（检索词引导）A/B/off 三组实测，结论暂不采纳；默认基准调整为 qwen + thinking=off + 取消限流 |
+| 2026-09-02 | — | [plan-hy3-rag-bench.md](plan-hy3-rag-bench.md) | 搭建基于腾讯混元 Hy3（TokenHub）的简化版查询 Agent 成本基准：架构落地 + 真实 low 档 20 题全量运行，验证思考 token 计入输出且随题目难度分化（off/high 全量经验收条件修订不再补跑） |
+| 2026-09-02 | — | [plan-qwen37-flash-bench.md](plan-qwen37-flash-bench.md) | qwen3.7-flash 接入 bench（Provider 参数化）：输出成本约为 hy3 的 1/5，但检索更少、编造倾向更强，成本-可靠性权衡落盘（全量补跑经验收条件修订不再执行） |
