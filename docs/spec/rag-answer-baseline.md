@@ -2,8 +2,9 @@
 
 > 创建日期：2026-08-31
 > 版本：v2 详版
+> 角色：评测规格（`docs/spec/`，生命周期见 `docs/rules/document-lifecycle.md`）——RAG 20 题答案核查的判定口径与参考要点唯一权威；随语料更新同步维护。
 > 用途：作为各运行答案的**快速比对基准**——核查时不再每次从语料重推，只把新答案与下述「参考要点」逐条对照（漏检=要点缺失），并检查是否命中「陷阱点」（编造=出现语料无据内容）。
-> 依据来源：subagent 逐条比对语料所得（对应 `docs/notes-qwen37-flash-bench.md` 检索策略实测记录），语料根 `arknights-base-vault/docs`；所有数值/干员/互斥均已核对 `file#小节` 出处。
+> 依据来源：subagent 逐条比对语料所得（检索策略实测记录现收录 `docs/archive/plan-qwen37-flash-bench.md`「实施纪要」），语料根 `arknights-base-vault/docs`；所有数值/干员/互斥均已核对 `file#小节` 出处。
 
 ## 判定口径
 - **正确**：答案各要点均能在语料找到依据，且无与语料冲突内容。

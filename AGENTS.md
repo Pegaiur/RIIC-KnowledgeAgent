@@ -20,6 +20,7 @@
 3. **错误提示中文**：面向用户的错误消息和日志输出使用中文
 4. **无全局副作用**：模块顶层不得执行网络请求、文件写入等运行时副作用
 5. **无调试与死代码残留**：提交前清理 `console.log`/`debugger`、注释掉的代码、未使用的 import/变量/函数
+6. **债务落代码 TODO**：可定位到代码的技术债 / backlog / 延期事项，在对应代码处写 `TODO(tech-debt) <编号>：` 中文注释（说明债务内容与重启条件）；notes / plan 等过程文档只留编号与结论，不重复细节
 
 | # | 规则 | 详情 |
 | - | ---- | ---- |
@@ -53,12 +54,13 @@ rag-test/
 ├── bench/                          ← 查询输出成本基准（简化版 Agent）
 │   ├── src/                        ← provider / retriever / agent / runner / report / cli
 │   ├── tests/                      ← vitest 单元测试
-│   ├── questions.json              ← 基准问题集（20 题，三分类）
-│   └── runs/                       ← 运行结果（JSONL，不入库）
+│   └── questions.json              ← 基准问题集（20 题，三分类）
+├── bench-runs/                     ← 基准运行结果（JSONL，不入库；dev 中间结果在 dev-temp/runs）
 ├── scripts/                        ← 过程管理脚本（模板套用，见 scripts/INDEX.md）
-├── docs/                           ← 过程管理文档（inbox / plan / draft / adr / archive）
+├── docs/                           ← 过程管理文档（inbox / plan / draft / spec / adr / archive）
 │   ├── inbox.md                    ← 需求唯一入口
 │   ├── plan-*.md / draft-*.md      ← 版本计划 / 未定稿提案
+│   ├── spec/                       ← 评测/核查规格（长期复用资产，如 RAG 20 题回答核查基线）
 │   ├── templates/                  ← ADR/plan/notes 机械模板
 │   ├── rules/                      ← 复杂规则权威目录
 │   ├── adr/                        ← 架构决策记录（INDEX.md 为状态索引）
@@ -103,6 +105,7 @@ node scripts/verify.mjs merge -- --base main   # 合并门禁
 | 文档 | 用途 |
 | ---- | ---- |
 | [`docs/inbox.md`](docs/inbox.md) | 待办事项需求唯一入口 |
+| [`docs/spec/rag-answer-baseline.md`](docs/spec/rag-answer-baseline.md) | 评测/核查规格（RAG 20 题答案核查基线，长期复用资产） |
 | [`docs/rules/`](docs/rules/) | 复杂规则权威目录 |
 | [`docs/templates/`](docs/templates/) | ADR/plan/notes 机械模板唯一权威目录 |
 | [`docs/adr/INDEX.md`](docs/adr/INDEX.md) | ADR 状态索引 |

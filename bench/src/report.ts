@@ -1,7 +1,7 @@
 /**
  * 报告聚合：JSONL 记录 → Markdown 报告 + CSV
  */
-import type { CostRecord } from './types.js'
+import { isRetrievalTool, type CostRecord } from './types.js'
 
 export interface QueryAgg {
   queryId: string
@@ -73,7 +73,10 @@ const p95 = (vals: number[]) => {
   return sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95))]
 }
 
-/** 从记录数组聚合 */
+/**
+ * 从记录数组聚合。
+ * TODO(tech-debt) A2：函数较长，可提取局部 groupBy/sum 助手收敛模板；收益低，暂缓。
+ */
 export function aggregate(records: CostRecord[]): BenchReport {
   const byQuery = new Map<string, CostRecord[]>()
   for (const r of records) {
@@ -173,7 +176,7 @@ function aggregateToolUsage(records: CostRecord[]): ToolUsageAgg[] {
   const counter = new Map<string, number>()
   for (const r of records) {
     for (const t of r.tools ?? []) {
-      if (t === 'rag_search' || t === 'grep_search') counter.set(t, (counter.get(t) ?? 0) + 1)
+      if (isRetrievalTool(t)) counter.set(t, (counter.get(t) ?? 0) + 1)
     }
   }
   return [...counter.entries()]

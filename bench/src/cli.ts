@@ -13,13 +13,14 @@ import { corpusStats, loadCorpus } from './corpus.js'
 import { checkGold, loadGold, renderHitrate, runHitrate } from './hitrate.js'
 import { buildIndex } from './retriever.js'
 import { runBenchmark } from './runner.js'
-import { aggregate, renderCrossProvider, renderCsv, renderMarkdown } from './report.js'
+import { aggregate, renderCrossProvider, renderCsv, renderMarkdown, type BenchReport } from './report.js'
 import type { BenchQuery, CostRecord, ProviderId, ThinkingMode } from './types.js'
 
 interface ParsedArgs {
   command: string
   thinking: ThinkingMode
-  provider: ProviderId
+  /** provider：未显式传 --provider 时为 undefined，回落 EXPERIMENT.provider（config 集中默认） */
+  provider: ProviderId | undefined
   limit: number | null
   dry: boolean
   questions: string | null
@@ -44,7 +45,7 @@ function parseArgs(argv: string[]): ParsedArgs {
   const parsed: ParsedArgs = {
     command: argv[0] ?? 'help',
     thinking: 'off',
-    provider: 'hy3',
+    provider: undefined,
     limit: null,
     dry: false,
     questions: null,
@@ -65,16 +66,13 @@ function parseArgs(argv: string[]): ParsedArgs {
     else if (a === '--check-gold') parsed.checkGold = true
     else if (a === '--topk') parsed.topk = argv[++i] ?? null
     else if (a === '--gold') parsed.gold = argv[++i] ?? null
-    else if (a === '--provider') parsed.provider = (argv[++i] as ProviderId) ?? 'hy3'
+    else if (a === '--provider') parsed.provider = argv[++i] as ProviderId | undefined
     else if (a === '--thinking') parsed.thinking = (argv[++i] as ThinkingMode) ?? 'off'
     else if (a === '--retriever') parsed.retriever = (argv[++i] as RetrieverId) ?? null
     else if (a === '--min-rag') parsed.minRag = Number(argv[++i]) || null
     else if (a === '--limit') parsed.limit = Number(argv[++i]) || null
     else if (a === '--questions') parsed.questions = argv[++i] ?? null
-    else if (a === '--out' && parsed.command === 'run') parsed.out = argv[++i] ?? null
-    else if (a === '--out' && parsed.command === 'report') parsed.out = argv[++i] ?? null
-    else if (a === '--out' && parsed.command === 'compare') parsed.out = argv[++i] ?? null
-    else if (a === '--out' && parsed.command === 'hitrate') parsed.out = argv[++i] ?? null
+    else if (a === '--out') parsed.out = argv[++i] ?? null
     else if (!parsed.runDir && !a.startsWith('-')) parsed.runDir = a
     else if (!a.startsWith('-')) parsed.positional.push(a)
   }
@@ -96,8 +94,8 @@ function printUsage(): void {
       '  node dist/cli.js run --dry --limit 2          # 干跑验证管线（不发请求）',
       '  node dist/cli.js run --provider qwen --thinking low   # 真实跑（需 DASHSCOPE_API_KEY）',
       '  node dist/cli.js run --provider qwen --thinking low --retriever grep --min-rag 1   # grep 对照（P3）',
-      '  node dist/cli.js report bench/runs/xxx        # 聚合最近一次运行',
-      '  node dist/cli.js compare bench/runs/<hy3> bench/runs/<qwen>   # 跨模型对比',
+      '  node dist/cli.js report bench-runs/xxx        # 聚合最近一次运行',
+      '  node dist/cli.js compare bench-runs/<hy3> bench-runs/<qwen>   # 跨模型对比',
       '  node dist/cli.js hitrate --check-gold         # 仅校验 gold ↔ 语料对应关系',
       '  node dist/cli.js hitrate                      # bigram 检索 recall@3/5/10 基线',
       '',
@@ -122,7 +120,7 @@ function loadRecords(runDir: string): CostRecord[] {
     .map((l) => JSON.parse(l) as CostRecord)
 }
 
-function loadReport(runDir: string): ReturnType<typeof aggregate> {
+function loadReport(runDir: string): BenchReport {
   return aggregate(loadRecords(runDir))
 }
 
@@ -204,8 +202,9 @@ async function main(): Promise<void> {
       topKs,
     )
     // 落盘/输出携带运行参数上下文，保证 --out 文件可复现（分词器 + 实体加权）
-    result.note = `分词器：${config.tokenizer}｜实体加权：${config.entityBoost === 0 ? '关' : `×${config.entityBoost}`}｜语料 chunks：${chunks.length}｜问题：${questions.length}`
-    process.stdout.write(`分词器：${config.tokenizer}｜实体加权：${config.entityBoost === 0 ? '关' : `×${config.entityBoost}`}｜语料 chunks：${chunks.length}｜问题：${questions.length}\n`)
+    const contextLine = `分词器：${config.tokenizer}｜实体加权：${config.entityBoost === 0 ? '关' : `×${config.entityBoost}`}｜语料 chunks：${chunks.length}｜问题：${questions.length}`
+    result.note = contextLine
+    process.stdout.write(`${contextLine}\n`)
     const md = renderHitrate(result)
     if (args.out) {
       const { writeFileSync } = await import('node:fs')
@@ -218,7 +217,7 @@ async function main(): Promise<void> {
 
   if (args.command === 'compare') {
     const runDirs = args.runDir ? [args.runDir, ...args.positional] : args.positional
-    if (runDirs.length < 2) throw new Error('compare 需要至少 2 个 runDir（bench/runs/<ts>-<provider>-<thinking>）')
+    if (runDirs.length < 2) throw new Error('compare 需要至少 2 个 runDir（bench-runs/<ts>-<provider>-<thinking>）')
     const reports = runDirs.map(loadReport)
     const md = renderCrossProvider(reports)
     if (args.out) {
@@ -232,7 +231,7 @@ async function main(): Promise<void> {
   }
 
   if (args.command === 'report') {
-    if (!args.runDir) throw new Error('report 需要 runDir 参数（bench/runs/<ts>-<provider>-<thinking>）')
+    if (!args.runDir) throw new Error('report 需要 runDir 参数（bench-runs/<ts>-<provider>-<thinking>）')
     const report = aggregate(loadRecords(args.runDir))
     const md = renderMarkdown(report)
     if (args.out) {

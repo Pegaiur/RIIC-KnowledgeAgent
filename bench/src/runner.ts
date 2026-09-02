@@ -46,14 +46,14 @@ export async function runBenchmark(
   const index = buildIndex(chunks)
 
   const runTag = `${new Date().toISOString().replace(/[:.]/g, '-')}-${config.provider}-${opts.thinking}`
-  const outDir = opts.outDir ?? join(process.cwd(), 'bench', 'runs')
+  const outDir = opts.outDir ?? join(process.cwd(), 'bench-runs')
   const runDir = join(outDir, runTag)
   mkdirSync(runDir, { recursive: true })
 
   const jsonlPath = join(runDir, 'records.jsonl')
   const metaPath = join(runDir, 'meta.json')
 
-  const agentOpts: AgentOptions = { config, thinking: opts.thinking, dry: opts.dry, chunks, index }
+  const agentOpts: AgentOptions = { config, thinking: opts.thinking, dry: opts.dry }
   const lines: string[] = []
   const answers: AnswerRecord[] = []
   /** 每题实际注入上下文的 chunk id（R1 注入覆盖率判定用） */

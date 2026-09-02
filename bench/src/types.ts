@@ -106,3 +106,8 @@ export interface DocChunk {
   /** 正文结束行号（1 基） */
   endLine: number
 }
+
+/** 是否为检索工具（rag_search / grep_search）；供 agent / report 复用，替代散落的硬编码字符串谓词 */
+export function isRetrievalTool(name: string | ToolId): name is ToolId {
+  return name === 'rag_search' || name === 'grep_search'
+}

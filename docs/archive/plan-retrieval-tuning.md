@@ -1,6 +1,145 @@
+# 检索质量与成本收敛（命中率评测 / 注入收敛 / 中文分词）
+
+> 创建日期：2026-09-01
+> 修订：2026-09-01 实施前评估修正（gold 转录口径 / recall@K 定义 / R1 质量对照口径 / maxContextChars 语义 / terms.ts 前置抽取 / 控制字符笔误）
+> 状态：已完成
+> 上游：成本敏感场景 ROI 调研结论（#3 检索注入收敛 / #6 中文分词 / #8 命中率评测 为高 ROI 前三项）
+
+## 背景
+
+成本敏感场景下（qwen3.7-flash 实测：思考占输出 >55%、多轮轮次成本 3 倍放大），业界数据显示三项高 ROI 优化：
+
+- **#8 命中率评测**（诊断）："标注几十个问题统计命中率，≥90% 则无需向量/更多检索优化"——业界反方共识（dev.to / n1n.ai / Hacker News 实证 grep 式检索可打平向量）。
+- **#3 检索注入收敛**（省钱且可能更准）：top-k 与准确率呈**倒 U 曲线**——>5 片段边际递减且引入干扰（KTH 研究 top-k≈5 后 plateau）；**弱模型（Flash 级）抗干扰差、需要更少片段**（ICLR 2026 LDAR：开源小模型 token 用量 0.25–0.47 vs 闭源 0.52–0.63）；阿里云实测「TopK=3–5 稳定安全区，TopK=10 缝合互斥证据→编造」。
+- **#6 中文分词 jieba**（检索质量翻倍）：MTEB LeCaRDv2 BM25 nDCG 0.359（默认）→ **0.641（jieba）**；社区实测召回 30–50%→80%。当前 bigram 折中是无依赖妥协，jieba-node 纯 JS 零原生依赖（Concliude 已在生产用）。
+
+## 目标
+
+以**命中率评测（R2）为度量基础**，验证两项低成本优化：检索注入收敛（R1）与中文分词（R3），最终确定「topK/注入总量（maxContextChars）/分词器」三参数的**成本-准确率平衡点**。
+
+## 非目标
+
+- 不引入向量检索 / 混合检索 / reranker（命中率 ≥90% 时按业界判据明确不需要）
+- 不改变 Agent 循环、prompt、问题集、语料
+- 不做 HyDE/查询改写（收益不稳定，调研结论）
+
+## 实施顺序与依赖
+
+```
+R2 命中率评测（先行：度量工具 + gold 标注）
+   ├─→ R1 注入收敛实验（topK/注入总量矩阵，用 R2 判定）
+   └─→ R3 jieba 分词（仅当 R2 命中率 <90% 时触发；用 R2 验证提升）
+```
+
+## R2 命中率评测（先行项，~2 天）
+
+### 目的
+得到当前 BM25（bigram）的 **recall@K** 基线：每题 golden 块在 top-3/5/10 候选中的命中比例（宏平均 + 逐题明细）。这是 R1/R3 的判定标尺。
+
+### gold 标注（人工，复用质量核查工作）
+- 文件：`bench/gold.json`（评测资产，入库）
+- 粒度口径：golden 键 = `file#heading`（即 `splitChunks` 生成的 chunk.id，heading 为清洗后标题）；**行号一律省略**（chunk 行号由语料加载自动生成）；粒度跟随基线出处小节，不做加深/放浅
+- 格式（示意；完整转录需覆盖基线出处全部小节）：
+  ```json
+  {
+    "F01": { "golden": ["0-规则/发电站机制.md#无人机机制"] },
+    "S07": { "golden": ["2-体系/红松林经验.md#中枢", "2-体系/红松林经验.md#制造站", "2-体系/红松林经验.md#缺人降级路径"] }
+  }
+  ```
+- **标注来源（转录 + 逐项校验，非纯机械复制）**：`docs/notes-rag-answer-baseline.md`（20 题回答核查基线 v2 详版）。两点注意：
+  1. 基线出处是 `file#小节1/小节2/…` 的**汇总串**——需按 `/` 展开为多个独立 golden 项（如 S07 出处含 9 个小节，展开 + 不一致映射后为 10 项）
+  2. 个别小节名与语料实际标题不一致（已发现：`红松林经验.md#与其他体系的关系` 不存在，实际对应 `#中枢共存` / `#明确不选清单`）——转录时逐项对照 chunk 清单校验，不一致处人工映射后落库
+- 先行小步：先标 2–3 题跑通 `hitrate --check-gold` 确认口径，再全量 20 题
+- 数据质量：基线文末自述「内容不可盲信」——gold 落库前对关键题出处抽查语料原文（S02/S03/S04/S05、G01、F03/F05）
+- 补充来源：11:30 / 12:37 运行 answers.md 的检索来源（人工核验过的）
+
+### 实现
+- 新文件：`bench/src/hitrate.ts`
+  - 指标唯一口径：**recall@K = |golden ∩ topK 检索结果| / |golden|**，逐题计算后取宏平均（多 golden 题按比例计，不退化为「含 1 个即命中」）；题目级命中率与逐题明细（每题命中 x/y）作辅助输出
+  - `loadGold(path): GoldMap`（校验：gold 引用的 chunk 必须存在于语料，不一致即报错并逐条列出）
+  - `runHitrate(index, chunks, questions, topKs: number[]): HitrateResult`——输出 **recall@3 / recall@5 / recall@10** 曲线 + 逐题明细
+  - 复用 `buildIndex` / `search`（不重复造检索）
+- `cli.ts` 加子命令：
+  - `node dist/cli.js hitrate [--topk 3,5,10]`——读取 questions.json + gold.json + 语料 → 输出曲线 + 摘要（哪些题 miss、miss 题的 topK 内最佳位次）
+  - `node dist/cli.js hitrate --check-gold`——仅校验 gold ↔ 语料 chunk 对应关系（标注阶段先行使用，不跑检索）
+- 单测：miss/multi-gold/越界 chunk 校验 3 例
+
+### 判定
+- recall@5（宏平均）≥ 90% → 检索器无需更换向量（可关 R3 的"上向量"担忧），R3 仅作锦上添花评估
+- recall@5（宏平均）< 90% → 触发 R3（jieba），并用于确认是否需要混合检索（超范围，另行登记）
+
+## R1 检索注入收敛（~1 天 + 3 次运行）
+
+### 目的
+验证「更少注入」是否能：① 降输入成本；② 不降准确率（甚至提升——少干扰少编造）。
+
+### 参数矩阵（叠加 minRag=1 强制首检，qwen low 档，20 题）
+| 组合 | topK | maxContextChars | 说明 |
+|---|---|---|---|
+| 基线 | 5 | 12000 | 当前配置（已有 P0/P1 数据） |
+| A | **3** | 6000 | 收敛版（安全区下限） |
+| B | 3 | 12000 | 隔离 topK 影响 |
+| C | 5 | 6000 | 隔离注入总量影响（可选，观察成本曲线即可） |
+
+- 判定指标：**成本**（总成本/题均、输入 token/题）与**质量**（**注入覆盖率** = |golden ∩ 实际注入片段| / |golden|——与 K 无关、各组直接可比；不能直接比 recall@K：各组 topK 不同，K 随之变化属循环论证。用 hitrate 对各组 topK 分别计算覆盖率 + 重点题答案核查：S02/S05/S07/S08/F04 编造是否复发）
+- 预计：每次 run ~13 分钟；A/B/C 三跑 + 核查 ~2 小时人工
+
+### 实现
+- 纯配置（env 已支持 `BENCH_TOP_K` / `BENCH_MAX_CONTEXT_CHARS`），零代码改动——仅新增 `hitrate` 辅助指标后跑矩阵
+- ⚠️ 参数语义修正（核实 `runner.ts` / `agent.ts`）：`maxContextChars` 同时作用于两处——① 语料加载时 `clampTexts` 按 chunk 截断（**会改变检索语料本身**）；② BM25 注入时 topK 片段 join 后整体 `slice`（**注入总量上限**，非「单块注入长度」，topK=5 时靠后片段可能被整体截掉）
+- 混淆风险评估：实测（2026-09-01）语料最大 chunk ≈ 1.1k 字符——6000/12000 档均不触发 clamp，各组检索语料一致，两参数事实上独立，矩阵解读成立；**语料扩充后若出现 >maxContextChars 的 chunk**，①会使 A/C 组检索语料与基线不同（两参数不再独立），届时需解耦（如新增 `BENCH_CLAMP_CHARS` 固定 12000）或在结论中注明混淆
+
+## R3 中文分词 jieba（触发制，~1 天 + ADR）
+
+### 触发条件
+R2 命中率（bigram）< 90% 时实施；≥90% 时暂缓（记录为债务）。
+
+### 实现
+- 前置小步（与 jieba 解耦，可先行）：**抽取词表** `bench/src/terms.ts`——`ENTITY_WORDS` 现硬编码于 `grep-retriever.ts`，先迁移至此（grep-retriever 改 import、行为不变，单测回归），一份词表供 grep / P2 专名 boost / R3 jieba 词典三处消费
+- 新依赖：`jieba-node`（纯 JS、0 原生依赖、Windows 无编译风险——Concliude 会话检索 ADR 同款判据）；**新依赖引入须先登记 ADR**（`docs/adr/` 下新建，编号待定：理由=中文 BM25 检索质量翻倍、对比 bigram 实测数据、替代方案 trigram 无法覆盖 2 字词）
+- `retriever.ts` 分词参数化：`BENCH_TOKENIZER=bigram|jieba`（默认 bigram 保持兼容与可复现）；hitrate 复用同一 env，保证 R2 复测与检索器同分词器
+- **索引侧与查询侧强制同一分词器**（调研确认的常见 bug：只索引时分词 → 零匹配；现有 `buildIndex`/`search` 已共用 `tokenize`，参数化时保持此结构即可天然规避）
+- **自定义词典**：干员/机制名词表（terms.ts）`jieba.addWord`（词典须在 buildIndex 前加载，见下方经验表 initTokenizer 条目）
+- 单测：jieba 分词与 bigram 的 token 集抽样对照、词典词不被切开（如"灰毫""红松林"单 token）
+- 验证：`BENCH_TOKENIZER=jieba` 跑 R2 工具得 jieba 版 recall@K，对比 bigram 版 → 落盘差值
+
+### Concliude jieba 经验提炼（避免重复试错）
+
+来源：packages/platform/storage/src/session-search.ts（生产在用，jieba-node ^1.0.1 纯 JS）+ 其会话检索 ADR 实测（jieba 召回 1.00 vs trigram 0.78）。以下经验直接映射到本草案实现：
+
+| Concliude 经验 | 映射到 R3 |
+|---|---|
+| **API 参数**：jieba.lcut(text, false, true)——第三参 HMM=true 必须开（未登录词/新词发现），否则领域新词切碎 | 索引与查询侧都用 lcut(text, false, true) |
+| **标点过滤**：validToken——token 须含字母/数字（/[\p{L}\p{N}]/u），纯标点滤掉（FTS5 中 - 会被解析为 NOT；BM25 虽无语法问题但纯标点 token 无检索价值） | 同款过滤函数放进 retriever.ts（bigram 版已有类似语义：非 CJK/字母数字连续串即跳过，保持统一） |
+| **查询宽化回退**：精确切分（lcut）→ 空结果时 lcutForSearch(text, true) 细粒度扩展子词兜底——应对「未登录词边界」：「工具链」被切 [工具,链] 而索引侧粘连导致 AND 漏召回 | BM25 虽为求和打分（天生 OR 语义），但保留**同款降级**：lcut 切分后 topK 全空 → lcutForSearch 宽化重查一次（防「检索空结果→模型编造」的极端场景） |
+| **用户词典**：jieba.addWord 补领域词（干员名/机制名）是解决未登录词的正道 | 与 bench/src/terms.ts 干员词典一致；**词典必须在 buildIndex 前加载**（建索引与查询共享同一分词状态），建议 terms.ts 暴露 initTokenizer() 幂等初始化 |
+| **纯 JS 已验证**：Windows 无编译风险、词典内置零外部依赖 | 无需再验证环境兼容性（Concliude 生产在用）；package.json 按运行时依赖登记 |
+| **性能**：80 会话 → 1477 tokens，索引秒级 | 267 chunks 规模更小，构建与查询分词开销可忽略；注意 BM25 打分器（k1=1.5/b=0.75）**只换 token 层，不改打分** |
+| **可复现性**：索引侧稳定（lcut 固定分词） | 保持 BENCH_TOKENIZER 默认 bigram；jieba 切换后运行记录标注分词器版本（meta.json 增 tokenizer 字段） |
+
+
+## 验收清单
+
+- [x] R2：`gold.json` 20 题标注完成（汇总串逐项展开 + chunk 存在性校验 + 不一致小节名人工映射 + 关键题出处抽查原文复核；映射决策见 `docs/notes-retrieval-tuning.md`）
+- [x] R2：`hitrate` 子命令实现 + 单测通过；产出 bigram 版 recall@3/5/10 基线（recall@5 = 33.5% ≪ 90%，R3 形式触发；失败模式分析见实施笔记「意外发现」）
+- [x] R1：A/B/C 三组合运行 + 成本对比表 + 注入覆盖率对照 + 重点题核查（**结论：topK=3 与 ctx=6000 均劣化；重点题编造在 4 组均复发（G01/S05/F02/F06/F08，参数无关的模型级失败模式）**，数据见 `docs/notes-retrieval-tuning.md` R1 节）
+- [x] R1：确定 topK/注入总量的推荐平衡点（**维持基线 topK=5 / maxContextChars=12000**；结论落 `docs/notes-retrieval-tuning.md` R1 节，未写入 qwen 笔记）
+- [x] R3 前置：`terms.ts` 词表抽取（grep-retriever 迁移，单测回归通过）
+- [x] R3（条件触发）：jieba 接入 + ADR 登记 + 词典单测；R2 复测 recall 提升数据（**结论：jieba 全面略降（@5 29.4% vs bigram 33.5%），默认保持 bigram**，数据与归因见 `docs/notes-retrieval-tuning.md` R3 节 / ADR-001 复测结论）
+- [x] 结论落盘：`docs/notes-hy3-rag-bench.md` 或新增实施笔记（R2/R3 结论均落 `docs/notes-retrieval-tuning.md`）
+
+## 关联
+
+- R2 先行，gold 标注转录自 `docs/notes-rag-answer-baseline.md`（20 题回答核查基线 v2）——出处为汇总串，需展开 + 逐项校验（见 gold 标注节）
+- 上游：`docs/plan-retrieval-experiment.md`（P1 minRag=1 / P2 专名 boost——词表共用）；grep 检索器实现已在 main（`bench/src/grep-retriever.ts`）
+- 依据：成本敏感 ROI 调研（Batch/思考预算/缓存为另三条高 ROI 线，本期不做）
+- 参考：Concliude 会话检索选型实测（jieba 召回 1.00 vs trigram 0.78）、MTEB BM25 官方数据（0.359→0.641）
+
+## 实施纪要
+
 # 实施笔记：检索质量与成本收敛（R2 命中率评测先行）
 
-> 对应草案：docs/draft-retrieval-tuning.md（R2 命中率评测）
+> 对应 plan：docs/plan-retrieval-tuning.md（R2 命中率评测）
 > 开始日期：2026-09-01
 
 ## 决策偏离
@@ -79,13 +218,13 @@
 
 ### 2026-09-01 — hitrate 结果无入库快照
 - **债务**：运行明细仅输出控制台 + `--out`（dev-temp 不入库），跨日复测对比需靠本笔记关键表。
-- **未来偿还**：若 R3 复测需要严格逐题对比，考虑让 hitrate 结果写入 `bench/runs/<ts>-hitrate/`（复用 runs 目录约定）。
+- **未来偿还**：若 R3 复测需要严格逐题对比，考虑让 hitrate 结果写入 `bench-runs/<ts>-hitrate/`（复用运行结果目录约定）。
 
 ---
 
 ## R3：jieba 中文分词复测（2026-09-01）
 
-> 对应草案：docs/draft-retrieval-tuning.md「R3 中文分词 jieba」；ADR：docs/adr/ADR-001-jieba-node-中文分词.md。
+> 对应 plan：docs/plan-retrieval-tuning.md「R3 中文分词 jieba」；ADR：docs/adr/ADR-001-jieba-node-中文分词.md。
 > 前置：terms.ts 词表抽取完成（grep-retriever 迁移 + jieba 词典 + 后续 P2 共用）；`BENCH_TOKENIZER=bigram|jieba` 参数化，默认 bigram 不变，meta.json 增 tokenizer 字段。
 
 ### 决策偏离
@@ -127,6 +266,7 @@ hitrate 指标口径由 recall 单口径扩展为三口径：precision@K（块�
 - **R2/R3 联合指向**：检索器词元层的可改进空间已被压缩（bigram vs jieba 两端都不高），瓶颈回到 c 类（多节覆盖需多轮累积注入）与 b 类（实体词典命中，未测试 P2 专名 boost）——下一步按草案转 **R1 注入收敛矩阵（注入覆盖率口径）**，或先补 P2 专名 boost 实验。
 
 ### 债务记录
+
 - jieba 与 bigram 的**混合分词**（token 并集）未实验——可能是兼顾词级精确与字符级容错的方向，另行评估。
 - ENTITY_WORDS 词表未经系统化全量校对（如 灰毫/远牙/野鬃 等体系干员缺失），P2 专名 boost 前需补全。
 - hitrate 逐题明细表仅渲染 recall 口径，per-question precision/nDCG 已在 QuestionHit 数据中未渲染；汇总表 nDCG 列（0-1 小数）与百分数列混排，单位说明靠口径行兜底——后续渲染迭代补。
@@ -135,7 +275,7 @@ hitrate 指标口径由 recall 单口径扩展为三口径：precision@K（块�
 
 ## R1：检索注入收敛矩阵（2026-09-01 收官）
 
-> 对应草案：docs/draft-retrieval-tuning.md「R1 检索注入收敛」。插桩重跑 2×2 全矩阵（同 loop 版本、同插桩、qwen low 档、minRag=1、bigram、20 题），另得一组基线重复跑作方差参照。
+> 对应 plan：docs/plan-retrieval-tuning.md「R1 检索注入收敛」。插桩重跑 2×2 全矩阵（同 loop 版本、同插桩、qwen low 档、minRag=1、bigram、20 题），另得一组基线重复跑作方差参照。
 > 运行产物（gitignore）：基线 09-21-27（5/12000）、B 09-34-07（3/12000）、A 09-27-57（3/6000）、C 09-47-20（5/6000）、基线重复 09-40-21（5/12000）。
 
 ### 执行记录
@@ -169,110 +309,4 @@ hitrate 指标口径由 recall 单口径扩展为三口径：precision@K（块�
 - 质量核查为 subagent 口径非人工终审；如需严肃结论，重点题（G01/S05/F02/F06/F08）应人工抽查语料定稿。
 - injected.json 与 coverage 计算脚本在 dev-temp（不入库），复现需按笔记口径重写或后续将覆盖率计算并入 hitrate 工具。
 
----
-
-## P2：专名 boost 实验（2026-09-01）
-
-> 对应草案：docs/draft-retrieval-experiment.md「P2 专名 boost」；前提：terms.ts 词表补全 + retriever.ts 实体加权 ×BENCH_ENTITY_BOOST 实现。
-> 实验：同参数 topK=5 / maxContextChars=12000 / min-rag=1 / qwen low / bigram / 20 题，唯一差异 BENCH_ENTITY_BOOST 0（base）vs 1.5（boost）。
-> 运行产物（gitignore）：base `12-33-42`、boost `12-47-10`。
-
-### 实现
-- `terms.ts`：补全体系干员与机制专名（红松林/深海链/怪猎/但书链/巫恋核/自动化组/迷迭香/灵孑银崖/推王龙门/莱茵 及散件补充项），并纳入 `维娜·维多利亚/格拉斯哥帮/谢拉格/喀兰` 等实体变体。
-- `retriever.ts`：`BENCH_ENTITY_BOOST` 参数化（默认 0 保持基线、不改索引），查询词元精确命中 `ENTITY_WORDS` 时得分贡献 ×因子。
-- 审查后修正：`isEntityTerm` 限「长度 ≥2」——单字专名（望/陈/砾/夕/令/孑/锏）在 bigram 下是 unigram，任意含该字查询都被命中易误放大歧义词元，故不参与加权。
-
-### 成本对比（base → boost=1.5）
-
-| 指标 | base | boost=1.5 | 变化 |
-|---|---|---|---|
-| 总成本 | ¥0.0339 | ¥0.0361 | +6.5% |
-| 总输入 tokens | 44,319 | 53,389 | +20.5% |
-| 总输出 tokens | 31,317 | 31,758 | +1.4% |
-| LLM 调用 | 45 | 48 | +3 |
-| 平均轮数 | 2.25 | 2.40 | +0.15 |
-| rag_search | 32 | 37 | +5 |
-
-### 质量核查（重点对照失败模式）
-
-- **F02（真实检索回归）**：base 注入 `制造站机制.md#生产力公式`（正确制造站公式）；boost 注入 `buff叠加模型 / 贸易站机制 / 红松林经验#效率计算`——把贸易站「订单模型」逻辑套到制造站问题，正是 R1 判定的模型级失败模式「F02 制造站被套贸易站订单逻辑」。这是**唯一可由 boost 解释的回归**（boost 把正确制造站公式挤出 top-k）。
-- **F01（boost 正例，审查修正）**：boost 注入 `发电站机制.md#充能加速公式`，列出语料完整充能清单（雷蛇·β/炎狱炎熔·γ/澄闪/天空盒/海霓·β、伊芙利特/异客/格劳克斯·β/清流/深靛、Castle-3/Lancet-2/THRM-EX/正义骑士号）；base 反而注入不含该清单的 `#无人机机制`。此清单全部存在于语料，非编造；且 boost 仅放大查询词元，查询中无这些干员名，机制上不可能是 boost 引入。原判「boost 编造、base 更克制」为**误判**（把 base 更不完整当成优点）。
-- **G01（两组均错）**：都把「砾 +35%」当贸易站锚点，但语料 `散件干员速查.md` 中砾在「制造站（赤金）」栏，贸易站栏为 空弦/吉星/石英/可颂/雪雉 等——两组均未命中真正贸易站散件，属 R1 记录的「散件分类混装」。
-- **S08（base 编造 / boost 漏检）**：base 把推王当 Skadi（格拉斯哥帮成员误为能天使/德克萨斯，语料推王=维娜·维多利亚+摩根+戴菲恩）＝整合失败；boost 完全未注入 `推王龙门.md`（来源被挤出 top-k）＝检索回归后「承认未查到」。二者均失败，但 boost 的漏检由 boost 重排造成。
-- **S02（非 boost 因果）**：base 写「火龙S/麒麟R」，boost 写「火龙S·黑角/麒麟R·夜刀」，两组注入同一批含全名 chunk，base 缺字是模型输出波动，非检索差异——**不能归因于 boost**。
-
-### 判定（H2）
-
-**不采纳专名 boost**。
-
-支撑理由（审查修正后）：
-1. **H2 未满足**：未带来系统性来源相关率提升——多节/整合型题（G01/F02/F06/F08）无效，且 F02 引入真实检索回归。
-2. 成本增幅 +6.5% 落在 R1 记录的单跑噪声带（±16%）内，且 <10% 阈值，**不足单独构成否决**；输入 +20.5% 主要因检索轮次增加，非净收益。
-3. 「失败模式 4/5 复发」不能作否定证据——base 与 boost 两臂都复发，无法区分二者。
-4. 唯一可靠收益是 S02 专名补全，但金边边际贡献不足，且不归因于 boost。
-
-**与 R1/R2/R3 联合指向**：专名 boost 是对「词元层」的优化（对实体/枚举型查询 F01/S02 有检索增益），系统级质量却仍被 G01/F02 等「整合失败」拖住，未能转化为答案质量提升——**瓶颈在模型对片段的整合，不在召回词元**。
-
-### 债务记录
-- bigram 默认分词下 3+ 字专名（薇薇安娜/承曦格雷伊等）不产生完整词元，实体加权对它们形同虚设；若要覆盖需 search 侧做实体子串定位（侵入式），因本实验结论为不采纳作记录，不再重构。
-- terms.ts 扩充对 P3 grep 检索（grep-retriever 无条件消费 ENTITY_WORDS）有副作用；若重做 P3 对照需注意词表扰动，或给 grep-retriever 加词表开关。
-- 走存量两组 run 时用的是**含单字放大的旧实现**；单字限制（长度≥2）后 hitrate 复测结果逐位一致，不改变结论。若需数据与当前代码严格对齐应重跑 boost 组（成本约 3 分钟）。
-
----
-
-## R4：规则前缀（检索词引导）A/B 首轮实测（2026-09-01）
-
-> 对应草案：docs/draft-rules-prefix.md「R4 规则前缀」；前置：R2/R3 检索词元层闭环 + R1 注入矩阵（瓶颈在模型整合而非召回词元）。
-> 方向演进：草案初稿为「稳定机制知识前置」，经多轮核对改为「检索词引导（QUERY_GUIDES）」——集中弥补语料缺 index 层导致的 RAG 代偿；且前置规则**不作来源**，答案须引用语料原文 file#小节。
-
-### 实现（决策偏离）
-- `bench/src/rules-prefix.ts`：纯数据（RULES_VERSION + MUST_RULES≤5 + QUERY_GUIDES 检索词建议），零副作用；`buildRulesPrefix()` 完全静态，保前缀缓存。
-- 实验开关集中 `config.ts` 头部 `EXPERIMENT` 常量（rules/entityBoost/tokenizer/...），**不再读环境变量**（防 shell 残留污染，如 BENCH_ENTITY_BOOST=1.5）；retriever currentTokenizer/currentEntityBoost 读 EXPERIMENT；仅 API Key 保留 secret.yaml/env 兜底。
-- query 引导为 rag/grep 构造能命中的关键词（抽象问题→query / 别名→官方词 / 体系→核心干员词）；agent 无 read 工具，故**不写文件路径**，只给 query。设计之基为「agent 对问题关联词的掌握 → 命中 query」假设。
-
-### 检索词引导质量（hitrate 单轮口径，20 题）
-引导词相对原问句首轮 recall 显著提升：
-
-| 版本 | recall@3 | recall@5 | precision@5 | nDCG@5 |
-|---|---|---|---|---|
-| 原问题 | 21.3% | 33.5% | 31.0% | 0.374 |
-| v3 引导 | 37.5% | 58.8% | 61.0% | 0.676 |
-
-### G01 语料结构优化
-G01（贸易站效率锚点散件）检索不到经诊断为**语料缺陷**：`散件干员速查.md` 多设施共文档 + 无设施级锚点 + 「贸易站」跨文档高频交叉（目标块被「制造站（赤金）」表、「贸易站搭配」等挤到第 6 位）。落地：各设施标题加「散件」类目标签（`## 贸易站散件` 等）+ 贸易站表加一句描述；gold G01 键迁移 `#贸易站散件`。G01 首轮 recall@3 0→1/1。
-
-### A/B 首轮实测（qwen-low、20 题，唯一差异 EXPERIMENT.rules）
-- **成本**（A=rules off / B=rules on）：
-  - 平均轮次 2.20 vs 2.20（**未降**）；LLM 调用 44 vs 44。
-  - 总输入 44,740 vs 80,839（**+80%**）；总输出 28,019 vs 44,153（+58%）；思考 14,052 vs 27,481（**+96%**）。
-  - 总费用 ¥0.0314 vs ¥0.0513（**+63%**）。
-- **质量抽查**（对照 notes-rag-answer-baseline）：
-  - F02 制造站：A 偏题（套贸易站/9 步结算）→ B **聚焦修复**（面板 1+X+Y、红云/泡泡仓库转化、归零类）。
-  - F08 排班：A 错误（12+12）→ B **正确**（12-6-6、A/B 上 18h 休 6h、C 上 12h）。
-  - G01 散件：A 严重混装（清流/引星棘刺/苍苔/砾/阿罗玛/夜烟/斑点误入贸易站）→ B 大幅改进（混入减半、补全真散件、标注 file#），但仍混入 4 个制造站赤金散件（G01 为已知「散件分类混装」失败模式）。
-
-### 全量基线核查修订（A/B/off 三组，2026-09-01）
-> 上节「质量抽查」仅为 F02/F08/G01 三点，口径偏乐观；随后按 `notes-rag-answer-baseline.md`（v2 详版）逐条全量核查 A/B/off 三组（判定 正确/漏检/编造/存疑），修正如下。
-
-三组环境（均 20 题 / qwen / bm25 / topK5 / maxContextChars 12000）：A=规则关、low；B=规则开、low；off=规则开、thinking=off。
-
-| 组 | 正确 | 漏检 | 编造 | 存疑 | 平均轮次 | 总费用 |
-|---|---|---|---|---|---|---|
-| A（规则关, low） | **9** | 4 | 3 | 4 | 2.20 | ¥0.0314 |
-| B（规则开, low） | 8 | 8 | 4 | 0 | 2.20 | ¥0.0513 |
-| off（规则开, off） | 7 | 8 | 3 | 2 | **2.15** | **¥0.0297** |
-
-- **规则开/关（A vs B，同为 low）**：B 正确 8 < A 9、编造 4 > A 3 → 本版 QUERY_GUIDES v3 + rules **未产生可验证的质量收益、反而略降**，且成本 +63%。**推翻上节「B 组显著优」**（该抽查高估了 B，上轮 F02/F08/G01 三点不能代表全量）。
-- **G01 三组皆编造**：都把制造站（赤金）散件误入贸易站效率锚点——与 rules/thinking 无关，属语料「贸易站 vs 制造站」类目边界 + 检索层命中的根本问题。
-- **off 是最经济解**：¥0.0297 比 A 低 5%、比 B 低 42%（成本瓶颈消失）；质量与 B 相当（正确 7 vs 8、编造 3 vs 4），仅略多 2 处存疑。
-- 编造高发区 = 需跨文档归纳类目边界的题（F02/S05/G01）；强清单/锚点题（S03/S04/S06/S07/S08/G02）三组稳定正确。
-- 评估噪声：跨组 subagent 判定存在口径差（如 A 的 F08 被描述为「12h↔12h 对半、结构错误」却仍标漏检），±1~2 计数不宜过度解读；关键项建议人工抽查语料原文（见基线使用说明第 3 条），本次未复验。
-
-### 判定 / 结论（修订）
-- 原「暂缓三选一」的根因（成本 +63%、平均轮次未降）经 off 组验证：**关闭思考即可把成本压到基线之下（更比 A 低 5%）、且平均轮次 2.15 < 基线 2.20**；但**规则本身（QUERY_GUIDES v3）未带来质量收益**。
-- 按草案通过标准「正确数不降 ∧ 编造数下降 ∧ 平均轮次 ≤ 基线」复评：B 组正确降、编造升 → 不达标；off 组编造持平（3=3）但正确降（9→7）、轮次降（2.15）→ 仍不达标。
-- **结论：R4 规则/检索词引导暂不采纳；默认基准调整为 qwen + thinking=off（关思考降本）+ 取消限流**。G01 类目边界与检索层命中为后续治理重点（语料/检索层，而非提示词注入）。
-
-### 债务记录
-- run 产物（gitignore）：A=`2026-09-01T14-59-15-164Z-qwen-low`、B=`2026-09-01T15-04-04-278Z-qwen-low`、off=`2026-09-01T15-34-40-194Z-qwen-off`。
-- 本次三组质量结论基于 subagent 全量比对基线（非人工终审）；A 组 subagent 抽查了语料原文，B/off 两组仅凭基线，判定严格度不一。关键项（G01 散件类目、F02/S05、S03 数值锚点）应人工抽查语料定稿后再决策。
+> ✅ 已完成于 2026-09-02
