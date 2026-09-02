@@ -5,13 +5,13 @@
  * 裁掉要素：Guardrail / Hook / 遥测 / 断路器 / subagent。
  */
 import { loadConfig, type BenchConfig, type RetrieverId } from './config.js'
-import { buildIndex, search } from './retriever.js'
+import { search, type IndexEntry } from './retriever.js'
 import { grepSearch, buildGrepResult } from './grep-retriever.js'
 import type { DocChunk } from './types.js'
 import { callLLM, type ChatMessage, type ProviderOptions } from './provider.js'
 import { computeCosts } from './pricing.js'
 import { buildRulesPrefix } from './rules-prefix.js'
-import type { BenchQuery, CostRecord, ThinkingMode, ToolId } from './types.js'
+import { isRetrievalTool, type BenchQuery, type CostRecord, type ThinkingMode, type ToolId } from './types.js'
 
 export interface AgentResult {
   records: CostRecord[]
@@ -28,9 +28,6 @@ export interface AgentOptions {
   config?: BenchConfig
   thinking: ThinkingMode
   dry: boolean
-  /** 注入已构建的检索索引与分块（runner 复用） */
-  chunks?: DocChunk[]
-  index?: ReturnType<typeof buildIndex>
 }
 
 /** 单次查询允许的知识库检索次数上限（system prompt 与 tool 侧共同约束） */
@@ -106,7 +103,7 @@ export async function runQuery(
   query: BenchQuery,
   opts: AgentOptions,
   chunks: DocChunk[],
-  index: ReturnType<typeof buildIndex>,
+  index: IndexEntry,
 ): Promise<AgentResult> {
   const config = opts.config ?? loadConfig()
   const records: CostRecord[] = []
@@ -133,6 +130,8 @@ export async function runQuery(
     const isAnswerFallback = round > config.maxRounds
     const resp = await callLLM(messages, isAnswerFallback ? [] : retrieverTools(config.retriever), providerOpts)
     const costs = computeCosts(resp.usage.input, resp.usage.output, resp.usage.cached, config.prices)
+    // 本轮实际调用的检索工具（双工具模式统计；供 records.tools 与 toolTrace 复用）
+    const usedTools = resp.toolCalls.map((tc) => tc.name).filter((n): n is ToolId => isRetrievalTool(n))
     records.push({
       ts: now,
       queryId: query.id,
@@ -149,12 +148,10 @@ export async function runQuery(
       costOut: costs.costOut,
       costTotal: costs.costTotal,
       truncated: resp.truncated,
-      // 本轮实际调用的检索工具（双工具模式统计；无工具调用则省略）
-      tools: resp.toolCalls.length > 0 ? (resp.toolCalls.map((tc) => tc.name).filter((n): n is ToolId => n === 'rag_search' || n === 'grep_search')) : undefined,
+      // 本轮实际调用的检索工具（无工具调用则省略；双工具模式统计）
+      tools: usedTools.length > 0 ? usedTools : undefined,
     })
-    toolTrace.push(
-      resp.toolCalls.map((tc) => tc.name).filter((n): n is ToolId => n === 'rag_search' || n === 'grep_search'),
-    )
+    toolTrace.push(usedTools)
 
     if (resp.toolCalls.length > 0 && !isAnswerFallback) {
       toolRounds++

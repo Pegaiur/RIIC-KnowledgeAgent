@@ -14,7 +14,7 @@
  */
 import { readFileSync } from 'node:fs'
 import type { BenchQuery, DocChunk } from './types.js'
-import { buildIndex, search } from './retriever.js'
+import { search, type IndexEntry } from './retriever.js'
 
 /** gold.json 结构：题目 ID → golden 键列表 */
 export interface GoldMap {
@@ -121,7 +121,7 @@ export interface HitrateResult {
  * gold 缺题或 golden 键不可解析即抛错（数据完整性优先，防 recall 分母静默缩小而虚高）。
  */
 export function runHitrate(
-  index: ReturnType<typeof buildIndex>,
+  index: IndexEntry,
   chunks: DocChunk[],
   questions: BenchQuery[],
   gold: GoldMap,

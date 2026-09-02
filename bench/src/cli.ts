@@ -13,7 +13,7 @@ import { corpusStats, loadCorpus } from './corpus.js'
 import { checkGold, loadGold, renderHitrate, runHitrate } from './hitrate.js'
 import { buildIndex } from './retriever.js'
 import { runBenchmark } from './runner.js'
-import { aggregate, renderCrossProvider, renderCsv, renderMarkdown } from './report.js'
+import { aggregate, renderCrossProvider, renderCsv, renderMarkdown, type BenchReport } from './report.js'
 import type { BenchQuery, CostRecord, ProviderId, ThinkingMode } from './types.js'
 
 interface ParsedArgs {
@@ -71,10 +71,7 @@ function parseArgs(argv: string[]): ParsedArgs {
     else if (a === '--min-rag') parsed.minRag = Number(argv[++i]) || null
     else if (a === '--limit') parsed.limit = Number(argv[++i]) || null
     else if (a === '--questions') parsed.questions = argv[++i] ?? null
-    else if (a === '--out' && parsed.command === 'run') parsed.out = argv[++i] ?? null
-    else if (a === '--out' && parsed.command === 'report') parsed.out = argv[++i] ?? null
-    else if (a === '--out' && parsed.command === 'compare') parsed.out = argv[++i] ?? null
-    else if (a === '--out' && parsed.command === 'hitrate') parsed.out = argv[++i] ?? null
+    else if (a === '--out') parsed.out = argv[++i] ?? null
     else if (!parsed.runDir && !a.startsWith('-')) parsed.runDir = a
     else if (!a.startsWith('-')) parsed.positional.push(a)
   }
@@ -122,7 +119,7 @@ function loadRecords(runDir: string): CostRecord[] {
     .map((l) => JSON.parse(l) as CostRecord)
 }
 
-function loadReport(runDir: string): ReturnType<typeof aggregate> {
+function loadReport(runDir: string): BenchReport {
   return aggregate(loadRecords(runDir))
 }
 
@@ -204,8 +201,9 @@ async function main(): Promise<void> {
       topKs,
     )
     // 落盘/输出携带运行参数上下文，保证 --out 文件可复现（分词器 + 实体加权）
-    result.note = `分词器：${config.tokenizer}｜实体加权：${config.entityBoost === 0 ? '关' : `×${config.entityBoost}`}｜语料 chunks：${chunks.length}｜问题：${questions.length}`
-    process.stdout.write(`分词器：${config.tokenizer}｜实体加权：${config.entityBoost === 0 ? '关' : `×${config.entityBoost}`}｜语料 chunks：${chunks.length}｜问题：${questions.length}\n`)
+    const contextLine = `分词器：${config.tokenizer}｜实体加权：${config.entityBoost === 0 ? '关' : `×${config.entityBoost}`}｜语料 chunks：${chunks.length}｜问题：${questions.length}`
+    result.note = contextLine
+    process.stdout.write(`${contextLine}\n`)
     const md = renderHitrate(result)
     if (args.out) {
       const { writeFileSync } = await import('node:fs')

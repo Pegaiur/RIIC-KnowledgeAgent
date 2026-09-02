@@ -95,7 +95,7 @@ export function tokenize(text: string): string[] {
   return currentTokenizer() === 'jieba' ? tokenizeJieba(text) : tokenizeBigram(text)
 }
 
-interface IndexEntry {
+export interface IndexEntry {
   /** 词项 → 出现文档数 */
   df: Map<string, number>
   /** 词项 → 文档内词频（分块粒度） */
