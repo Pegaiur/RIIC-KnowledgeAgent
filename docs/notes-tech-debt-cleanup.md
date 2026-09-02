@@ -24,7 +24,7 @@
 - **backlog（近期，未做）**：
   - A1 `agent.ts runQuery`（129 行）上帝函数重构——需检索门面承载两套注入语义（grep 全量命中实注入 vs rag 按 maxContextChars 预算判定），中风险，不宜与合并前零行为收敛混批。
   - A2 `report.ts aggregate`（93 行）模板虚高——可提局部 `groupBy/sum` 助手。
-  - D1 `hitrate` 结果落 `bench/runs/<ts>-hitrate/`（可复现，当前仅 stdout/--out）。
+  - D1 `hitrate` 结果落 `bench-runs/<ts>-hitrate/`（可复现，当前仅 stdout/--out）。
   - D4 `hitrate` 逐题补渲染 precision/nDCG 列（数据已在 `QuestionHit` 算好，仅渲染未暴露）。
 - **不修（依据「避免为抽象而抽象 / 受控对照契约 / 依赖方向单向 / 测试基建债成本低收益低」）**：
   - scripts 侧 `main()` 骨架、`isMain` 样板（9 处）——isMain 恰是脚本可被 import 无副作用的前提；抽公共引导层属为样板而抽象。

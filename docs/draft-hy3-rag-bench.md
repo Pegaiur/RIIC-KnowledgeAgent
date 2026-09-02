@@ -47,7 +47,7 @@
                                                     │ 每次 LLM 调用 → 1 条 JSONL
                                      ┌─────────────▼──────────────┐
                                      │ 成本记录 runner.ts          │
-                                     │ bench/runs/<ts>-<thinking>/ │
+                                     │ bench-runs/<ts>-<thinking>/ │
                                      │   records.jsonl + meta.json │
                                      └─────────────┬──────────────┘
                                                    │
@@ -97,7 +97,7 @@
 | `src/retriever.ts` | 中文 bigram 分词 + BM25 检索，top-k 片段注入 |
 | `src/provider.ts` | TokenHub OpenAI 兼容端点调用（fetch），解析 usage，dry 模式模拟返回 |
 | `src/agent.ts` | 简化循环：maxRounds=3，单工具 `rag_search(query)`，逐轮记录成本 |
-| `src/runner.ts` | 跑问题集（thinking × questions），写 JSONL 到 `bench/runs/<ts>/` |
+| `src/runner.ts` | 跑问题集（thinking × questions），写 JSONL 到 `bench-runs/<ts>/` |
 | `src/report.ts` | JSONL 聚合 → Markdown 报告 + CSV（每查询输出分布、单查成本、轮数、分档汇总） |
 | `src/cli.ts` | CLI 入口：`run`（实跑/--dry）/ `report` |
 | `tests/*.test.ts` | vitest：retriever 排序、pricing 计算、corpus 分块、report 聚合 |

@@ -63,7 +63,7 @@
 
 ## 检索策略实测记录（2026-08-31）
 
-> 对应草案：docs/draft-retrieval-experiment.md；运行产物在 `bench/runs/`（gitignore，不入库）。
+> 对应草案：docs/draft-retrieval-experiment.md；运行产物在 `bench-runs/`（gitignore，不入库）。
 > 本记录含三组运行：P1（qwen BM25 minRag=1）、P3（qwen grep minRag=1）、hy3 基线（最初完整 20 题跑），并对 P1/P3 与 hy3 做三方质量对照。
 
 ### 决策偏离
@@ -117,7 +117,7 @@
 
 ## 检索注入收敛实验（R1：topK=3 / maxContextChars=12000，2026-09-01）
 
-> 对应草案：docs/draft-retrieval-tuning.md「R1 检索注入收敛」；运行产物 bench/runs/2026-09-01T03-31-23-063Z-qwen-low（gitignore，不入库）。
+> 对应草案：docs/draft-retrieval-tuning.md「R1 检索注入收敛」；运行产物 bench-runs/2026-09-01T03-31-23-063Z-qwen-low（gitignore，不入库）。
 > 参数：qwen3.7-flash / low 档 / minRag=1 / BM25 bigram / 20 题 / topK=3 / maxContextChars=12000（R1 矩阵 B 组——隔离 topK 影响，注入总量与基线一致）。
 
 ### 运行数据

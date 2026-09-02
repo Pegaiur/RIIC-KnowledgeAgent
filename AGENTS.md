@@ -53,8 +53,8 @@ rag-test/
 ├── bench/                          ← 查询输出成本基准（简化版 Agent）
 │   ├── src/                        ← provider / retriever / agent / runner / report / cli
 │   ├── tests/                      ← vitest 单元测试
-│   ├── questions.json              ← 基准问题集（20 题，三分类）
-│   └── runs/                       ← 运行结果（JSONL，不入库）
+│   └── questions.json              ← 基准问题集（20 题，三分类）
+├── bench-runs/                     ← 基准运行结果（JSONL，不入库；dev 中间结果在 dev-temp/runs）
 ├── scripts/                        ← 过程管理脚本（模板套用，见 scripts/INDEX.md）
 ├── docs/                           ← 过程管理文档（inbox / plan / draft / adr / archive）
 │   ├── inbox.md                    ← 需求唯一入口
