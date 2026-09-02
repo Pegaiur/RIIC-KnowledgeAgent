@@ -93,8 +93,8 @@ function printUsage(): void {
       '  node dist/cli.js run --dry --limit 2          # 干跑验证管线（不发请求）',
       '  node dist/cli.js run --provider qwen --thinking low   # 真实跑（需 DASHSCOPE_API_KEY）',
       '  node dist/cli.js run --provider qwen --thinking low --retriever grep --min-rag 1   # grep 对照（P3）',
-      '  node dist/cli.js report bench/runs/xxx        # 聚合最近一次运行',
-      '  node dist/cli.js compare bench/runs/<hy3> bench/runs/<qwen>   # 跨模型对比',
+      '  node dist/cli.js report bench-runs/xxx        # 聚合最近一次运行',
+      '  node dist/cli.js compare bench-runs/<hy3> bench-runs/<qwen>   # 跨模型对比',
       '  node dist/cli.js hitrate --check-gold         # 仅校验 gold ↔ 语料对应关系',
       '  node dist/cli.js hitrate                      # bigram 检索 recall@3/5/10 基线',
       '',
@@ -216,7 +216,7 @@ async function main(): Promise<void> {
 
   if (args.command === 'compare') {
     const runDirs = args.runDir ? [args.runDir, ...args.positional] : args.positional
-    if (runDirs.length < 2) throw new Error('compare 需要至少 2 个 runDir（bench/runs/<ts>-<provider>-<thinking>）')
+    if (runDirs.length < 2) throw new Error('compare 需要至少 2 个 runDir（bench-runs/<ts>-<provider>-<thinking>）')
     const reports = runDirs.map(loadReport)
     const md = renderCrossProvider(reports)
     if (args.out) {
@@ -230,7 +230,7 @@ async function main(): Promise<void> {
   }
 
   if (args.command === 'report') {
-    if (!args.runDir) throw new Error('report 需要 runDir 参数（bench/runs/<ts>-<provider>-<thinking>）')
+    if (!args.runDir) throw new Error('report 需要 runDir 参数（bench-runs/<ts>-<provider>-<thinking>）')
     const report = aggregate(loadRecords(args.runDir))
     const md = renderMarkdown(report)
     if (args.out) {

@@ -46,7 +46,7 @@ export async function runBenchmark(
   const index = buildIndex(chunks)
 
   const runTag = `${new Date().toISOString().replace(/[:.]/g, '-')}-${config.provider}-${opts.thinking}`
-  const outDir = opts.outDir ?? join(process.cwd(), 'bench', 'runs')
+  const outDir = opts.outDir ?? join(process.cwd(), 'bench-runs')
   const runDir = join(outDir, runTag)
   mkdirSync(runDir, { recursive: true })
 
