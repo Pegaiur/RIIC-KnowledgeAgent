@@ -19,7 +19,8 @@ import type { BenchQuery, CostRecord, ProviderId, ThinkingMode } from './types.j
 interface ParsedArgs {
   command: string
   thinking: ThinkingMode
-  provider: ProviderId
+  /** provider：未显式传 --provider 时为 undefined，回落 EXPERIMENT.provider（config 集中默认） */
+  provider: ProviderId | undefined
   limit: number | null
   dry: boolean
   questions: string | null
@@ -44,7 +45,7 @@ function parseArgs(argv: string[]): ParsedArgs {
   const parsed: ParsedArgs = {
     command: argv[0] ?? 'help',
     thinking: 'off',
-    provider: 'hy3',
+    provider: undefined,
     limit: null,
     dry: false,
     questions: null,
@@ -65,7 +66,7 @@ function parseArgs(argv: string[]): ParsedArgs {
     else if (a === '--check-gold') parsed.checkGold = true
     else if (a === '--topk') parsed.topk = argv[++i] ?? null
     else if (a === '--gold') parsed.gold = argv[++i] ?? null
-    else if (a === '--provider') parsed.provider = (argv[++i] as ProviderId) ?? 'hy3'
+    else if (a === '--provider') parsed.provider = argv[++i] as ProviderId | undefined
     else if (a === '--thinking') parsed.thinking = (argv[++i] as ThinkingMode) ?? 'off'
     else if (a === '--retriever') parsed.retriever = (argv[++i] as RetrieverId) ?? null
     else if (a === '--min-rag') parsed.minRag = Number(argv[++i]) || null
