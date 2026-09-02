@@ -5,7 +5,7 @@
 
 ## 背景
 
-R2 命中率评测实测（`docs/notes-retrieval-tuning.md`）：当前 bigram 分词的 BM25 在 20 题 / 121 golden 上 recall@3/5/10 = 21.3% / 33.5% / 50.3%，recall@5 远低于 90% 业界判据（≥90% 则无需更多检索优化），草案 R3 触发条件成立。
+R2 命中率评测实测（`docs/archive/plan-retrieval-tuning.md` 实施纪要）：当前 bigram 分词的 BM25 在 20 题 / 121 golden 上 recall@3/5/10 = 21.3% / 33.5% / 50.3%，recall@5 远低于 90% 业界判据（≥90% 则无需更多检索优化），草案 R3 触发条件成立。
 
 bigram 将中文串切成两字词元 + 边界单字，词元碎片化使「词级精确匹配」缺失：查询词与语料的重叠依赖字符巧合而非词语语义。业界数据（MTEB LeCaRDv2 BM25 nDCG 0.359 → 0.641，jieba）与 Concliude 生产实测（jieba 召回 1.00 vs trigram 0.78）均支持分词升级是当前最高 ROI 的检索质量改进。
 
@@ -40,9 +40,9 @@ bigram 将中文串切成两字词元 + 边界单字，词元碎片化使「词�
 - 运行记录需标注分词器版本（meta.json 增 tokenizer 字段），保证跨运行可比
 - jieba 词典初始化必须发生在 buildIndex 之前（幂等 initTokenizer）
 - 单测守护：词典词（灰毫/红松林类）不被切碎；jieba 与 bigram token 集抽样对照
-- **复测结论（2026-09-01）**：jieba recall@3/5/10 = 19.2% / 29.4% / 41.9%，较 bigram（21.3% / 33.5% / 50.3%）全面略降——词级精确匹配丢失 bigram 的字符级部分匹配容错，且「为什么」类疑问词在词级下成为高区分度词元反噬排序（详见 `docs/notes-retrieval-tuning.md` R3 节）。**默认保持 bigram**；依赖与参数化代码保留，作未来混合分词 / 词典调优的实验基座。
+- **复测结论（2026-09-01）**：jieba recall@3/5/10 = 19.2% / 29.4% / 41.9%，较 bigram（21.3% / 33.5% / 50.3%）全面略降——词级精确匹配丢失 bigram 的字符级部分匹配容错，且「为什么」类疑问词在词级下成为高区分度词元反噬排序（详见 `docs/archive/plan-retrieval-tuning.md`「实施纪要」R3 节）。**默认保持 bigram**；依赖与参数化代码保留，作未来混合分词 / 词典调优的实验基座。
 
 ## 关联
 
-- 规划文档：`docs/draft-retrieval-tuning.md`「R3 中文分词 jieba」章节
+- 规划文档：`docs/archive/plan-retrieval-tuning.md`「R3 中文分词 jieba」章节
 - 扩展需求：`docs/inbox.md`「检索质量与成本收敛」条目
