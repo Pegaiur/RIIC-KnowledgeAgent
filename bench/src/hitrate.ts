@@ -112,6 +112,8 @@ export interface HitrateResult {
   /** 各 topK 的宏平均 nDCG（与 topKs 对齐） */
   ndcgMacro: number[]
   perQuestion: QuestionHit[]
+  /** 运行参数上下文（如分词器/实体加权），非必填；用于 --out 落盘可复现 */
+  note?: string
 }
 
 /**
@@ -197,12 +199,15 @@ export function renderHitrate(result: HitrateResult): string {
     '# 命中率评测（recall@K / precision@K / nDCG@K）',
     '',
     '> 口径：recall@K 键级按比例计（golden 键任一解析块进 topK 即命中）；precision@K 块级，分母为实际填充槽位；nDCG@K 块级 binary relevance。均取宏平均；golden 键为 file#清洗标题。',
+  ]
+  if (result.note) lines.push('', `> 参数：${result.note}`)
+  lines.push(
     '',
     '## 汇总',
     '',
     '| topK | recall | precision | nDCG |',
     '|---|---|---|---|',
-  ]
+  )
   result.topKs.forEach((k, i) => {
     lines.push(
       `| ${k} | ${(result.recallMacro[i] * 100).toFixed(1)}% | ${(result.precisionMacro[i] * 100).toFixed(1)}% | ${result.ndcgMacro[i].toFixed(3)} |`,

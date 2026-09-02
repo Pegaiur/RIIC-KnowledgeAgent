@@ -1,14 +1,14 @@
 /**
  * 全局令牌桶限流器
  *
- * 背景：腾讯混元 Hy3（TokenHub）官方并发上限 60 RPM；基准为保守起见限至 30 RPM，
- * 用令牌桶保证任意 60s 窗口内请求数不超过上限，同时允许一次性突发。
+ * 背景：腾讯混元 Hy3（TokenHub）官方并发上限 60 RPM；Qwen 限额较高、当前基准规模（≤20 题）不会触发。
+ * 现默认不限速（RATE_LIMIT_RPM=100000，实际不可能触发等待）；Hy3 若回归需下调。
  * 每次真实 LLM 调用前 acquire() 取一个令牌，无令牌则异步等待。
  */
 import { setTimeout as sleep } from 'node:timers/promises'
 
-/** Hy3 官方 60 RPM；基准保守限流值 */
-export const RATE_LIMIT_RPM = 30
+/** 基准限流值：默认不限速（Qwen 几乎不限流）；Hy3 官方 60 RPM，若回归需下调 */
+export const RATE_LIMIT_RPM = 100_000
 
 export class TokenBucketLimiter {
   private readonly capacity: number
