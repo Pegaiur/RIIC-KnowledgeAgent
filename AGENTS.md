@@ -56,9 +56,10 @@ rag-test/
 │   └── questions.json              ← 基准问题集（20 题，三分类）
 ├── bench-runs/                     ← 基准运行结果（JSONL，不入库；dev 中间结果在 dev-temp/runs）
 ├── scripts/                        ← 过程管理脚本（模板套用，见 scripts/INDEX.md）
-├── docs/                           ← 过程管理文档（inbox / plan / draft / adr / archive）
+├── docs/                           ← 过程管理文档（inbox / plan / draft / spec / adr / archive）
 │   ├── inbox.md                    ← 需求唯一入口
 │   ├── plan-*.md / draft-*.md      ← 版本计划 / 未定稿提案
+│   ├── spec/                       ← 评测/核查规格（长期复用资产，如 RAG 20 题回答核查基线）
 │   ├── templates/                  ← ADR/plan/notes 机械模板
 │   ├── rules/                      ← 复杂规则权威目录
 │   ├── adr/                        ← 架构决策记录（INDEX.md 为状态索引）
@@ -103,6 +104,7 @@ node scripts/verify.mjs merge -- --base main   # 合并门禁
 | 文档 | 用途 |
 | ---- | ---- |
 | [`docs/inbox.md`](docs/inbox.md) | 待办事项需求唯一入口 |
+| [`docs/spec/rag-answer-baseline.md`](docs/spec/rag-answer-baseline.md) | 评测/核查规格（RAG 20 题答案核查基线，长期复用资产） |
 | [`docs/rules/`](docs/rules/) | 复杂规则权威目录 |
 | [`docs/templates/`](docs/templates/) | ADR/plan/notes 机械模板唯一权威目录 |
 | [`docs/adr/INDEX.md`](docs/adr/INDEX.md) | ADR 状态索引 |

@@ -19,7 +19,7 @@
 
 1. **事实层**：干员/技能/派系/等价组/歧义 → 结构化 JSON + 查询 tool（精确 lookup / 条件组合 query）
 2. **论证层**：`docs/**/*.md` 散文保留（机制论证、体系评价、缺人降级路径）——检索/read 兜底
-3. 与 R 系列基线可比：20 题、同模型（qwen3.7-flash）、同核查口径（notes-rag-answer-baseline.md）
+3. 与 R 系列基线可比：20 题、同模型（qwen3.7-flash）、同核查口径（docs/spec/rag-answer-baseline.md）
 
 ## 非目标
 
