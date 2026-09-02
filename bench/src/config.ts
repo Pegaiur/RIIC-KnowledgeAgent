@@ -89,7 +89,7 @@ export interface ExperimentConfig {
 
 /** 实验参数默认值（集中于此，改值时全局生效） */
 export const EXPERIMENT: ExperimentConfig = {
-  provider: 'hy3',
+  provider: 'qwen',
   rules: false,
   entityBoost: 0,
   tokenizer: 'bigram',
@@ -144,7 +144,7 @@ export interface BenchConfig {
 export function loadConfig(providerInput?: ProviderId): BenchConfig {
   // 实验开关一律取自 EXPERIMENT（不读 env，防 shell 残留污染）；仅 API Key 走 secret/env 兜底（密钥约定）
   const provider = providerInput ?? EXPERIMENT.provider
-  const spec = PROVIDERS[provider] ?? PROVIDERS.hy3
+  const spec = PROVIDERS[provider] ?? PROVIDERS.qwen
   return {
     provider: spec.id,
     providerLabel: spec.label,
