@@ -29,14 +29,4 @@
 <!-- 格式: - [ ] **简短标题** — 描述 — 提出日期 — 可能路由 -->
 <!-- 完成后标记 [x]，发版时清理已完成条目；定期（如每季度）治理重估：确认暂缓原因仍成立、路由目标未悬空 -->
 
-- [x] **Hy3 查询输出成本基准** — 在 rag-test 搭建基于腾讯混元 Hy3（TokenHub）的 LLM 查询输出成本测量基准，简化版 Agent 参考 Concliude agent loop 骨架 — 2026-08-31 — 路由 `docs/archive/plan-hy3-rag-bench.md`（已归档：架构实施 + 真实 low 档运行完成；三档结论由单题冒烟 + low 全量获得，off/high 全量经验收条件修订不再补跑）
-
-- [x] **Qwen3.7-Flash 候选模型接入** — 将 qwen3.7-flash（DashScope）接入 bench 作为候选模型（输出 ¥0.8/M 优于 qwen3.5-flash ¥2/M），与 Hy3 做同问题集成本对比 — 2026-08-31 — 路由 `docs/archive/plan-qwen37-flash-bench.md`（已归档：Provider 参数化 + 跨模型对比结论完成；全量补跑经验收条件修订不再执行，质量核查发现见「首轮对比结论」）
-
-- [x] **检索策略实测框架** — qwen3.7-flash 编造倾向与检索意愿不足相关（minRag=3 实测改善编造但轮次/成本代价大）；需受控实验实测 minRag=1 / 专名 boost / grep 式检索对质量×成本的影响，验证是否引入 grep 思路（参照 Concliude ripgrep 与其会话检索选型实测 trigram 0.78 的预判）— 2026-08-31 — 路由 `docs/archive/plan-retrieval-experiment.md`（已归档，P1 采纳 / P2、P3 不采纳）
-
-- [x] **检索质量与成本收敛** — 成本敏感下高 ROI 三项：命中率评测（gold 标注 + recall@K 工具，业界判据 ≥90% 无需向量）/ 检索注入收敛（topK 5→3 + 注入 12k→6k，倒 U 曲线与弱模型抗干扰证据）/ 中文分词 jieba（MTEB 0.359→0.641，触发制 + 新依赖 ADR）— 2026-09-01 — 路由 `docs/archive/plan-retrieval-tuning.md`（已归档，R1 维持 5/12000、R3 维持 bigram）
-
-- [x] **双检索器搭配实验（rag+grep 同时暴露，首轮强制 rag）** — 当前 agent 单工具暴露（bm25→rag_search / grep→grep_search 二选一）；实验改为**同时暴露** rag_search + grep_search：首轮经提示引导必须用 rag_search（minRag=1 语义，弱约束不拦截），后续轮次模型可自由调用 grep/rag，并**统计每轮实际工具调用**（rag vs grep 各多少、哪些题用了 grep）— 2026-09-01 — 路由 `docs/archive/plan-retrieval-experiment.md`（P5 已归档：双工具不采纳，但末位强制作答轮闭环保留）
-
-- [ ] **R5 混合查询（hybrid-facts：结构化事实层 + 查询 tool + 散文兜底）** — 在 bench 落地混合查询架构（facts.json 事实层直查 + judgments 判断层 + 散文论证层检索兜底），量化对 20 题正确/编造/轮次/成本的净效应，产出是否取代 R4 检索词引导的决策 — 2026-09-02 — 路由 `docs/plan-hybrid-facts.md`（已 plan 化，待 schema 定稿后实施）
+- [ ] **R5 事实查询（facts-first：facts.json 事实层 + lookup/query 查询 tool）** — 在 bench 用真源数据（`knowledge/references/` + 上游 JSON）落地事实查询工具，量化对 F/G 类题命中率/编造/成本的净效应，产出取代 R4 检索词引导的决策 — 2026-09-02 — 路由 `docs/plan-hybrid-facts.md`（v2 已定稿；Phase 0【P0.1–P0.7：散文废弃、数据层固化、旧基准标注、meta 删除、工具停用】已完成；**P0.4【F/G 参考要点重制 + gold/参考要点以真源】暂缓**；Phase 2/3【facts.json + build_json.py + agent.ts 两 tool + 评测】待启动）
