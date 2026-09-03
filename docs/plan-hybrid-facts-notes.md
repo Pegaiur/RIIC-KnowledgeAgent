@@ -75,7 +75,9 @@
 - 暂无。
 
 ## 进度快照
-- 已落地：`bench/src/facts/card.ts`（记录卡类型 + 机械字段常量）、`bench/src/facts/mechanical.ts`（parseNameRow / verifyMechanicalCard / findNameRow）、`bench/src/facts/fixtures.ts`（16 标杆条目：F/G 事实类 + S02/S04/S06 体系干员）、`bench/tests/facts.test.ts`（TDD）。
+- 已落地：`bench/src/facts/{card,mechanical,fixtures,store}.ts`（记录卡类型 + 解析/0 差异核对/findNameRow/运行时卡 store 与 lookup/query_operators）、`bench/tests/{facts,facts-tools}.test.ts`（TDD）、`agent.ts`（lookup/query_operators 工具 + facts 派发 + 系统提示）、`config.ts`（RetrieverId 'facts'）、`provider.ts`（dry facts 工具映射）、`runner.ts`/`cli.ts`（facts 语料旁路 + 守卫时序 + --retriever facts）。
+- 步骤 5（lookup + query_operators 最简接入，16 卡）已完成并纳入 plan 验收清单 `[x]`；全量 425 转录后由同一 store 承载（步骤 2 未做）。
+- 验证：`pnpm run typecheck` 通过；`pnpm run test` 10 文件 103 用例全通过（含 facts 23、facts-tools 20）；`pnpm run bench:dry`（已指向 `--retriever facts`）跑通，报告统计到 `lookup/query_operators`（toolTrace=lookup→query_operators，3 轮/题）。
+- 评审处理：独立审查（步骤 5 接入）无阻塞；已按评审补强 report 工具统计纳入 facts（`isFactTool`）、`bench:dry` 改指向 facts、facts 下跳过 minRag 引导原文、serializeCard 单卡 ≤1KB、并补「已达上限」分支测试。
 - 评审：独立审查子代理核实搜索字段充分性（分类过滤 sufficient；别名/合称/技能族 partial），结论已按用户裁定记录（合称另设方案、技能族维持现状、本轮仅记设计）。
-- 验证：`pnpm run typecheck` 通过；`pnpm run test` 9 文件 83 用例全通过（含 facts 23 用例）。
-- 未做（按用户「不做更多」）：plan 验收清单除步骤 1 部分、步骤 2 解析器/断言/5 fixture 外，其余（转录脚本 LLM 调用、P0.4 参考要点重制、人工抽检、bench 工具接入、评测、结论）均未启动；plan 清单 checkbox 未勾选（避免误标完成）。
+- 未做：转录脚本 LLM 调用（全量 425 卡）、P0.4 参考要点重制、人工抽检、评测 12+5、结论落盘；steps 2/3/4/6/7 及对应验收清单 checkbox 未勾选。

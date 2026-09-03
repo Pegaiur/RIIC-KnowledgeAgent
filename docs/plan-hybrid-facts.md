@@ -74,11 +74,11 @@ R4 检索词引导（QUERY_GUIDES）在事实层落地后**退役**（工具 sch
 - [ ] 转录脚本 + references 解析器 + 程序化核对入库（TS，含 fixture 单测）+ 程序化核对 0 差异
 - [ ] P0.4 参考要点重制（F/G 批）经人工终审，spec 版本递进
 - [ ] 人工抽检完成（语义字段：代偿备注 / 俗称归一 / 相关组合）
-- [ ] lookup + query_operators 两 tool 最简接入 + 单测通过
+- [x] lookup + query_operators 两 tool 最简接入 + 单测通过
 - [ ] 评测 12+5 题 ×（查询/裸查）完成 + 人工核查落盘（判定表）
 - [ ] 结论与推荐；S 类/散文重写/数值效率（minEff）/references 再生脚本重建 作为 v3 计划登记
-- [ ] `pnpm run typecheck` 全通过
-- [ ] `pnpm run test` 全通过
+- [x] `pnpm run typecheck` 全通过
+- [x] `pnpm run test` 全通过
 
 ## 关联 ADR
 
