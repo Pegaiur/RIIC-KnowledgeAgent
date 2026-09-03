@@ -99,6 +99,7 @@ export const EXPERIMENT: ExperimentConfig = {
   maxRounds: 3,
   maxTokens: 4096,
   retriever: 'bm25',
+  // TODO(tech-debt) R5：散文语料已废弃（2026-09-03），facts-first 重建后此处改读 facts.json / knowledge（lookup/query 取代 RAG）。
   corpusDir: 'arknights-base-vault/docs',
 }
 
