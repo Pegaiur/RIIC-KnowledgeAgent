@@ -18,17 +18,17 @@ import { aggregate, renderCrossProvider, renderCsv, renderMarkdown, type BenchRe
 import type { BenchQuery, CostRecord, ProviderId, ThinkingMode } from './types.js'
 
 /**
- * RAG 查询工具临时停用（P0.7）。
- * 散文语料已废弃（P0.1，2026-09-03），facts-first（记录卡资产 + lookup/query 工具）重建前不可用；
- * report/compare 仅读历史运行结果、不依赖语料，保留可用。
- * TODO(tech-debt) R5：facts-first 重建（记录卡资产 + lookup/query 工具接入）后移除 RAG_TOOL_SUSPENDED 守卫，恢复 run/hitrate。
+ * 散文 RAG（run）已临时重接（2026-09-03，smoke）：语料指向 knowledge/，run 方向放开。
+ * 但 hitrate 暂缓：其 gold 基线（bench/gold.json）仍引用已删 0-规则/2-体系/4-散件，未按 knowledge 语料重建，
+ * 放开必然导致命令失败；report/compare 仅读历史运行结果、不依赖语料，保留可用。
+ * TODO(tech-debt) R5：facts-first 全量转录后移除临时重接语义（lookup/query 取代 RAG）。
  */
-const RAG_TOOL_SUSPENDED = true
+const HITRATE_SUSPENDED = true
 
-function assertRagToolAvailable(): void {
-  if (!RAG_TOOL_SUSPENDED) return
+function assertHitrateAvailable(): void {
+  if (!HITRATE_SUSPENDED) return
   throw new Error(
-    'RAG 检索器（bm25/grep/both）已临时停用：散文语料已废弃（2026-09-03）。facts 模式可用（--retriever facts，基于干员记录卡）；其余检索器待散文重写后恢复。',
+    'hitrate 暂缓：gold 基线（bench/gold.json）仍引用已删除散文路径，未按 knowledge 语料重建；请先更新 gold 后再用。',
   )
 }
 
@@ -152,7 +152,6 @@ async function main(): Promise<void> {
     if (args.retriever) config.retriever = args.retriever
     if (args.minRag !== null) config.minRagCalls = args.minRag
     const isFacts = config.retriever === 'facts'
-    if (!isFacts) assertRagToolAvailable()
     const stats = isFacts ? { files: 0 } : corpusStats(config.corpusDir)
     if (!isFacts && stats.files === 0) {
       throw new Error(`语料目录为空：${config.corpusDir}（相对仓库根运行）`)
@@ -184,7 +183,7 @@ async function main(): Promise<void> {
   }
 
   if (args.command === 'hitrate') {
-    assertRagToolAvailable()
+    assertHitrateAvailable()
     const config = loadConfig()
     const goldPath = args.gold ?? join(process.cwd(), 'bench', 'gold.json')
     const gold = loadGold(goldPath)

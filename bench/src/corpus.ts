@@ -8,14 +8,14 @@ import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative, sep } from 'node:path'
 import type { DocChunk } from './types.js'
 
-/** 递归收集 .md 文件路径 */
+/** 递归收集 .md 文件路径；跳过 SKILL.md（技能手册，非知识语料，不参与检索/注入） */
 export function collectMarkdownFiles(dir: string): string[] {
   const out: string[] = []
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const full = join(dir, entry.name)
     if (entry.isDirectory()) {
       out.push(...collectMarkdownFiles(full))
-    } else if (entry.name.endsWith('.md')) {
+    } else if (entry.name.endsWith('.md') && entry.name !== 'SKILL.md') {
       out.push(full)
     }
   }

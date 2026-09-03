@@ -71,7 +71,7 @@ export interface ExperimentConfig {
   entityBoost: number
   /** 分词器（bigram | jieba） */
   tokenizer: TokenizerId
-  /** 强制首检次数（minRag） */
+  /** 作答前至少需调用检索工具的次数（minRag）；默认 1 = 必须调用一轮工具，0 = 不强制 */
   minRagCalls: number
   /** 检索 topK */
   topK: number
@@ -93,14 +93,15 @@ export const EXPERIMENT: ExperimentConfig = {
   rules: false,
   entityBoost: 0,
   tokenizer: 'bigram',
-  minRagCalls: 0,
+  minRagCalls: 1,
   topK: 5,
   maxContextChars: 12000,
   maxRounds: 3,
   maxTokens: 4096,
   retriever: 'bm25',
-  // TODO(tech-debt) R5：散文语料已废弃（2026-09-03），facts-first 重建后此处改读 facts.json / knowledge（lookup/query 取代 RAG）。
-  corpusDir: 'arknights-base-vault/docs',
+  // 临时重接（smoke，S02/S04/S06）：语料指向 knowledge/（references 数据 + base 机制 + 基建物流链）。
+  // TODO(tech-debt) R5：facts-first 全量转录后，此处改读记录卡 store / knowledge（lookup/query 取代 RAG）。
+  corpusDir: 'knowledge',
 }
 
 export interface BenchConfig {
@@ -132,7 +133,7 @@ export interface BenchConfig {
   maxContextChars: number
   /** 检索器：bm25（BM25 加权）| grep（字面命中计数，P3 对照）| both（双工具同时暴露，P5 搭配实验） */
   retriever: RetrieverId
-  /** 强制首检次数：模型直接作答前，至少先检索的次数（qwen 检索意愿实验用） */
+  /** 作答前至少需调用检索工具的次数：直接作答前至少先检索几次（默认 1 = 必须调用一轮工具；0 = 不强制） */
   minRagCalls: number
   /** 检索分词器：bigram（零依赖默认）| jieba（ADR-001，EXPERIMENT.tokenizer=jieba） */
   tokenizer: TokenizerId

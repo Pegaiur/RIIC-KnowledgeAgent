@@ -277,15 +277,14 @@ export async function runQuery(
       continue
     }
 
-    // 无工具调用：若强制首检未达成，先引导检索而非直接作答（qwen 检索意愿实验用）
-    // 强制次数上限受 MAX_RAG_CALLS 约束，避免 minRagCalls 超上限造成引导死循环至轮次耗尽
-    // 注意：超轮次兜底轮不在此引导，直接把已有片段交给模型作答，保证最终答案产出
+    // 作答前至少调用一轮检索工具（替换旧「首轮必须 rag_search」规则）：由 config.minRagCalls 驱动，
+    // 默认 1 = 必须先调用任意检索工具一次；适用于全部检索器（含 facts）。上限受 MAX_RAG_CALLS 约束；
+    // 超轮次兜底轮不在此引导，保证最终答案产出。
     const minRag = Math.min(config.minRagCalls, MAX_RAG_CALLS)
-    // facts 模式不适用 minRag 强制首检（由 MAX_RAG_CALLS 检索预算约束），跳过避免引导未暴露的 rag_search
-    if (!isAnswerFallback && config.retriever !== 'facts' && retrievalCalls < minRag) {
+    if (!isAnswerFallback && retrievalCalls < minRag) {
       messages.push({
         role: 'user',
-        content: `请先调用 rag_search 检索知识库（当前已检索 ${retrievalCalls} 次，需至少检索 ${minRag} 次）后再作答。`,
+        content: `请先调用知识库检索工具后再作答（当前已检索 ${retrievalCalls} 次，需至少检索 ${minRag} 次）。`,
       })
       continue
     }
