@@ -2,7 +2,7 @@
 
 ## 项目概述
 
-**rag-test** 是明日方舟基建 RAG 知识库（`arknights-base-vault/`，纯 Markdown 语料）及其基准测试工具集。当前基准目标：基于腾讯混元 Hy3（TokenHub API）的 LLM 查询输出成本测量——参考 Concliude 的 agent loop 骨架实现简化版查询 Agent。
+**rag-test** 是明日方舟基建 RAG 知识库（`knowledge/`，数据层为唯一真源）及其基准测试工具集。当前基准目标：基于腾讯混元 Hy3（TokenHub API）的 LLM 查询输出成本测量——参考 Concliude 的 agent loop 骨架实现简化版查询 Agent（现状：散文语料已废弃，查询工具临时停用，待 facts-first 重建，见 `docs/plan-hybrid-facts.md`）。
 
 - TypeScript / Node.js · pnpm 单包（ESM，NodeNext）· 仅本机运行
 - LLM：腾讯混元 Hy3（腾讯云 TokenHub，OpenAI 兼容端点），输入 1 元/M、输出 4 元/M、缓存命中 0.25 元/M
@@ -48,9 +48,10 @@ rag-test/
 ├── AGENTS.md                       ← 本文件（规则索引 + 结构导航 + 工作流路由）
 ├── package.json                    ← 根包（bench 工具入口，pnpm）
 ├── tsconfig.json                   ← TypeScript 严格模式（NodeNext/ESM）
-├── arknights-base-vault/           ← RAG 语料（明日方舟基建知识库，纯 Markdown）
-│   ├── README.md                   ← 语料边界（docs/** 入库；meta/templates 与 TODO 不入库）
-│   └── docs/                       ← 正文语料（0-规则 / 2-体系 / 3-单站组合 / 4-散件工具人 / 5-cli求解器）
+├── knowledge/                      ← 明日方舟基建知识库（数据层为唯一真源；散文已废弃删除）
+│   ├── references/                 ← 数据层（解包直出：名册 / 技能分片×9 / 类别·技能等价组·歧义 / 数据源）
+│   ├── SKILL.md                    ← 公孙长乐基建问答技能（知识库用法 / 回答管线 / 计算政策）
+│   └── 基建物流链.md               ← 物流链指南（制造→贸易→简报字段 → 收支判断）
 ├── bench/                          ← 查询输出成本基准（简化版 Agent）
 │   ├── src/                        ← provider / retriever / agent / runner / report / cli
 │   ├── tests/                      ← vitest 单元测试
