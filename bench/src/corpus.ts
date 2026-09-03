@@ -1,7 +1,7 @@
 /**
  * 语料加载与分块
  *
- * 输入：arknights-base-vault/docs 目录下全部 .md（递归）
+ * 输入：corpusDir 下全部 .md（递归）；散文语料已废弃（2026-09-03，见 docs/notes-corpus-purge.md），facts-first 重建后本加载器由 lookup/query 取代
  * 输出：按 ## / ### 标题切分的 DocChunk 数组；超长标题节按段落二次切分。
  */
 import { readdirSync, readFileSync, statSync } from 'node:fs'

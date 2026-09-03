@@ -6,6 +6,7 @@
 | 完成日期 | 版本 | 文件 | 摘要 |
 |----------|------|------|------|
 
+| 2026-09-03 | — | [plan-facts-source-purge.md](plan-facts-source-purge.md) | plan-facts-source-purge |
 | 2026-09-02 | — | [plan-retrieval-tuning.md](plan-retrieval-tuning.md) | 以命中率评测（R2，recall@5=33.5%）为基准，验证检索注入收敛（R1，权衡后维持 topK=5/maxContextChars=12000）与中文分词 jieba（R3 全面略降，维持 bigram），落盘三项结论 |
 | 2026-09-02 | — | [plan-retrieval-experiment.md](plan-retrieval-experiment.md) | 受控实验评估检索策略：P1 minRag=1 采纳（消除 0 检索、成本最优）；P2 专名 boost 与 P3 grep 不采纳；P5 双工具不采纳但保留末位强制作答轮 |
 | 2026-09-02 | — | [plan-rules-prefix.md](plan-rules-prefix.md) | R4 规则前缀（检索词引导）A/B/off 三组实测，结论暂不采纳；默认基准调整为 qwen + thinking=off + 取消限流 |
