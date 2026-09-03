@@ -29,6 +29,20 @@ export function parseNameRow(line: string): NameRowFields {
   return { canonical, rarity, class: class_, rooms, groups }
 }
 
+/**
+ * 按标准名从名册.md 全文定位其原始行（`- 标准名 | …`）。
+ * canonical 需是「所属组/其他干员名」之外的精确行首匹配，避免子串误配（如「能天使」≠「新约能天使」）。
+ * 返回去掉行首 `- ` 前导的原行；未命中返回 null。
+ */
+export function findNameRow(nameListText: string, canonical: string): string | null {
+  const escaped = canonical.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const re = new RegExp(`^-\\s*${escaped}\\s*\\|`)
+  for (const line of nameListText.split(/\r?\n/)) {
+    if (re.test(line)) return line.trim()
+  }
+  return null
+}
+
 /** 程序化核对断言结果（ok=false 即「未过、打回」；mismatches 供人工定位） */
 export interface VerificationResult {
   ok: boolean
