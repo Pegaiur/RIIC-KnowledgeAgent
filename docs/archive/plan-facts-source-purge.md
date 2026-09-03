@@ -1,6 +1,60 @@
+# R5 语料事实源清理（facts-source purge：废弃劣质散文，数据层为唯一真源）
+
+> 创建日期：2026-09-03
+> 状态：已完成
+> 上游：`docs/archive/plan-rules-prefix.md`（R4 检索词引导，根因「语料缺 index 层 → RAG 代偿」）；2026-09-03 语料勘验结论（决定性）
+
+## 目标
+
+废弃并整体删除劣质散文知识库，将解包数据层迁至 `knowledge/` 作为唯一真源，临时停用依赖散文的 RAG 查询工具，为 R5 facts-first（见 `docs/draft-hybrid-facts.md`）奠定真源地基。
+
+## 非目标
+
+- 不做散文层任何工作：不修补、不索引（散文层整体废弃，论证层待后续重写，归 R5 facts-first v3）
+- 不做 S 类体系题评测、judgments 判断层、GraphRAG/免检索门控（归 R5 facts-first / v3）
+
+## 架构分析
+
+- 散文层（`arknights-base-vault/docs/`）为早期劣质 AI 总结，与数据层冲突：散件速查星级多处错误（名册为正确值）、推王龙门把维娜·维多利亚误归格拉斯哥帮等（勘验见本计划实施纪要）。
+- R 系列共同根因「语料缺 index 层，RAG 代偿」；数据源头即结构化（RIIC-Web + RhodeLogisticsSteward 解包），应工具直查代替概率检索。
+- 数据前提：解包产物 `knowledge/references/`（14 文件）完整落盘；上游 JSON（RhodeLogisticsSteward）本地可达；RIIC-Web 原始仓库不在本地，读呈现层即可闭环。
+
+## 实施方案（Phase 0，已完成）
+
+| # | 动作 | 说明 | 验收 |
+|---|---|---|---|
+| P0.1 | **散文语料废弃** | 全量加废弃标记 + 随 2026-09-03 结构重构整体删除（`arknights-base-vault/docs/` 已移除） | 散文目录已移除；「管线不引用」为部分达成（运行时由 P0.7 守卫拦截，`config/corpus/terms` 静态路径待 facts-first 清理） |
+| P0.2 | **数据层角色固化** | 知识库更名 `knowledge/`，散文整体删除、仅余数据层 | 数据源对照表写入 facts-first schema 文档 |
+| P0.3 | **R 系列旧基准标注** | `docs/archive/plan-*.md` 头部加「⚠️ 基于已废弃语料，结论仅供参考」 | 标注逐条落地 |
+| P0.4 | （归 facts-first，见 `docs/draft-hybrid-facts.md`） | F/G 参考要点/gold 以真源重制 | 暂缓 |
+| P0.5 | **历史数据快照** | 散件速查星级错误等勘验记录（本计划实施纪要） | 记录落盘 |
+| P0.6 | **meta/ 模板删除** | 废弃散文的写作模板/系统提示词随结构重构删除 | `meta/` 已移除；仓库无 `meta/` 引用 |
+| P0.7 | **RAG 查询工具临时停用** | `bench` CLI 的 `run`/`hitrate` 加停用守卫；`report`/`compare` 保留 | `pnpm run bench`（run）报停用错误；`report`/`compare` 正常 |
+
+## 验收清单
+
+- [x] P0.1 散文语料废弃并整体删除
+- [x] P0.2 数据层角色固化（knowledge/）
+- [x] P0.3 R 系列旧基准标注（docs/archive/plan-*）
+- [x] P0.5 历史数据快照（本计划实施纪要落盘）
+- [x] P0.6 meta/ 模板删除
+- [x] P0.7 RAG 查询工具临时停用
+- [x] `pnpm run typecheck` 全通过
+- [x] `pnpm run test` 全通过
+
+## 关联 ADR
+
+- 无（配置默认值调整 / 注释同步，不触发 ADR）
+
+---
+
+<!-- 冻结说明：发版归档（node scripts/tooling.mjs run release/archive-plan -- --plan <path> --apply）时替换此行，标记完成日期 -->
+
+## 实施纪要
+
 # 语料勘验与废弃快照（P0.5）
 
-> 对应计划：`docs/plan-hybrid-facts.md`（R5 facts-first）
+> 对应计划：`docs/plan-facts-source-purge.md`（R5 语料事实源清理）；后续 facts-first 见 `docs/draft-hybrid-facts.md`
 > 勘验日期：2026-09-03
 > 目的：记录「散文层整体废弃」的勘验证据（含数据层正确值对照），作为 P0.1 的依据，并供后续散文重写参照。
 > 结论：散文层（`arknights-base-vault/docs/`）为早期劣质 AI 总结，含与数据层（`knowledge/references/`）冲突的事实性错误；决定整体废弃，**数据层（knowledge/references/ + 上游 JSON）为唯一真源**。
@@ -48,3 +102,5 @@
 - 数据引用一律以 `facts.json` / `knowledge/references/` 为准；星级、派系归属、练度门槛、技能描述、等价组以数据层为唯一权威。
 - 散文仅承载「为什么、何时开、路径论证」等判断/论证文字，不承载客观数值。
 - P0.4 重制后的 F/G 批参考要点（`docs/spec/rag-answer-baseline.md`）可作为判定口径。
+
+> ✅ 已完成于 2026-09-03
