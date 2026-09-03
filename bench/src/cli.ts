@@ -27,7 +27,7 @@ const RAG_TOOL_SUSPENDED = true
 function assertRagToolAvailable(): void {
   if (!RAG_TOOL_SUSPENDED) return
   throw new Error(
-    'RAG 查询工具已临时停用：散文语料已废弃（2026-09-03）。待 facts-first 重建（记录卡资产 + lookup/query 工具，见 docs/draft-hybrid-facts.md）后恢复。',
+    'RAG 查询工具已临时停用：散文语料已废弃（2026-09-03）。待 facts-first 重建（记录卡资产 + lookup/query 工具，见 docs/plan-hybrid-facts.md）后恢复。',
   )
 }
 
