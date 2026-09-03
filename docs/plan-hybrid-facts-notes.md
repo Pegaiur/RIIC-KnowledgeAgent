@@ -54,12 +54,20 @@
 - **债务**：5 标杆条目的 `skills[].name/unlockType` 为人工从 references 转录的基准值，未实现从技能分片程序化提取与核对；`target/effectText` 属语义本应 LLM 转录，未覆盖。
 - **未来偿还**：plan 步骤 2 落地全量转录前，补 `parseSkillRow`（技能分片 → name/unlockType）并纳入机械核对（0 差异），代码处 `TODO(tech-debt) R5-1` 登记，清偿后 fixture 仅留语义基准。
 
+### 2026-09-03 — 合称查询方案与查询工具 MUST 前置项（评审记录，本轮未实现）
+- **背景**：独立审查子代理核实记录卡「搜索字段充分性」：query_operators 分类过滤（room/faction/rarity/profession）sufficient；lookup 对别名/合称/技能族检索 partial。用户裁定：合称另设方案、技能族维持现状，本轮仅记录设计。
+- **决策（口径已定）**：
+  - 合称索引 `comboIndex`：`term → { canonicals[], default?, disambiguate?, note? }`，数据源 歧义.md 第二节 + 官方同名组；与单卡 `aliases`（仅单目标简称）分离。`lookup` 返回命中卡列表；合称命中多卡；子串歧义（歧义.md 一节）按「设施重叠→反问，否则按设施判断」落 lookup。
+  - 技能族/等价组检索口径：维持仅类别.md「技能组」(5 条)；「技能等价组」昵称与「规则说明」联动组（如自动化·α/β）检索后置 v3。
+- **查询工具 MUST 前置项（plan 步骤 5 接入时实现）**：`canonical` 作 `excludeIds` 稳定 id；`lookup` 返回 `card[]`（承载多卡/合称）；运行时检索索引（canonical/简称/技能名/技能组 → canonical[]）；`termQuery` 固定扫描 name/target/effectText/notes/aliases（字面子串，非语义）；子串消歧规则。
+- **未来偿还**：plan 步骤 5（lookup/query_operators 最简接入）落地 comboIndex 与检索索引；等价组/联动组检索与 `aliases` 转录（现 5 卡全空）后置 v3/人工抽检。本轮未写该代码，无代码 TODO。
+
 ## 意外发现
 > 实施中发现的 spec 未覆盖的依赖/边界/风险
 
 ### 2026-09-03 — skillGroups 口径存在歧义：「技能组」vs「规则说明」
 - **发现**：类别.md 中「自动化·α/·β」只列入「规则说明（25 条）」，不在「技能组（5 条）」；技能联动信息散落两处。
-- **影响**：若 `skillGroups` 仅按「技能组」归集会漏掉自动化这类跨干员联动。本轮 fixture 未含此类（森蚺 skillGroups=[]），不影响断言；但 plan 步骤 1 对照表需在 v3 明确口径，或补充「规则说明里的技能联动」。值得回馈 spec。
+- **影响**：若 `skillGroups` 仅按「技能组」归集会漏掉自动化这类跨干员联动。本轮 fixture 未含此类（森蚺 skillGroups=[]），不影响断言。**处置（2026-09-03 已定口径）**：检索维持仅类别.md「技能组」，等价组昵称/规则说明联动组后置 v3（见债务记录）。值得回馈 spec。
 
 ## 阻塞与解决
 > 遇到的阻塞问题及解决方案
@@ -67,6 +75,7 @@
 - 暂无。
 
 ## 进度快照
-- 已落地：`bench/src/facts/card.ts`（记录卡类型 + 机械字段常量）、`bench/src/facts/mechanical.ts`（parseNameRow / verifyMechanicalCard）、`bench/src/facts/fixtures.ts`（5 标杆条目）、`bench/tests/facts.test.ts`（TDD）。
-- 验证：`pnpm run typecheck` 通过；`pnpm run test` 9 文件 70 用例全通过（含 facts 10 用例）。
+- 已落地：`bench/src/facts/card.ts`（记录卡类型 + 机械字段常量）、`bench/src/facts/mechanical.ts`（parseNameRow / verifyMechanicalCard / findNameRow）、`bench/src/facts/fixtures.ts`（16 标杆条目：F/G 事实类 + S02/S04/S06 体系干员）、`bench/tests/facts.test.ts`（TDD）。
+- 评审：独立审查子代理核实搜索字段充分性（分类过滤 sufficient；别名/合称/技能族 partial），结论已按用户裁定记录（合称另设方案、技能族维持现状、本轮仅记设计）。
+- 验证：`pnpm run typecheck` 通过；`pnpm run test` 9 文件 83 用例全通过（含 facts 23 用例）。
 - 未做（按用户「不做更多」）：plan 验收清单除步骤 1 部分、步骤 2 解析器/断言/5 fixture 外，其余（转录脚本 LLM 调用、P0.4 参考要点重制、人工抽检、bench 工具接入、评测、结论）均未启动；plan 清单 checkbox 未勾选（避免误标完成）。
