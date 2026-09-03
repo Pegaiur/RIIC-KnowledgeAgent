@@ -11,7 +11,8 @@ import type { DocChunk } from './types.js'
 import { callLLM, type ChatMessage, type ProviderOptions } from './provider.js'
 import { computeCosts } from './pricing.js'
 import { buildRulesPrefix } from './rules-prefix.js'
-import { isRetrievalTool, type BenchQuery, type CostRecord, type ThinkingMode, type ToolId } from './types.js'
+import { isRetrievalTool, isFactTool, type BenchQuery, type CostRecord, type ThinkingMode, type ToolId } from './types.js'
+import { getCardStore, serializeCards, type OperatorFilters } from './facts/store.js'
 
 export interface AgentResult {
   records: CostRecord[]
@@ -35,6 +36,15 @@ export const MAX_RAG_CALLS = 2
 
 /** 构建系统提示；工具名随检索器切换（双工具模式同时描述两个检索器及其定位） */
 export function buildSystemPrompt(retriever: RetrieverId = 'bm25', rulesEnabled = false): string {
+  if (retriever === 'facts') {
+    const lines = [
+      '你是「明日方舟基建」知识库问答助手（事实查询模式），基于干员事实记录卡作答。',
+      `你可以调用 lookup（按干员名/技能名/技能组精确查询记录卡，返回记录卡列表）与 query_operators（按设施/阵营/星级/职业分类过滤，支持 termQuery 关键词子串匹配），每次回答最多允许检索 ${MAX_RAG_CALLS} 次，达到上限后请直接基于已返回的记录卡作答。`,
+      '所有答案必须严格基于 lookup/query_operators 返回的记录卡；记录卡未覆盖时，明确说明「知识库未查到」，不得凭记忆补全，不得编造数值或机制。',
+      '输出使用中文，结构化排版（要点列表/表格）。',
+    ]
+    return lines.join('\n')
+  }
   const tools = retriever === 'both' ? 'rag_search（BM25 相关性排序）与 grep_search（字面命中定位）' : retriever === 'grep' ? 'grep_search' : 'rag_search'
   const lines = [
     '你是「明日方舟基建」知识库问答助手，语料为干员基建技能、体系论证与排班策略。',
@@ -92,8 +102,50 @@ export function grepSearchTool(): Record<string, unknown> {
   }
 }
 
-/** 按检索器选取要暴露给模型的工具集（both 双工具同时暴露，模型可自由选） */
+/** lookup 工具定义（facts：按干员名/技能名/技能组精确查询记录卡） */
+export function lookupTool(): Record<string, unknown> {
+  return {
+    type: 'function',
+    function: {
+      name: 'lookup',
+      description: '在明日方舟基建干员事实记录卡中按干员名/技能名/技能组精确查询，返回记录卡列表（≤1KB/卡）',
+      parameters: {
+        type: 'object',
+        properties: {
+          term: { type: 'string', description: '干员标准名/别名/技能名/技能组（精确匹配）' },
+        },
+        required: ['term'],
+      },
+    },
+  }
+}
+
+/** query_operators 工具定义（facts：按设施/阵营/星级/职业分类过滤，含 termQuery 字面子串） */
+export function queryOperatorsTool(): Record<string, unknown> {
+  return {
+    type: 'function',
+    function: {
+      name: 'query_operators',
+      description:
+        '在明日方舟基建干员事实记录卡中按设施/阵营/星级/职业分类过滤；termQuery 对技能名/效果/标签/备注做关键词子串匹配（不含数值效率比较）',
+      parameters: {
+        type: 'object',
+        properties: {
+          room: { type: 'string', description: '精确匹配的设施名（如 制造站/贸易站）' },
+          faction: { type: 'string', description: '所属阵营组（如 莱茵生命/怪物猎人小队）' },
+          rarity: { type: 'string', description: '星级 1~6（无符号）' },
+          profession: { type: 'string', description: '职业（如 近卫/术师）' },
+          excludeIds: { type: 'array', items: { type: 'string' }, description: '按标准名排除的干员列表' },
+          termQuery: { type: 'string', description: '关键词子串（技能名/效果/标签/备注）' },
+        },
+      },
+    },
+  }
+}
+
+/** 按检索器选取要暴露给模型的工具集（facts→lookup/query_operators；both 双工具同时暴露） */
 function retrieverTools(retriever: RetrieverId): Record<string, unknown>[] {
+  if (retriever === 'facts') return [lookupTool(), queryOperatorsTool()]
   if (retriever === 'both') return [ragSearchTool(), grepSearchTool()]
   return retriever === 'grep' ? [grepSearchTool()] : [ragSearchTool()]
 }
@@ -135,7 +187,7 @@ export async function runQuery(
     const resp = await callLLM(messages, isAnswerFallback ? [] : retrieverTools(config.retriever), providerOpts)
     const costs = computeCosts(resp.usage.input, resp.usage.output, resp.usage.cached, config.prices)
     // 本轮实际调用的检索工具（双工具模式统计；供 records.tools 与 toolTrace 复用）
-    const usedTools = resp.toolCalls.map((tc) => tc.name).filter((n): n is ToolId => isRetrievalTool(n))
+    const usedTools = resp.toolCalls.map((tc) => tc.name).filter((n): n is ToolId => isRetrievalTool(n) || isFactTool(n))
     records.push({
       ts: now,
       queryId: query.id,
@@ -201,6 +253,18 @@ export async function runQuery(
               resultText = parts.join('\n\n').slice(0, config.maxContextChars)
             }
           }
+        } else if (tc.name === 'lookup' || tc.name === 'query_operators') {
+          if (retrievalCalls >= MAX_RAG_CALLS) {
+            resultText = `已达到知识库检索上限（${MAX_RAG_CALLS} 次），请直接基于已返回的内容作答，勿再检索。`
+          } else {
+            retrievalCalls++
+            const store = getCardStore()
+            if (tc.name === 'query_operators') {
+              resultText = serializeCards(store.queryOperators(safeParseFilters(tc.arguments) ?? {}))
+            } else {
+              resultText = serializeCards(store.lookup(safeParseTerm(tc.arguments)))
+            }
+          }
         } else {
           resultText = `未知工具：${tc.name}`
         }
@@ -217,7 +281,8 @@ export async function runQuery(
     // 强制次数上限受 MAX_RAG_CALLS 约束，避免 minRagCalls 超上限造成引导死循环至轮次耗尽
     // 注意：超轮次兜底轮不在此引导，直接把已有片段交给模型作答，保证最终答案产出
     const minRag = Math.min(config.minRagCalls, MAX_RAG_CALLS)
-    if (!isAnswerFallback && retrievalCalls < minRag) {
+    // facts 模式不适用 minRag 强制首检（由 MAX_RAG_CALLS 检索预算约束），跳过避免引导未暴露的 rag_search
+    if (!isAnswerFallback && config.retriever !== 'facts' && retrievalCalls < minRag) {
       messages.push({
         role: 'user',
         content: `请先调用 rag_search 检索知识库（当前已检索 ${retrievalCalls} 次，需至少检索 ${minRag} 次）后再作答。`,
@@ -237,6 +302,35 @@ function safeParseQuery(args: string): string | null {
   try {
     const obj = JSON.parse(args) as Record<string, unknown>
     return typeof obj.query === 'string' && obj.query.length > 0 ? obj.query : null
+  } catch {
+    return null
+  }
+}
+
+/** 解析 facts lookup 的 term 参数 */
+function safeParseTerm(args: string): string {
+  try {
+    const obj = JSON.parse(args) as Record<string, unknown>
+    return typeof obj.term === 'string' && obj.term.length > 0 ? obj.term : ''
+  } catch {
+    return ''
+  }
+}
+
+/** 解析 facts query_operators 的过滤参数（仅接收权威类型字段，其余忽略） */
+function safeParseFilters(args: string): OperatorFilters | null {
+  try {
+    const obj = JSON.parse(args) as Record<string, unknown>
+    const filters: OperatorFilters = {}
+    if (typeof obj.room === 'string' && obj.room) filters.room = obj.room
+    if (typeof obj.faction === 'string' && obj.faction) filters.faction = obj.faction
+    if (typeof obj.rarity === 'string' && obj.rarity) filters.rarity = obj.rarity
+    if (typeof obj.profession === 'string' && obj.profession) filters.profession = obj.profession
+    if (typeof obj.termQuery === 'string' && obj.termQuery) filters.termQuery = obj.termQuery
+    if (Array.isArray(obj.excludeIds)) {
+      filters.excludeIds = obj.excludeIds.filter((x): x is string => typeof x === 'string')
+    }
+    return filters
   } catch {
     return null
   }

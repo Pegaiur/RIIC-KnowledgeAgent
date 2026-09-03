@@ -1,0 +1,127 @@
+/**
+ * 运行时记录卡内存 store + 检索索引（plan 步骤 5）。
+ *
+ * 本轮以 `FACTS_FIXTURES`（16 张）为源；全量 425 转录后由同一 store 承载。
+ * lookup 返回命中卡列表（合称/子串消歧后置，仅支持单指标签精确命中）；
+ * query_operators 做分类过滤（含 termQuery 字面子串）。不做落盘、不做来源标注。
+ */
+import type { RecordCard } from './card.js'
+import { FACTS_FIXTURES } from './fixtures.js'
+
+/** query_operators 过滤条件（全部可选；不含数值 minEff / 效率排序） */
+export interface OperatorFilters {
+  room?: string
+  faction?: string
+  rarity?: string
+  profession?: string
+  /** 按 canonical 排除 */
+  excludeIds?: string[]
+  /** 终止词：对 name/target/effectText/notes/aliases 字面子串 */
+  termQuery?: string
+}
+
+/** 记录卡检索 store */
+export interface CardStore {
+  cards: RecordCard[]
+  /** canonical → 卡 */
+  byCanonical: Map<string, RecordCard>
+  /** 单目标别名 → canonical[]（当前 fixtures aliases=[]，结构就绪） */
+  byAlias: Map<string, string[]>
+  /** 检索词 → canonical[]（canonical / aliases / skills[].name / skillGroups） */
+  byTerm: Map<string, Set<string>>
+  lookup: (term: string) => RecordCard[]
+  queryOperators: (filters: OperatorFilters) => RecordCard[]
+}
+
+function addTerm(byTerm: Map<string, Set<string>>, term: string, canonical: string): void {
+  if (!term) return
+  let set = byTerm.get(term)
+  if (!set) {
+    set = new Set()
+    byTerm.set(term, set)
+  }
+  set.add(canonical)
+}
+
+/** 从记录卡数组构建检索 store（索引 + 查询函数） */
+export function buildCardStore(cards: RecordCard[]): CardStore {
+  const byCanonical = new Map<string, RecordCard>()
+  const byAlias = new Map<string, string[]>()
+  const byTerm = new Map<string, Set<string>>()
+
+  for (const card of cards) {
+    byCanonical.set(card.canonical, card)
+    addTerm(byTerm, card.canonical, card.canonical)
+    for (const alias of card.aliases) {
+      addTerm(byTerm, alias, card.canonical)
+      const list = byAlias.get(alias) ?? []
+      list.push(card.canonical)
+      byAlias.set(alias, list)
+    }
+    for (const skill of card.skills) addTerm(byTerm, skill.name, card.canonical)
+    for (const group of card.skillGroups) addTerm(byTerm, group, card.canonical)
+  }
+
+  /** lookup：精确 term → 命中卡列表（canonical/别名/技能名/技能组 均在 byTerm 统一解析） */
+  const lookup = (term: string): RecordCard[] => {
+    const t = (term ?? '').trim()
+    if (!t) return []
+    const canonicals = byTerm.get(t)
+    if (!canonicals) return []
+    return [...canonicals].map((c) => byCanonical.get(c)).filter((c): c is RecordCard => c !== undefined)
+  }
+
+  /** query_operators：分类过滤（含 termQuery 字面子串、excludeIds 按 canonical） */
+  const queryOperators = (filters: OperatorFilters): RecordCard[] => {
+    const q = (filters.termQuery ?? '').trim()
+    return cards.filter((card) => {
+      if (filters.room && !card.rooms.includes(filters.room)) return false
+      if (filters.faction && !card.factionGroups.includes(filters.faction)) return false
+      if (filters.rarity && card.rarity !== filters.rarity) return false
+      if (filters.profession && card.class !== filters.profession) return false
+      if (filters.excludeIds && filters.excludeIds.includes(card.canonical)) return false
+      if (q && !matchTermQuery(card, q)) return false
+      return true
+    })
+  }
+
+  return { cards, byCanonical, byAlias, byTerm, lookup, queryOperators }
+}
+
+/** termQuery 子串命中：卡内 name/target/effectText/notes/aliases 任一包含 q */
+function matchTermQuery(card: RecordCard, q: string): boolean {
+  if (card.canonical.includes(q)) return true
+  if (card.aliases.some((a) => a.includes(q))) return true
+  for (const skill of card.skills) {
+    if (skill.name.includes(q) || skill.target.includes(q) || skill.effectText.includes(q)) return true
+  }
+  if (card.skillGroups.some((g) => g.includes(q))) return true
+  return card.notes.includes(q)
+}
+
+/** 渲染命中卡列表为工具结果文本（单卡限额 1KB，摘要 + 技能效果原文） */
+export function serializeCards(cards: RecordCard[]): string {
+  if (cards.length === 0) return '（无匹配记录卡）'
+  return cards.map(serializeCard).join('\n\n')
+}
+
+function serializeCard(card: RecordCard): string {
+  const lines = [
+    `【${card.canonical}】${card.rarity}星·${card.class}｜设施：${card.rooms.join('、')}｜阵营：${card.factionGroups.join('、') || '无'}`,
+  ]
+  for (const skill of card.skills) {
+    lines.push(`- ${skill.unlockType}「${skill.name}」：${skill.effectText}`)
+  }
+  if (card.skillGroups.length > 0) lines.push(`技能组：${card.skillGroups.join('、')}`)
+  if (card.notes) lines.push(`备注：${card.notes}`)
+  const text = lines.join('\n')
+  return text.length > 1000 ? `${text.slice(0, 999)}…` : text
+}
+
+let singleton: CardStore | undefined
+
+/** 运行时卡 store 单例（模块级惰性；全量转录后仍从 fixtures 或未来构建源接入） */
+export function getCardStore(): CardStore {
+  if (!singleton) singleton = buildCardStore(FACTS_FIXTURES)
+  return singleton
+}

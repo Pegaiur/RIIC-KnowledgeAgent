@@ -54,7 +54,7 @@ export const PROVIDERS: Record<ProviderId, ProviderSpec> = {
   },
 }
 
-export type RetrieverId = 'bm25' | 'grep' | 'both'
+export type RetrieverId = 'bm25' | 'grep' | 'both' | 'facts'
 
 /**
  * 实验参数集中配置（默认无污染）。

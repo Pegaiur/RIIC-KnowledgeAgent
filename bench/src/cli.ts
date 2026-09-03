@@ -12,6 +12,7 @@ import { loadConfig, type RetrieverId } from './config.js'
 import { corpusStats, loadCorpus } from './corpus.js'
 import { checkGold, loadGold, renderHitrate, runHitrate } from './hitrate.js'
 import { buildIndex } from './retriever.js'
+import { getCardStore } from './facts/store.js'
 import { runBenchmark } from './runner.js'
 import { aggregate, renderCrossProvider, renderCsv, renderMarkdown, type BenchReport } from './report.js'
 import type { BenchQuery, CostRecord, ProviderId, ThinkingMode } from './types.js'
@@ -27,7 +28,7 @@ const RAG_TOOL_SUSPENDED = true
 function assertRagToolAvailable(): void {
   if (!RAG_TOOL_SUSPENDED) return
   throw new Error(
-    'RAG 查询工具已临时停用：散文语料已废弃（2026-09-03）。待 facts-first 重建（记录卡资产 + lookup/query 工具，见 docs/plan-hybrid-facts.md）后恢复。',
+    'RAG 检索器（bm25/grep/both）已临时停用：散文语料已废弃（2026-09-03）。facts 模式可用（--retriever facts，基于干员记录卡）；其余检索器待散文重写后恢复。',
   )
 }
 
@@ -100,7 +101,7 @@ function printUsage(): void {
       'rag-test bench —— LLM 查询输出成本基准（Hy3 / Qwen3.7-Flash）',
       '',
       '用法：',
-      '  node dist/cli.js run [--provider hy3|qwen] [--thinking off|low|high] [--retriever bm25|grep] [--min-rag N] [--limit N] [--dry] [--questions <path>] [--out <dir>]',
+      '  node dist/cli.js run [--provider hy3|qwen] [--thinking off|low|high] [--retriever bm25|grep|both|facts] [--min-rag N] [--limit N] [--dry] [--questions <path>] [--out <dir>]',
       '  node dist/cli.js report <runDir> [--out <path>]',
       '  node dist/cli.js compare <runDir1> <runDir2> [--out <path>]',
       '  node dist/cli.js hitrate [--topk 3,5,10] [--gold <path>] [--check-gold] [--out <path>]',
@@ -147,12 +148,13 @@ async function main(): Promise<void> {
   }
 
   if (args.command === 'run') {
-    assertRagToolAvailable()
     const config = loadConfig(args.provider)
     if (args.retriever) config.retriever = args.retriever
     if (args.minRag !== null) config.minRagCalls = args.minRag
-    const stats = corpusStats(config.corpusDir)
-    if (stats.files === 0) {
+    const isFacts = config.retriever === 'facts'
+    if (!isFacts) assertRagToolAvailable()
+    const stats = isFacts ? { files: 0 } : corpusStats(config.corpusDir)
+    if (!isFacts && stats.files === 0) {
       throw new Error(`语料目录为空：${config.corpusDir}（相对仓库根运行）`)
     }
 
@@ -161,7 +163,7 @@ async function main(): Promise<void> {
     const picked = args.limit ? questions.slice(0, args.limit) : questions
 
     process.stdout.write(
-      `Provider：${config.providerLabel}｜语料：${stats.files} 个文件｜问题：${picked.length}/${questions.length}｜档位：${args.thinking}｜检索器：${config.retriever}｜强制首检：${config.minRagCalls}｜dry：${args.dry}\n`,
+      `Provider：${config.providerLabel}｜语料：${isFacts ? `记录卡 ×${getCardStore().cards.length}` : `${stats.files} 个文件`}｜问题：${picked.length}/${questions.length}｜档位：${args.thinking}｜检索器：${config.retriever}｜强制首检：${config.minRagCalls}｜dry：${args.dry}\n`,
     )
 
     const out = await runBenchmark(picked, {

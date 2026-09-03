@@ -41,8 +41,8 @@ export async function runBenchmark(
   const config = opts.config ?? loadConfig()
   const started = Date.now()
 
-  // 语料 + 索引（一次构建，全部查询复用）
-  const chunks = loadCorpus(config.corpusDir, config.maxContextChars)
+  // 语料 + 索引（一次构建，全部查询复用；facts 模式不依赖散文语料——语料目录已删除，跳过加载以空占位）
+  const chunks = config.retriever === 'facts' ? [] : loadCorpus(config.corpusDir, config.maxContextChars)
   const index = buildIndex(chunks)
 
   const runTag = `${new Date().toISOString().replace(/[:.]/g, '-')}-${config.provider}-${opts.thinking}`

@@ -1,7 +1,7 @@
 /**
  * 报告聚合：JSONL 记录 → Markdown 报告 + CSV
  */
-import { isRetrievalTool, type CostRecord } from './types.js'
+import { isRetrievalTool, isFactTool, type CostRecord } from './types.js'
 
 export interface QueryAgg {
   queryId: string
@@ -176,7 +176,7 @@ function aggregateToolUsage(records: CostRecord[]): ToolUsageAgg[] {
   const counter = new Map<string, number>()
   for (const r of records) {
     for (const t of r.tools ?? []) {
-      if (isRetrievalTool(t)) counter.set(t, (counter.get(t) ?? 0) + 1)
+      if (isRetrievalTool(t) || isFactTool(t)) counter.set(t, (counter.get(t) ?? 0) + 1)
     }
   }
   return [...counter.entries()]
