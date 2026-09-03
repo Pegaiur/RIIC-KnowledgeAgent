@@ -11,28 +11,28 @@ const NAME_LIST_PATH = join(dirname(fileURLToPath(import.meta.url)), '../../know
 const nameListText = readFileSync(NAME_LIST_PATH, 'utf-8')
 
 describe('mechanical：名册.md 解析（程序化预填机械字段）', () => {
-  it('解析「单设施、无组」的行', () => {
+  it('解析「单设施、无组」的行（rarity 去 ☆ 为数字字符串）', () => {
     expect(parseNameRow('- 刻俄柏 | ☆6 | 术师 | 制造站')).toEqual({
       canonical: '刻俄柏',
-      rarity: '☆6',
+      rarity: '6',
       class: '术师',
       rooms: ['制造站'],
-      groups: [],
+      factionGroups: [],
     })
   })
 
   it('解析「多设施、有组」的行（顿号分隔房间与组）', () => {
     expect(parseNameRow('- 森蚺 | ☆6 | 重装 | 制造站、控制中枢 | 萨尔贡')).toEqual({
       canonical: '森蚺',
-      rarity: '☆6',
+      rarity: '6',
       class: '重装',
       rooms: ['制造站', '控制中枢'],
-      groups: ['萨尔贡'],
+      factionGroups: ['萨尔贡'],
     })
   })
 
-  it('名册行缺失所属组时 groups 为空数组', () => {
-    expect(parseNameRow('- 伊内丝 | ☆6 | 先锋 | 会客室、办公室').groups).toEqual([])
+  it('名册行缺失所属阵营组时 factionGroups 为空数组', () => {
+    expect(parseNameRow('- 伊内丝 | ☆6 | 先锋 | 会客室、办公室').factionGroups).toEqual([])
   })
 })
 
@@ -58,7 +58,7 @@ describe('程序化核对断言：机械字段与真源名册行逐字段 0 差�
         rarity: card.rarity,
         class: card.class,
         rooms: card.rooms,
-        groups: card.groups,
+        factionGroups: card.factionGroups,
       })
       // 程序化核对断言（0 差异，单一实现双消费）
       const res = verifyMechanicalCard(card, row!)

@@ -2,7 +2,7 @@
  * 记录卡（facts-first）：LLM 转录 + 程序化核对生成的干员事实卡片。
  *
  * 字段口径（plan 步骤 1）：
- * - 机械字段（canonical / rarity / class / rooms / groups）：与 references 逐字 0 差异，程序化核对断言覆盖。
+ * - 机械字段（canonical / rarity / class / rooms / factionGroups）：与 references 一致（rarity 规范化为 1~6，去 ☆；其余逐字），程序化核对断言覆盖。
  * - 语义字段（aliases / skillGroups / skills / notes）：LLM 转录 + 人工抽检，不参与机器比对。
  * 字段-来源对照表见 docs/plan-hybrid-facts-notes.md「决策偏离」。
  */
@@ -25,14 +25,14 @@ export interface RecordCard {
   canonical: string
   /** 别名/俗称归一（歧义.md + 俗称；机械核对不覆盖） */
   aliases: string[]
-  /** 星级（☆N，字符串，不参与机器比较——plan 非目标 minEff） */
+  /** 星级：1~6 数字字符串（无 ☆ 等符号；不参与机器比较——plan 非目标 minEff） */
   rarity: string
   /** 职业 */
   class: string
   /** 有基建技能的设施 */
   rooms: string[]
-  /** 所属组（名册第 5 列，官方术语表） */
-  groups: string[]
+  /** 所属阵营组（名册第 5 列，官方术语表干员组） */
+  factionGroups: string[]
   /** 技能等价组（类别.md「技能组」） */
   skillGroups: string[]
   /** 技能列表（按 references 技能分片转录） */
@@ -42,4 +42,4 @@ export interface RecordCard {
 }
 
 /** 参与程序化核对（0 差异断言）的机械字段 */
-export const MECHANICAL_FIELDS = ['canonical', 'rarity', 'class', 'rooms', 'groups'] as const
+export const MECHANICAL_FIELDS = ['canonical', 'rarity', 'class', 'rooms', 'factionGroups'] as const

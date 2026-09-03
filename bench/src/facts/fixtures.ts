@@ -17,10 +17,10 @@ export const FACTS_FIXTURES: RecordCard[] = [
     // 单设施、无组
     canonical: '刻俄柏',
     aliases: [],
-    rarity: '☆6',
+    rarity: '6',
     class: '术师',
     rooms: ['制造站'],
-    groups: [],
+    factionGroups: [],
     skillGroups: [],
     skills: [
       {
@@ -42,10 +42,10 @@ export const FACTS_FIXTURES: RecordCard[] = [
     // 单设施、有组（莱茵生命），含技能组（莱茵科技类技能）
     canonical: '多萝西',
     aliases: [],
-    rarity: '☆6',
+    rarity: '6',
     class: '特种',
     rooms: ['制造站'],
-    groups: ['莱茵生命'],
+    factionGroups: ['莱茵生命'],
     skillGroups: ['莱茵科技类技能'],
     skills: [
       {
@@ -67,10 +67,10 @@ export const FACTS_FIXTURES: RecordCard[] = [
     // 多设施、有组（萨尔贡），含「提升替换」语义
     canonical: '森蚺',
     aliases: [],
-    rarity: '☆6',
+    rarity: '6',
     class: '重装',
     rooms: ['制造站', '控制中枢'],
-    groups: ['萨尔贡'],
+    factionGroups: ['萨尔贡'],
     skillGroups: [],
     skills: [
       {
@@ -98,10 +98,10 @@ export const FACTS_FIXTURES: RecordCard[] = [
     // 歧义组（所属组「能天使」），需设施消歧
     canonical: '能天使',
     aliases: [],
-    rarity: '☆6',
+    rarity: '6',
     class: '狙击',
     rooms: ['贸易站'],
-    groups: ['能天使'],
+    factionGroups: ['能天使'],
     skillGroups: [],
     skills: [
       {
@@ -123,10 +123,10 @@ export const FACTS_FIXTURES: RecordCard[] = [
     // 多设施、无组（会客室 + 办公室），技能跨两个分片
     canonical: '伊内丝',
     aliases: [],
-    rarity: '☆6',
+    rarity: '6',
     class: '先锋',
     rooms: ['会客室', '办公室'],
-    groups: [],
+    factionGroups: [],
     skillGroups: [],
     skills: [
       {
