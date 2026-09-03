@@ -17,15 +17,15 @@
 
 ### 2026-09-03 — 记录卡字段定稿 + 字段-来源对照表（对应 plan 步骤 1 验收）
 - **背景**：plan 步骤 1 要求字段清单 + 字段-来源对照表定稿，作为转录/核对的共同口径。
-- **决策**：字段 `canonical / aliases / rarity / class / rooms / groups / skillGroups / skills[]（name / unlockType / target / effectText）/ notes`；机械字段仅 5 项（canonical/rarity/class/rooms/groups）参与 0 差异断言，其余为语义。来源对照如下（只作取数与抽检参考，不落到卡内）：
+- **决策**：字段 `canonical / aliases / rarity / class / rooms / factionGroups / skillGroups / skills[]（name / unlockType / target / effectText）/ notes`；机械字段仅 5 项（canonical/rarity/class/rooms/factionGroups）参与 0 差异断言，其余为语义。来源对照如下（只作取数与抽检参考，不落到卡内）：
 
 | 字段 | 来源 | 类别 | 0 差异核对 |
 | --- | --- | --- | --- |
 | canonical | 名册.md 首列 `- 标准名 | …` | 机械 | 是 |
-| rarity | 名册.md 第 2 列（☆N） | 机械 | 是 |
+| rarity | 名册.md 第 2 列（☆N，规范化去 ☆ 为 1~6） | 机械 | 是 |
 | class | 名册.md 第 3 列（职业） | 机械 | 是 |
 | rooms | 名册.md 第 4 列（`、` 分隔） | 机械 | 是 |
-| groups | 名册.md 第 5 列（`、` 分隔，可为空） | 机械 | 是 |
+| factionGroups | 名册.md 第 5 列（`、` 分隔，可为空） | 机械 | 是 |
 | aliases | 歧义.md（子串对/简称合称/含称）+ 俗称（2026-09-03 废弃散文注释） | 语义 | 否（人工抽检） |
 | skillGroups | 类别.md「技能组」 | 语义 | 否 |
 | skills[].name / unlockType | 技能-*.md `### 干员` 下 `- **解锁方式**「名称」:…` | 机械（可程序化预填） | 本轮 fixture 基准值提供 |
