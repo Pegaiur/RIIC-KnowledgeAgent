@@ -42,13 +42,24 @@
 3. **P0.4 参考要点重制**（H1 判定前提，勿低估工作量）：`docs/spec/rag-answer-baseline.md` 中事实类 12 题（F01-F10/G01/G02）以 references 真源重制要点（能定位 references 出处即可，不强制 file#小节），人工终审，spec 版本递进；S 类 8 题暂缓。
 4. **人工抽检**：语义字段（代偿备注 / 俗称归一 / 相关组合）抽检 → 按条修正，而非全量终审。
 5. **bench 最简接入**：lookup + query_operators 两 tool（读运行时记录卡；复用现有 runQuery 检索预算），工具单测（别名命中、分类过滤）。验收：两 tool 接入 + 单测通过。
+   - **运行时卡数据源（本轮）**：`FACTS_FIXTURES` 16 张内存单例（`getCardStore()`，模块级惰性，避免改 `runQuery` 签名；全量 425 转录后由同一 store 承载）。
+   - **索引/存储**：`bench/src/facts/store.ts`——`byCanonical` / `byAlias`（单目标别名→canonical[]）/ `byTerm`（canonical / aliases / skills[].name / skillGroups → canonical[]）；`lookup(term): RecordCard[]`（解析顺序 canonical→aliases→技能名→skillGroups，返回卡列表；合称/子串消歧后置）、`queryOperators({ room, faction, rarity, profession, excludeIds, termQuery }): RecordCard[]`（termQuery 对 name/target/effectText/notes/aliases 字面子串；excludeIds 按 canonical；不含数值 minEff / 效率排序）。
+   - **工具 schema + 派发**：`agent.ts` 增 `lookupTool()` / `queryOperatorsTool()`；`retrieverTools('facts')` 返回两工具；`runQuery` 循环内派发并套用 `MAX_RAG_CALLS` 预算（超出提示「已达检索上限」）；`buildSystemPrompt('facts')` 描述两 tool 职能并改契约（答案须基于 lookup/query 返回记录卡；片段未覆盖→明确「知识库未查到」，禁凭记忆补全/编造数值机制）。
+   - **配置**：`RetrieverId` 增 `'facts'`（bm25/grep/both 不变，向后兼容）；`EXPERIMENT.retriever` 可切换 `'facts'`。
+   - **CLI**：`RAG_TOOL_SUSPENDED` 守卫仅拦截非 facts 模式（facts 不依赖已废弃散文语料）；`pnpm run bench:dry`（dry 不发真实请求）验证工具链路。
+   - **单测**：`bench/tests/facts-tools.test.ts`——lookup 命中与解析顺序、query_operators 分类过滤/termQuery/excludeIds、runQuery(facts) 工具暴露/派发/预算/末位兜底。
+   - **边界**：不改 `runQuery` 公共签名（避免触发 ADR）；若后续改签名或 bench CLI 公共契约需先补 ADR（见「关联 ADR」）。`buildSystemPrompt` 改动会影响缓存前缀（`rules` 段不受影响）。
+   - **facts 模式语料旁路（评审补强）**：`runner.ts` / `cli.ts` 在 `retriever==='facts'` 时跳过 `loadCorpus`/`buildIndex`/`corpusStats`（语料目录 `arknights-base-vault/docs` 已整体删除，否则 `readdirSync` 抛 ENOENT），以空 `DocChunk[]` / `IndexEntry` 占位传入 `runQuery`（签名不变）。
+   - **dry 工具名映射（评审补强）**：`provider.ts` 的 dry 结果按 `retriever` 映射 facts → `lookup` / `query_operators`，使 `bench:dry` 能走 facts 派发分支（当前 dry 硬编码 facts 会落到 `rag_search`，无法验证两 tool 接入）。
+   - **守卫时序（评审补强）**：`assertRagToolAvailable` 移至 `loadConfig` 之后、或改为仅拦 `run`/`hitrate` 等非 facts 命令；`bench:dry` 默认 `retriever='bm25'`，facts 流程需显式 `--retriever facts`（或改默认）。
+   - **工具统计口径（评审补强）**：`ToolId` / `isRetrievalTool` 扩 `lookup` / `query_operators`（或新增 `isFactTool` 谓词），否则 `records.tools`/`toolTrace`/`report` 在 facts 模式下无法统计工具调用。
 6. **评测**：事实 12 题（P0.4 要点判定）+ 新增 5 题组合题（非数值字段组合，样例「谢拉格派系 + 制造站」；落点 questions.json 扩展或独立文件——Phase 3 定稿增量项）——对照组：无工具裸查（同模型同题，对照 H1 归因）。
 7. **结论落盘**：量化结论写入实施笔记；转录模型/评测模型分别记录；评测 provider ≠ 项目目标 provider Hy3，结论不外推。
 
 ### 查询工具
 
 ```
-┌─ lookup(term)：别名归一（歧义 + 等价组 + 俗称）→ canonical → 返回记录卡（≤1KB）
+┌─ lookup(term)：别名归一（歧义 + 等价组 + 俗称）→ canonical → 返回命中记录卡列表（单指标签命中 1 卡 ≤1KB；合称/子串消歧后置）
 ├─ query_operators({ room, faction, rarity, profession, excludeIds, termQuery })：分类过滤（不含数值 minEff / 效率排序）
 └─ （预留，v0 不启用）search_corpus(text) / read —— 散文重写后接入
 ```
