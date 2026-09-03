@@ -16,6 +16,21 @@ import { runBenchmark } from './runner.js'
 import { aggregate, renderCrossProvider, renderCsv, renderMarkdown, type BenchReport } from './report.js'
 import type { BenchQuery, CostRecord, ProviderId, ThinkingMode } from './types.js'
 
+/**
+ * RAG 查询工具临时停用（P0.7）。
+ * 散文语料已废弃（P0.1，2026-09-03），facts-first（facts.json + lookup/query 工具）重建前不可用；
+ * report/compare 仅读历史运行结果、不依赖语料，保留可用。
+ * TODO(tech-debt) R5：facts-first 重建（facts.json + lookup/query 工具接入）后移除 RAG_TOOL_SUSPENDED 守卫，恢复 run/hitrate。
+ */
+const RAG_TOOL_SUSPENDED = true
+
+function assertRagToolAvailable(): void {
+  if (!RAG_TOOL_SUSPENDED) return
+  throw new Error(
+    'RAG 查询工具已临时停用：散文语料已废弃（2026-09-03，见 docs/notes-corpus-purge.md）。待 facts-first 重建（facts.json + lookup/query 工具，见 docs/plan-hybrid-facts.md）后恢复。',
+  )
+}
+
 interface ParsedArgs {
   command: string
   thinking: ThinkingMode
@@ -132,6 +147,7 @@ async function main(): Promise<void> {
   }
 
   if (args.command === 'run') {
+    assertRagToolAvailable()
     const config = loadConfig(args.provider)
     if (args.retriever) config.retriever = args.retriever
     if (args.minRag !== null) config.minRagCalls = args.minRag
@@ -166,6 +182,7 @@ async function main(): Promise<void> {
   }
 
   if (args.command === 'hitrate') {
+    assertRagToolAvailable()
     const config = loadConfig()
     const goldPath = args.gold ?? join(process.cwd(), 'bench', 'gold.json')
     const gold = loadGold(goldPath)
