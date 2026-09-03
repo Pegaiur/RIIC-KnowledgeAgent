@@ -18,16 +18,16 @@ import type { BenchQuery, CostRecord, ProviderId, ThinkingMode } from './types.j
 
 /**
  * RAG 查询工具临时停用（P0.7）。
- * 散文语料已废弃（P0.1，2026-09-03），facts-first（facts.json + lookup/query 工具）重建前不可用；
+ * 散文语料已废弃（P0.1，2026-09-03），facts-first（记录卡资产 + lookup/query 工具）重建前不可用；
  * report/compare 仅读历史运行结果、不依赖语料，保留可用。
- * TODO(tech-debt) R5：facts-first 重建（facts.json + lookup/query 工具接入）后移除 RAG_TOOL_SUSPENDED 守卫，恢复 run/hitrate。
+ * TODO(tech-debt) R5：facts-first 重建（记录卡资产 + lookup/query 工具接入）后移除 RAG_TOOL_SUSPENDED 守卫，恢复 run/hitrate。
  */
 const RAG_TOOL_SUSPENDED = true
 
 function assertRagToolAvailable(): void {
   if (!RAG_TOOL_SUSPENDED) return
   throw new Error(
-    'RAG 查询工具已临时停用：散文语料已废弃（2026-09-03，见 docs/notes-corpus-purge.md）。待 facts-first 重建（facts.json + lookup/query 工具，见 docs/plan-hybrid-facts.md）后恢复。',
+    'RAG 查询工具已临时停用：散文语料已废弃（2026-09-03）。待 facts-first 重建（记录卡资产 + lookup/query 工具，见 docs/draft-hybrid-facts.md）后恢复。',
   )
 }
 
