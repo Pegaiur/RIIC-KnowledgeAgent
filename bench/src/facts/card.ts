@@ -1,0 +1,45 @@
+/**
+ * 记录卡（facts-first）：LLM 转录 + 程序化核对生成的干员事实卡片。
+ *
+ * 字段口径（plan 步骤 1）：
+ * - 机械字段（canonical / rarity / class / rooms / groups）：与 references 逐字 0 差异，程序化核对断言覆盖。
+ * - 语义字段（aliases / skillGroups / skills / notes）：LLM 转录 + 人工抽检，不参与机器比对。
+ * 字段-来源对照表见 docs/plan-hybrid-facts-notes.md「决策偏离」。
+ */
+
+/** 单个基建技能（按 references 技能分片转录，效果原文不数值化） */
+export interface RecordSkill {
+  /** 技能名（去除「」后的名称） */
+  name: string
+  /** 解锁方式：初始解锁 / 精英 N 解锁 / 精英 N 提升 */
+  unlockType: string
+  /** 标签/作用产物定位（保留 references 原文，不结构化拆分；无则空串） */
+  target: string
+  /** 效果原文（references 原句，不做 minEff 数值化） */
+  effectText: string
+}
+
+/** 干员记录卡 */
+export interface RecordCard {
+  /** 标准名（references 名册 canonical） */
+  canonical: string
+  /** 别名/俗称归一（歧义.md + 俗称；机械核对不覆盖） */
+  aliases: string[]
+  /** 星级（☆N，字符串，不参与机器比较——plan 非目标 minEff） */
+  rarity: string
+  /** 职业 */
+  class: string
+  /** 有基建技能的设施 */
+  rooms: string[]
+  /** 所属组（名册第 5 列，官方术语表） */
+  groups: string[]
+  /** 技能等价组（类别.md「技能组」） */
+  skillGroups: string[]
+  /** 技能列表（按 references 技能分片转录） */
+  skills: RecordSkill[]
+  /** 代偿备注 / 歧义提示（人工/LLM 语义字段） */
+  notes: string
+}
+
+/** 参与程序化核对（0 差异断言）的机械字段 */
+export const MECHANICAL_FIELDS = ['canonical', 'rarity', 'class', 'rooms', 'groups'] as const
