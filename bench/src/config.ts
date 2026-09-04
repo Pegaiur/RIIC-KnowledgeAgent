@@ -59,14 +59,12 @@ export type RetrieverId = 'bm25' | 'grep' | 'both' | 'facts' | 'hybrid'
 /**
  * 实验参数集中配置（默认无污染）。
  * 不再从环境变量读取——避免 shell 内残留（如 BENCH_ENTITY_BOOST=1.5）隐式污染基准结果。
- * 实验时直接改此处的值；A/B 对照显式改 rules（meta.json 会记录读到的值）。
+ * 实验时直接改此处的值，meta.json 会记录实际配置。
  * （API Key 属密钥，仍走 secret.yaml/env 兜底，见 loadConfig。）
  */
 export interface ExperimentConfig {
   /** 启用的 provider（hy3 | qwen） */
   provider: ProviderId
-  /** 规则前缀开关（B 组 A/B 对照置 true） */
-  rules: boolean
   /** 实体词加权因子（P2 已不采纳，默认 0 = 关闭） */
   entityBoost: number
   /** 分词器（bigram | jieba） */
@@ -90,7 +88,6 @@ export interface ExperimentConfig {
 /** 实验参数默认值（集中于此，改值时全局生效） */
 export const EXPERIMENT: ExperimentConfig = {
   provider: 'qwen',
-  rules: false,
   entityBoost: 0,
   tokenizer: 'bigram',
   minRagCalls: 1,
@@ -138,8 +135,6 @@ export interface BenchConfig {
   tokenizer: TokenizerId
   /** 实体词加权因子（0 = 关闭；>0 时 BM25 精确命中实体词元得分 × 该因子，见 EXPERIMENT.entityBoost） */
   entityBoost: number
-  /** 规则前缀开关（EXPERIMENT.rules 集中控制；默认关，A/B 对照组为 0；规则段置顶注入 system prompt） */
-  rules: boolean
 }
 
 export function loadConfig(providerInput?: ProviderId): BenchConfig {
@@ -162,7 +157,6 @@ export function loadConfig(providerInput?: ProviderId): BenchConfig {
     maxContextChars: EXPERIMENT.maxContextChars,
     retriever: EXPERIMENT.retriever,
     minRagCalls: EXPERIMENT.minRagCalls,
-    rules: EXPERIMENT.rules,
     tokenizer: EXPERIMENT.tokenizer,
     entityBoost: EXPERIMENT.entityBoost,
   }

@@ -1,31 +1,32 @@
-# ADR-004：查询 Agent 采用三层知识结构
+# ADR-004：查询 Agent 采用单一指令源与分层证据
 
 - 日期：2026-09-04
 - 状态：已实施
 
 ## 背景
 
-通用基建规则散落在 `knowledge/SKILL.md` 与 base，查询 Agent 又不会读取仓库根 `AGENTS.md`；具体干员案例常驻提示会增加输入并污染无关问题，而只靠 RAG 又会让基础判断依赖召回。
+查询行为曾同时由 `knowledge/AGENTS.md`、`bench/src/agent.ts` 的手写 system prompt、未被运行时消费的 `knowledge/SKILL.md` 与默认关闭的 rules-prefix 描述。证据约束、工具路由和表达规则发生重复；根 `AGENTS.md` 又属于开发代理，不能混入查询上下文。
 
 ## 决策
 
-新增由 facts 与 hybrid 模式默认注入的 `knowledge/AGENTS.md`，承载稳定通用知识和工具契约；具体干员的跨技能解释进入 facts notes；详细机制、数值、组合与建议保留在 base/guides 按需检索。历史 BM25/grep 模式不默认注入，以维持既有对照语义。
+以 `knowledge/AGENTS.md` 作为所有查询模式唯一的人工指令源，仅承载短查询决策契约。`agent.ts` 根据实际工具集附加模式、可用工具和调用上限，不再手写平行行为规则。删除 `knowledge/SKILL.md` 与 rules-prefix 运行路径；具体干员解释进入 facts notes，详细事实、机制、数值、组合与建议保留在 references/base/guides 按需查询。
 
 ## 理由
 
-三层结构让常用基础不依赖召回，又避免把对象级细节和完整语料塞进 system prompt。每类知识只有一个主要运行时落点，迁移后删除重复内容即可控制漂移，无需另建全量审阅台账。
+单一人工指令源消除遵循竞争和维护漂移；机械能力由代码从实际配置生成，不会与工具集失配。只保留能预防重复错误且无法由代码强制的规则，可避免把开发流程、百科事实和通用写作习惯常驻注入。
 
 ## 备选方案
 
-- 把领域知识加入根 `AGENTS.md` — 放弃原因：只影响开发代理，不会进入 Qwen 查询上下文。
-- 扩写旧 `rules-prefix.ts` — 放弃原因：该模块是默认关闭的历史检索词实验，且需要保留对照语义。
-- 所有内容继续走 RAG — 放弃原因：作用域、工具契约和基础判断仍受召回波动影响。
+- 把查询方法加入根 `AGENTS.md` — 放弃原因：会把开发、提交和文档流程注入 Qwen，并增加无关 token。
+- 保留 `SKILL.md` 作为人工交互手册 — 放弃原因：查询运行时不消费它，继续维护只会形成第二份行为说明。
+- 保留 rules-prefix 实验开关 — 放弃原因：历史实测未带来质量收益且增加成本；归档结果足以保留决策依据。
+- 全部方法继续由 `agent.ts` 拼写 — 放弃原因：模式分支会复制证据与表达规则，无法形成单一真源。
 
 ## 后果
 
-facts/hybrid 的 system prompt 增加一段稳定前缀；修改常驻知识时需要运行提示注入和相关答案回归。具体技能事实仍以 references 投影为准，AGENTS 不成为干员数值来源。
+全部检索模式共享同一短决策契约，历史 BM25/grep 的 prompt 语义因此发生版本变化；既有运行结果保持不变，新运行通过 AGENTS 内容哈希区分。具体事实仍以工具返回为准，AGENTS 不成为游戏事实来源。
 
 ## 关联
 
 - 规划文档：`docs/plan-agent-facts-knowledge-layering.md`
-- 扩展需求：`docs/inbox.md` 的“R5 查询 Agent 知识分层”
+- 扩展需求：`docs/inbox.md` 的“R5 查询 Agent 知识分层”和“R5 查询 Agent 指令单一真源”

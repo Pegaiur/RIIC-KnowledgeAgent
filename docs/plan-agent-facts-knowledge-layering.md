@@ -1,11 +1,11 @@
-# 查询 Agent 常驻知识与 facts notes 分层计划
+# 查询 Agent 单一指令源与 facts notes 分层计划
 
 > 创建日期：2026-09-04
 > 状态：施工中
 
 ## 目标
 
-从 `knowledge/SKILL.md` 与 base 中提炼稳定、通用且高频的基建基础，作为查询 Agent 的常驻 `knowledge/AGENTS.md`；把只对具体干员成立的机制说明放入 facts notes，详细设施机制与组合建议继续按需检索。
+以 `knowledge/AGENTS.md` 作为查询 Agent 唯一人工指令源，只保留证据边界、工具分流、领域语义陷阱、计算边界和不确定性表达；模式能力由代码生成。对象级机制说明进入 facts notes，详细事实、设施机制与组合建议继续按需查询。
 
 ## 非目标
 
@@ -13,26 +13,29 @@
 - 不在本轮重制 20 题答案基线，不执行 12+5 查询/裸查大评测。
 - 不把完整组合、总效率、缺人路线和培养评价复制进干员备注。
 - 不修改现有 facts 查询参数、数值结构化边界或检索轮次预算。
+- 不把根 `AGENTS.md` 的开发流程、通用写作习惯、截图流程或具体游戏事实注入查询 Agent。
 
 ## 架构分析
 
-根 `AGENTS.md` 是开发代理入口，不会进入 Qwen 查询上下文；查询提示目前由 `bench/src/agent.ts` 构造。旧 `rules-prefix.ts` 是默认关闭的检索词实验，不能承载新的常驻知识。另一方面，`knowledge/SKILL.md` 混合了通用规则、详细干员案例和交互话术，base 又包含可在所有查询前成立的基础，导致运行时必须依赖检索才能拿到最基本的判断框架。
+根 `AGENTS.md` 是开发代理入口，不能进入 Qwen 查询上下文。查询行为曾同时由 `knowledge/AGENTS.md`、`bench/src/agent.ts` 的手写 system prompt、未被运行时消费的 `knowledge/SKILL.md`，以及默认关闭的 `rules-prefix.ts` 描述；同一证据约束和工具路由存在多处表述，形成遵循竞争与维护漂移。
 
-采用三层边界：常驻 AGENTS 只放跨干员通用知识和工具契约；facts notes 放对象级语义解释；base/guides 保留详细机制、数值和方案。迁移范围由选中的内容本身限定，以代表性回归证明可用，不另建治理台账。
+采用“单一人工指令源 + 机械能力块 + 分层证据”边界：`knowledge/AGENTS.md` 只放无法由代码强制且能预防重复错误的短决策契约；`agent.ts` 仅附加当前模式、实际暴露工具和调用上限；工具参数由 schema 描述并由循环强制。facts notes 放对象级语义解释，base/guides 保留详细机制、数值和方案。
 
 ## 实施方案
 
-1. 新建 `knowledge/AGENTS.md`，纳入作用域、依据优先级、设施职责、制造/贸易口径、心情、解锁/提升、作用范围、工具选择和计算边界。
-2. facts 与 hybrid 模式默认读取并注入该文件；历史 BM25/grep 对照模式保持不变。缺失文件使用中文错误快速失败。
-3. 缩减 `knowledge/SKILL.md` 为按需交互手册；base 继续保留完整细节和检索能力，AGENTS 只提炼其中高频基础。
+1. 将 `knowledge/AGENTS.md` 收缩为七条查询决策契约，删除设施百科、截图交互和通用写作方法。
+2. 所有检索模式读取并注入同一文件；`agent.ts` 只根据实际工具集生成运行时能力块。缺失文件使用中文错误快速失败。
+3. 删除无运行时消费者的 `knowledge/SKILL.md`；删除已证伪且默认关闭的 `rules-prefix.ts` 及配置开关，历史实验结论保留在归档文档。
 4. Grant notes 与 Skill notes 合并到对应技能作用域；Operator notes 只承载干员级跨技能解释。序列化直接展示已有替换边，不用备注重复机械事实，并取消会截断审定备注的单卡静默截断。
-5. 首批只迁移巫恋、孑两个高风险解释；温蒂等升级关系通过结构化替换边输出。以常驻注入、作用域、替换显示和代表性备注测试验收。
+5. 基准运行元数据记录 `knowledge/AGENTS.md` 内容哈希；以单源注入、模式能力、作用域、替换显示和代表性备注测试验收。
 
 ## 验收清单
 
-- [x] facts/hybrid 默认注入 `knowledge/AGENTS.md`，BM25/grep 历史模式不受影响
-- [x] 常驻文件不含具体干员数值、完整组合或培养结论
-- [x] base 仍保留详细可检索内容，`knowledge/SKILL.md` 不再重复常驻规则和干员案例
+- [x] 所有检索模式只注入 `knowledge/AGENTS.md` 中的人工规则
+- [x] AGENTS 不含开发流程、具体干员数值、设施百科、完整组合或培养结论
+- [x] `knowledge/SKILL.md` 与 rules-prefix 运行路径已删除，base/guides 仍可检索
+- [x] system prompt 的模式、工具和调用上限由代码根据实际能力生成
+- [x] 基准运行元数据记录 AGENTS 内容哈希
 - [x] Grant notes 保留在对应技能，结构化升级关系显示被替换技能名
 - [x] 巫恋与孑的干员级机制备注可通过 `lookup` 完整返回
 - [x] 未新增全量审阅矩阵、来源台账或逐卡处置记录
@@ -42,7 +45,7 @@
 
 ## 关联 ADR
 
-- ADR-004 — 查询 Agent 采用常驻知识、facts notes 与 RAG 三层结构
+- ADR-004 — 查询 Agent 采用单一指令源与分层证据
 
 ---
 

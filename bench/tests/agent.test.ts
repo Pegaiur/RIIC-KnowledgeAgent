@@ -1,7 +1,11 @@
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { describe, expect, it, beforeEach, vi } from 'vitest'
 import {
   buildSystemPrompt,
   grepSearchTool,
+  loadKnowledgeAgentInstructions,
   MAX_RAG_CALLS,
   ragSearchTool,
   runQuery,
@@ -34,34 +38,58 @@ describe('agent：grep/rag 检索工具 schema 拆分', () => {
     }
   })
 
-  it('系统提示的工具名随检索器切换，且含检索上限', () => {
+  it('所有模式注入同一份决策契约，工具名随检索器切换', () => {
     expect(buildSystemPrompt('grep')).toContain('grep_search')
     expect(buildSystemPrompt('bm25')).toContain('rag_search')
-    expect(buildSystemPrompt('grep')).toContain(`最多允许检索 ${MAX_RAG_CALLS} 次`)
+    expect(buildSystemPrompt('grep')).toContain('明日方舟基建查询 Agent 决策契约')
+    expect(buildSystemPrompt('grep')).toContain(`工具调用上限：${MAX_RAG_CALLS} 次`)
   })
 
-  it('both 模式：系统提示同时描述两个工具及分工定位', () => {
+  it.each([
+    ['bm25', 'rag_search'],
+    ['grep', 'grep_search'],
+    ['both', 'rag_search、grep_search'],
+    ['facts', 'lookup、query_operators'],
+    ['hybrid', 'rag_search、lookup、query_operators'],
+  ] as const)('%s 模式的能力块精确列出实际工具', (retriever, expectedTools) => {
+    const prompt = buildSystemPrompt(retriever, '唯一规则正文')
+    const capabilityBlock = prompt.split('## 本次运行能力\n')[1]
+    expect(capabilityBlock).toContain(`- 可用工具：${expectedTools}\n`)
+  })
+
+  it('both 模式：运行时能力块列出实际暴露的两个工具', () => {
     const prompt = buildSystemPrompt('both')
     expect(prompt).toContain('rag_search')
     expect(prompt).toContain('grep_search')
-    expect(prompt).toContain('第一轮先用 rag_search')
-    expect(prompt).toContain('分工')
-    expect(prompt).toContain('按字面命中定位')
+    expect(prompt).toContain('可用工具：rag_search、grep_search')
   })
 
   it('hybrid 模式：系统提示同时描述 RAG 与 facts 三个工具', () => {
     const prompt = buildSystemPrompt('hybrid')
-    expect(prompt).toContain('明日方舟基建查询 Agent 常驻知识')
-    expect(prompt).toContain('技能标为“解锁”表示新增')
+    expect(prompt).toContain('明日方舟基建查询 Agent 决策契约')
+    expect(prompt).toContain('技能的解锁与提升')
     expect(prompt).toContain('rag_search')
     expect(prompt).toContain('lookup')
     expect(prompt).toContain('query_operators')
-    expect(prompt).toContain('问题同时涉及两类信息时应分别查询')
+    expect(prompt).toContain('可用工具：rag_search、lookup、query_operators')
   })
 
-  it('常驻知识只默认注入 facts/hybrid，不污染历史 BM25 对照模式', () => {
-    expect(buildSystemPrompt('facts')).toContain('明日方舟基建查询 Agent 常驻知识')
-    expect(buildSystemPrompt('bm25')).not.toContain('明日方舟基建查询 Agent 常驻知识')
+  it('人工规则只从调用方提供的 AGENTS 内容注入一次', () => {
+    const prompt = buildSystemPrompt('facts', '唯一规则正文')
+    expect(prompt.match(/唯一规则正文/g)).toHaveLength(1)
+    expect(prompt).toContain('可用工具：lookup、query_operators')
+    expect(prompt).not.toContain('结构化排版')
+  })
+
+  it('AGENTS 文件为空时使用中文错误快速失败', () => {
+    const root = mkdtempSync(join(tmpdir(), 'rag-agent-empty-'))
+    try {
+      mkdirSync(join(root, 'knowledge'))
+      writeFileSync(join(root, 'knowledge', 'AGENTS.md'), '  \n', 'utf-8')
+      expect(() => loadKnowledgeAgentInstructions(root)).toThrowError('查询 Agent 决策契约为空')
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
   })
 })
 
@@ -87,6 +115,23 @@ describe('runQuery：轮次耗尽兜底（末位强制作答轮）', () => {
   }
 
   beforeEach(() => mockCall.mockReset())
+
+  it('优先使用单次基准运行传入的 AGENTS 快照', async () => {
+    const config = loadConfig()
+    config.minRagCalls = 0
+    const index = buildIndex(chunks)
+    mockCall.mockResolvedValueOnce(providerResult({ content: '答案' }))
+
+    await runQuery(
+      { id: 'T00', category: 'fact', question: '测试问题' },
+      { config, agentInstructions: '固定契约快照', thinking: 'off', dry: false },
+      chunks,
+      index,
+    )
+
+    const messages = mockCall.mock.calls[0]?.[0] as Array<{ role: string; content: string }>
+    expect(messages[0]?.content).toContain('固定契约快照')
+  })
 
   it('maxRounds 轮内模型持续请求工具，末位兜底轮不再暴露工具并产出最终答案', async () => {
     const config = loadConfig()
