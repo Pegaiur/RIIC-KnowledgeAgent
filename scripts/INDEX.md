@@ -55,6 +55,7 @@
 
 - `tasks/git/head-diff.mjs` — 多 lib 基元组合范例（git + process + dev-workspace + output）
 - `tasks/git/show-file.mjs` — 只读边界 + 核心逻辑可测（runShowFile 注入 root）范例
+- `tasks/knowledge/update-reference-projection.mjs` — references 公共练度说明的统一投影与检查
 - `tasks/release/archive-plan.mjs` — 文档状态机机械实现 + dry-run/--apply 范例
 - `tasks/release/changelog.mjs` — 同源双视图 renderer（人类分类分节 / Agent 限行单行）+ 追加写防重范例
 

@@ -5,6 +5,7 @@
  *   node dist/cli.js run   [--thinking off|low|high] [--limit N] [--dry] [--questions <path>] [--out <dir>]
  *   node dist/cli.js report <runDir> [--out <path>]
  *   node dist/cli.js hitrate [--topk 3,5,10] [--gold <path>] [--check-gold] [--out <path>]
+ *   node dist/cli.js validate
  */
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -16,21 +17,13 @@ import { getCardStore } from './facts/store.js'
 import { runBenchmark } from './runner.js'
 import { aggregate, renderCrossProvider, renderCsv, renderMarkdown, type BenchReport } from './report.js'
 import type { BenchQuery, CostRecord, ProviderId, ThinkingMode } from './types.js'
+import { validateBenchmarkIntegrity } from './benchmark-integrity.js'
 
 /**
- * 非 facts 模式的散文 RAG 仍临时重接（2026-09-03，smoke）：语料指向 knowledge/，run 方向放开。
- * 但 hitrate 暂缓：其 gold 基线（bench/gold.json）仍引用已删 0-规则/2-体系/4-散件，未按 knowledge 语料重建，
- * 放开必然导致命令失败；report/compare 仅读历史运行结果、不依赖语料，保留可用。
- * facts 模式旁路散文加载，使用 lookup/query_operators 读取全量记录卡。
+ * 非 facts 模式的散文 RAG 与 hitrate 均直接使用 knowledge/白名单语料。
+ * facts 模式旁路散文加载，使用 lookup/query_operators 读取全量记录卡；
+ * 两种模式共用 questions 的题号和问题定义。
  */
-const HITRATE_SUSPENDED = true
-
-function assertHitrateAvailable(): void {
-  if (!HITRATE_SUSPENDED) return
-  throw new Error(
-    'hitrate 暂缓：gold 基线（bench/gold.json）仍引用已删除散文路径，未按 knowledge 语料重建；请先更新 gold 后再用。',
-  )
-}
 
 interface ParsedArgs {
   command: string
@@ -105,6 +98,7 @@ function printUsage(): void {
       '  node dist/cli.js report <runDir> [--out <path>]',
       '  node dist/cli.js compare <runDir1> <runDir2> [--out <path>]',
       '  node dist/cli.js hitrate [--topk 3,5,10] [--gold <path>] [--check-gold] [--out <path>]',
+      '  node dist/cli.js validate',
       '',
       '示例：',
       '  node dist/cli.js run --dry --limit 2          # 干跑验证管线（不发请求）',
@@ -114,6 +108,7 @@ function printUsage(): void {
       '  node dist/cli.js report bench-runs/xxx        # 聚合最近一次运行',
       '  node dist/cli.js compare bench-runs/<hy3> bench-runs/<qwen>   # 跨模型对比',
       '  node dist/cli.js hitrate --check-gold         # 仅校验 gold ↔ 语料对应关系',
+      '  node dist/cli.js validate                     # 校验 questions / gold / spec / manifest / anchors',
       '  node dist/cli.js hitrate                      # bigram 检索 recall@3/5/10 基线',
       '',
     ].join('\n'),
@@ -149,6 +144,7 @@ async function main(): Promise<void> {
   }
 
   if (args.command === 'run') {
+    if (!args.questions) validateBenchmarkIntegrity(process.cwd())
     const config = loadConfig(args.provider)
     if (args.retriever) config.retriever = args.retriever
     if (args.minRag !== null) config.minRagCalls = args.minRag
@@ -184,7 +180,7 @@ async function main(): Promise<void> {
   }
 
   if (args.command === 'hitrate') {
-    assertHitrateAvailable()
+    if (!args.questions && !args.gold) validateBenchmarkIntegrity(process.cwd())
     const config = loadConfig()
     const goldPath = args.gold ?? join(process.cwd(), 'bench', 'gold.json')
     const gold = loadGold(goldPath)
@@ -231,6 +227,14 @@ async function main(): Promise<void> {
       process.stdout.write(`已写入：${args.out}\n`)
     }
     process.stdout.write(md + '\n')
+    return
+  }
+
+  if (args.command === 'validate') {
+    const summary = validateBenchmarkIntegrity(process.cwd())
+    process.stdout.write(
+      `基准完整性校验通过：${summary.questionCount} 题 / ${summary.goldCount} 个 gold 题号 / ${summary.specCount} 个 spec 题号 / ${summary.corpusFileCount} 个白名单文档 / ${summary.chunkCount} 个切块\n`,
+    )
     return
   }
 

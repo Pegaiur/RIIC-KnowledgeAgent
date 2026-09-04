@@ -12,13 +12,13 @@ import {
 const ROOT = new URL('../..', import.meta.url).pathname.replace(/^\//, '').replace(/\//g, '\\')
 
 describe('curation：九个设施独立人工优化批次', () => {
-  it('每个设施都有独立批次，空覆盖安全回退原文', () => {
+  it('每个设施都有独立批次，未覆盖技能安全回退原文', () => {
     const facts = loadReferenceFacts(ROOT)
     const validated = validateCurations(facts, ALL_CURATIONS)
     expect(ALL_CURATIONS.map((batch) => batch.room)).toEqual([...REFERENCE_ROOMS])
     expect(validated.skills.size).toBe(0)
     expect(validated.grants.size).toBe(0)
-    expect(validated.operators.size).toBe(0)
+    expect([...validated.operators.keys()].sort()).toEqual(['孑', '巫恋'])
     const fact = facts.skillFacts[0]
     expect(resolveSkillEffectText(fact, 'raw', validated)).toBe(fact.rawEffectText)
     expect(resolveSkillEffectText(fact, 'curated', validated)).toBe(fact.rawEffectText)

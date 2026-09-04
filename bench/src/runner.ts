@@ -1,12 +1,13 @@
 /**
  * 基准运行器：跑问题集 → 写 JSONL 成本记录
  */
+import { createHash } from 'node:crypto'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { loadConfig, type BenchConfig } from './config.js'
 import { loadCorpus } from './corpus.js'
 import { buildIndex } from './retriever.js'
-import { runQuery, type AgentOptions } from './agent.js'
+import { loadKnowledgeAgentInstructions, runQuery, type AgentOptions } from './agent.js'
 import type { BenchQuery, CostRecord, ThinkingMode } from './types.js'
 
 export interface RunOutput {
@@ -40,6 +41,8 @@ export async function runBenchmark(
 ): Promise<RunOutput> {
   const config = opts.config ?? loadConfig()
   const started = Date.now()
+  const agentInstructions = loadKnowledgeAgentInstructions()
+  const agentInstructionsSha256 = createHash('sha256').update(agentInstructions).digest('hex')
 
   // 语料 + 索引（一次构建，全部查询复用；facts 模式不依赖散文语料——语料目录已删除，跳过加载以空占位）
   const chunks = config.retriever === 'facts' ? [] : loadCorpus(config.corpusDir, config.maxContextChars)
@@ -53,7 +56,7 @@ export async function runBenchmark(
   const jsonlPath = join(runDir, 'records.jsonl')
   const metaPath = join(runDir, 'meta.json')
 
-  const agentOpts: AgentOptions = { config, thinking: opts.thinking, dry: opts.dry }
+  const agentOpts: AgentOptions = { config, agentInstructions, thinking: opts.thinking, dry: opts.dry }
   const lines: string[] = []
   const answers: AnswerRecord[] = []
   /** 每题实际注入上下文的 chunk id（R1 注入覆盖率判定用） */
@@ -112,7 +115,7 @@ export async function runBenchmark(
         baseUrl: config.baseUrl,
         retriever: config.retriever,
         minRagCalls: config.minRagCalls,
-        rules: config.rules,
+        agentInstructionsSha256,
         tokenizer: config.tokenizer,
         entityBoost: config.entityBoost,
         topK: config.topK,

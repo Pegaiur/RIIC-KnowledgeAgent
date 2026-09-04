@@ -2,7 +2,7 @@
 
 > 创建日期：2026-09-02
 > 状态：已完成
-> 上游：`docs/archive/plan-facts-source-purge.md`（语料事实源清理，已归档）；`docs/archive/plan-rules-prefix.md`（R4 检索词引导，根因「语料缺 index 层 → RAG 代偿」）；`docs/archive/plan-retrieval-tuning.md`（R2/R3）；`docs/draft-facts-quality-iteration.md`（后续质量闭环草案）
+> 上游：`docs/archive/plan-facts-source-purge.md`（语料事实源清理，已归档）；`docs/archive/plan-rules-prefix.md`（R4 检索词引导，根因「语料缺 index 层 → RAG 代偿」）；`docs/archive/plan-retrieval-tuning.md`（R2/R3）；后续见 `docs/archive/plan-agent-facts-knowledge-layering.md` 与 `docs/archive/plan-rag-facts-quality-loop.md`
 > 本 plan 由 `docs/draft-hybrid-facts.md`（v5）定稿转来。本轮范围收敛为 facts-first 基础设施；来源草案承载的评测循环与质量结论后置到后续迭代。
 
 ## 目标
@@ -12,7 +12,7 @@
 ## 非目标
 
 - 不做散文层任何工作：不修补、不索引（search_corpus/read 接口保留但不启用）
-- 不以评测循环或答案质量结论作为本轮验收目标；P0.4、人工抽检、12+5 查询/裸查评测与结论落盘后置到 `docs/draft-facts-quality-iteration.md`
+- 不以评测循环或答案质量结论作为本轮验收目标；后续知识分层与评测闭环分别见 `docs/archive/plan-agent-facts-knowledge-layering.md`、`docs/archive/plan-rag-facts-quality-loop.md`
 - 不做 S 类体系题评测：体系关系（互斥/核心双人/缺人降级）是公孙判断——随判断层/散文重写后置（v3）
 - 不做 judgments 层粗标（SKILL.md S3 转录）——判断层后置（如提前转录，仅作 v3 素材）
 - 不做 GraphRAG / 免检索门控（沿用 R4 立场）
@@ -73,7 +73,7 @@ R4 检索词引导（QUERY_GUIDES）在事实层落地后**退役**（工具 sch
 - 12+5 题查询/裸查对照、人工答案核查及判定表落盘。
 - 根据后续结果登记 v3 的 S 类、散文重写、`minEff` 数值效率与 references 再生脚本工作。
 
-详细入口：`docs/draft-facts-quality-iteration.md`。
+后续入口：`docs/archive/plan-agent-facts-knowledge-layering.md` 与 `docs/archive/plan-rag-facts-quality-loop.md`。
 
 ## 验收清单
 
@@ -105,7 +105,7 @@ R4 检索词引导（QUERY_GUIDES）在事实层落地后**退役**（工具 sch
 ### 2026-09-04 — 本轮交付范围收敛为 facts-first 基础设施
 - **用户决策**：不再把评测循环作为本轮合并目标；先合并确定性记录卡、全量核对和 lookup/query 工具，后续通过迭代补齐质量闭环。
 - **本轮验收**：记录卡字段与来源口径、确定性 references 解析、程序化 0 差异核对、查询工具、类型检查和测试。
-- **后续路由**：P0.4、语义字段人工抽检、12+5 查询/裸查评测、人工判定及 v3 结论登记移入 `docs/draft-facts-quality-iteration.md`，本轮不以这些事项作完成声明。
+- **后续路由**：知识分层与对象级事实备注收敛到 `docs/archive/plan-agent-facts-knowledge-layering.md`；评测基准、人工判定与 v3 结论收敛到 `docs/archive/plan-rag-facts-quality-loop.md`，本轮不以这些事项作完成声明。
 
 ### 2026-09-04 — 全量记录卡机械事实改用确定性源解析
 - **背景**：原计划按全量 LLM 转录 + 程序化核对生成记录卡；实施细化时复核发现，当前 references 已有稳定的机械结构和生成索引。
@@ -191,6 +191,6 @@ R4 检索词引导（QUERY_GUIDES）在事实层落地后**退役**（工具 sch
 - 验证：`pnpm run typecheck` 通过；`pnpm run test` 10 文件 103 用例全通过（含 facts 23、facts-tools 20）；`pnpm run bench:dry`（已指向 `--retriever facts`）跑通，报告统计到 `lookup/query_operators`（toolTrace=lookup→query_operators，3 轮/题）。
 - 评审处理：独立审查（步骤 5 接入）无阻塞；已按评审补强 report 工具统计纳入 facts（`isFactTool`）、`bench:dry` 改指向 facts、facts 下跳过 minRag 引导原文、serializeCard 单卡 ≤1KB、并补「已达上限」分支测试。
 - 评审：独立审查子代理核实搜索字段充分性（分类过滤 sufficient；别名/合称/技能族 partial），结论已按用户裁定记录（合称另设方案、技能族维持现状、本轮仅记设计）。
-- 后置：P0.4 参考要点重制、人工抽检、评测 12+5、结论落盘；这些事项已从本轮验收清单移出并转入 `docs/draft-facts-quality-iteration.md`。早期记录中的“步骤 2 未做”仅反映当时快照，已由后续 P6 实施收束。
+- 后置：参考要点重制、人工抽检与评测结论分别由 `docs/archive/plan-agent-facts-knowledge-layering.md`、`docs/archive/plan-rag-facts-quality-loop.md` 承接。早期记录中的“步骤 2 未做”仅反映当时快照，已由后续 P6 实施收束。
 
 > ✅ 已完成于 2026-09-04

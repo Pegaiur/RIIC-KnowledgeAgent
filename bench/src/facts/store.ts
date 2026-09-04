@@ -128,7 +128,7 @@ function skillMatchesTerm(skill: RecordCard['skills'][number], q: string): boole
     || (skill.equivalenceSkillNames?.some((name) => name.includes(q)) ?? false)
 }
 
-/** 渲染命中卡列表为工具结果文本（单卡限额 1KB，摘要 + 技能效果原文） */
+/** 渲染命中卡列表为工具结果文本；保留全部审定备注和替换关系。 */
 export function serializeCards(cards: RecordCard[], filters: CardSerializationFilters = {}): string {
   if (cards.length === 0) return '（无匹配记录卡）'
   return cards.map((card) => serializeCard(card, filters)).join('\n\n')
@@ -146,12 +146,15 @@ function serializeCard(card: RecordCard, filters: CardSerializationFilters): str
   ]
   for (const skill of skills) {
     const note = skill.notes === undefined ? '' : `；备注：${skill.notes}`
-    lines.push(`- ${skill.unlockType}「${skill.name}」：${skill.effectText}${note}`)
+    const replaced = skill.replacesGrantId === undefined
+      ? undefined
+      : card.skills.find((candidate) => candidate.grantId === skill.replacesGrantId)
+    const replacement = replaced === undefined ? '' : `；替换「${replaced.name}」`
+    lines.push(`- ${skill.unlockType}「${skill.name}」：${skill.effectText}${replacement}${note}`)
   }
   if (card.skillGroups.length > 0) lines.push(`技能组：${card.skillGroups.join('、')}`)
   if (card.notes) lines.push(`备注：${card.notes}`)
-  const text = lines.join('\n')
-  return text.length > 1000 ? `${text.slice(0, 999)}…` : text
+  return lines.join('\n')
 }
 
 let singleton: CardStore | undefined

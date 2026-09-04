@@ -1,10 +1,24 @@
 import { describe, expect, it } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { loadReferenceFacts, REFERENCE_ROOMS } from '../src/facts/references.js'
 import { renderSkillLine } from '../src/facts/normalized.js'
 
 const ROOT = new URL('../..', import.meta.url).pathname.replace(/^\//, '').replace(/\//g, '\\')
 
 describe('references：九个设施事实批次', () => {
+  it('九个技能分片共用当前练度投影，不残留旧的三星门槛', () => {
+    for (const room of REFERENCE_ROOMS) {
+      const source = readFileSync(join(ROOT, 'knowledge', 'references', `技能-${room}.md`), 'utf-8')
+      expect(source).toContain('一星、二星干员通常在达到 30 级')
+      expect(source).toContain('三星、四星干员通常在精一阶段')
+      expect(source).toContain('五星、六星干员通常在精二阶段')
+      expect(source).toContain('不能把一、二星的常见规则扩展到三星')
+      expect(source).not.toContain('一至三星干员满级即解锁')
+      expect(source).not.toContain('scripts/build_refs.py')
+    }
+  })
+
   it('完整解析 425 名干员、586 个小节、913 条 grant、747 条索引和 705 个 SkillFact', () => {
     const facts = loadReferenceFacts(ROOT)
     expect(facts.operators).toHaveLength(425)
