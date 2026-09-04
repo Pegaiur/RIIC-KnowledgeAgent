@@ -1,8 +1,8 @@
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { dirname, join, relative, sep } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
-import { collectMarkdownFiles, splitChunks } from '../src/corpus.js'
+import { collectMarkdownFiles, corpusStats, loadCorpusManifest, splitChunks } from '../src/corpus.js'
 
 const tmp = mkdtempSync(join(tmpdir(), 'rag-test-corpus-'))
 const docsDir = join(tmp, 'docs')
@@ -20,13 +20,81 @@ function writeDoc(rel: string, content: string): string {
   return full
 }
 
+function writeManifest(files: readonly string[]): void {
+  writeFileSync(join(docsDir, 'corpus-manifest.json'), JSON.stringify({ files }, null, 2), 'utf-8')
+}
+
+function docIds(files: readonly string[]): string[] {
+  return files.map((file) => relative(docsDir, file).split(sep).join('/'))
+}
+
 describe('corpus：语料收集与分块', () => {
-  it('递归收集 .md 文件', () => {
-    writeDoc('0-规则/发电站机制.md', '# 发电站\n## 无人机\n正文A\n## 充能\n正文B\n')
-    writeDoc('2-体系/体系总览.md', '# 总览\n## 243 布局\n正文C\n')
+  it('只收集显式白名单中的 Markdown，不递归扫描目录', () => {
+    writeDoc('base/发电站机制.md', '# 发电站\n## 无人机\n正文A\n## 充能\n正文B\n')
+    writeDoc('recommendation/组合知识库.md', '# 组合\n## 体系\n正文C\n')
+    writeDoc('recommendation/实现TODO提示.md', '# TODO\n不应进入检索\n')
+    writeDoc('SKILL.md', '# 技能手册\n不应进入检索\n')
+    writeDoc('未登记.md', '# 未登记\n不应进入检索\n')
+    writeManifest(['base/发电站机制.md', 'recommendation/组合知识库.md'])
+
     const files = collectMarkdownFiles(docsDir)
-    expect(files).toHaveLength(2)
-    expect(files.some((f) => f.endsWith('发电站机制.md'))).toBe(true)
+    expect(docIds(files)).toEqual(['base/发电站机制.md', 'recommendation/组合知识库.md'])
+    expect(docIds(files)).not.toContain('recommendation/实现TODO提示.md')
+    expect(docIds(files)).not.toContain('SKILL.md')
+    expect(docIds(files)).not.toContain('未登记.md')
+  })
+
+  it('白名单文件集合与 corpusStats 一致', () => {
+    const allowed = ['base/stats-a.md', 'references/stats-b.md']
+    const files = allowed.map((file) => writeDoc(file, `# ${file}\n正文\n`))
+    writeManifest(allowed)
+
+    const collected = collectMarkdownFiles(docsDir)
+    const stats = corpusStats(docsDir)
+    const expectedSize = files.reduce((sum, file) => sum + statSync(file).size, 0)
+
+    expect(stats).toEqual({ files: collected.length, size: expectedSize })
+    expect(docIds(collected)).toEqual(allowed)
+    expect(loadCorpusManifest(docsDir)).toEqual(allowed)
+  })
+
+  it('兼容 Windows 清单分隔符，并生成使用 / 的文档 ID', () => {
+    const file = writeDoc('base/跨平台.md', '# 跨平台\n## 正文\n内容\n')
+    writeManifest(['base\\跨平台.md'])
+    const files = collectMarkdownFiles(docsDir)
+
+    expect(files).toEqual([file])
+    const chunk = splitChunks(files[0], docsDir).find((item) => item.heading === '正文')
+    expect(chunk?.file).toBe('base/跨平台.md')
+    expect(chunk?.id.startsWith('base/跨平台.md#')).toBe(true)
+  })
+
+  it('白名单条目缺失时快速失败并给出中文错误', () => {
+    writeManifest(['base/不存在.md'])
+    expect(() => collectMarkdownFiles(docsDir)).toThrowError('语料白名单项不存在：base/不存在.md')
+  })
+
+  it('白名单存在重复条目时快速失败', () => {
+    writeDoc('base/重复.md', '# 重复\n正文\n')
+    writeManifest(['base/重复.md', 'base/重复.md'])
+    expect(() => collectMarkdownFiles(docsDir)).toThrowError('语料白名单存在重复条目：base/重复.md')
+  })
+
+  it('白名单路径越出语料根目录时快速失败', () => {
+    writeManifest(['../越界.md'])
+    expect(() => collectMarkdownFiles(docsDir)).toThrowError('语料白名单路径越出语料根目录：../越界.md')
+  })
+
+  it('白名单非 Markdown 条目时快速失败', () => {
+    writeDoc('base/说明.txt', '不是 Markdown\n')
+    writeManifest(['base/说明.txt'])
+    expect(() => collectMarkdownFiles(docsDir)).toThrowError('语料白名单第 1 项不是 Markdown 文件：base/说明.txt')
+  })
+
+  it('SKILL.md 大小写变体也禁止登记', () => {
+    writeDoc('SKILL.md', '# 技能手册\n不应进入检索\n')
+    writeManifest(['skill.md'])
+    expect(() => collectMarkdownFiles(docsDir)).toThrowError('语料白名单禁止登记 SKILL.md：skill.md')
   })
 
   it('按 ## 标题切分，front matter 与注释剔除', () => {

@@ -30,3 +30,4 @@
 <!-- 完成后标记 [x]，发版时清理已完成条目；定期（如每季度）治理重估：确认暂缓原因仍成立、路由目标未悬空 -->
 
 - [ ] **R5 事实查询（facts-first：规范化记录卡 + lookup/query 查询 tool）** — 在 bench 用真源数据（`knowledge/references/` 唯一原始事实源）落地事实查询工具，量化对 F/G 类题命中率/编造/成本的净效应，产出取代 R4 检索词引导的决策 — 2026-09-02 — 总体路由 `docs/plan-hybrid-facts.md`；全量记录卡的源解析、分批人工优化、规范化关系与运行时拼装细化至 `docs/plan-facts-record-cards.md`（Phase 0【散文废弃、数据层固化、旧基准标注、meta 删除、工具停用】已完成；P0.4【F/G 参考要点重制】及全量录入、评测待实施）
+- [x] **知识语料显式白名单** — 非 facts RAG 仅加载 `knowledge/corpus-manifest.json` 登记的 Markdown；新增文件需显式批准，单模块 bug 修复无需 ADR — 2026-09-04 — 已落地
