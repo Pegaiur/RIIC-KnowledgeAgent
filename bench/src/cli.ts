@@ -42,7 +42,7 @@ interface ParsedArgs {
   questions: string | null
   out: string | null
   runDir: string | null
-  /** 检索器（bm25 | grep） */
+  /** 检索器（bm25 | grep | both | facts | hybrid） */
   retriever: RetrieverId | null
   /** 强制首检次数 */
   minRag: number | null
@@ -101,7 +101,7 @@ function printUsage(): void {
       'rag-test bench —— LLM 查询输出成本基准（Hy3 / Qwen3.7-Flash）',
       '',
       '用法：',
-      '  node dist/cli.js run [--provider hy3|qwen] [--thinking off|low|high] [--retriever bm25|grep|both|facts] [--min-rag N] [--limit N] [--dry] [--questions <path>] [--out <dir>]',
+      '  node dist/cli.js run [--provider hy3|qwen] [--thinking off|low|high] [--retriever bm25|grep|both|facts|hybrid] [--min-rag N] [--limit N] [--dry] [--questions <path>] [--out <dir>]',
       '  node dist/cli.js report <runDir> [--out <path>]',
       '  node dist/cli.js compare <runDir1> <runDir2> [--out <path>]',
       '  node dist/cli.js hitrate [--topk 3,5,10] [--gold <path>] [--check-gold] [--out <path>]',
@@ -110,6 +110,7 @@ function printUsage(): void {
       '  node dist/cli.js run --dry --limit 2          # 干跑验证管线（不发请求）',
       '  node dist/cli.js run --provider qwen --thinking low   # 真实跑（需 DASHSCOPE_API_KEY）',
       '  node dist/cli.js run --provider qwen --thinking low --retriever grep --min-rag 1   # grep 对照（P3）',
+      '  node dist/cli.js run --retriever hybrid --thinking off   # BM25 RAG + facts 混合工具',
       '  node dist/cli.js report bench-runs/xxx        # 聚合最近一次运行',
       '  node dist/cli.js compare bench-runs/<hy3> bench-runs/<qwen>   # 跨模型对比',
       '  node dist/cli.js hitrate --check-gold         # 仅校验 gold ↔ 语料对应关系',

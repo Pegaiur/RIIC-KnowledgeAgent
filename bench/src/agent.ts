@@ -36,6 +36,17 @@ export const MAX_RAG_CALLS = 2
 
 /** 构建系统提示；工具名随检索器切换（双工具模式同时描述两个检索器及其定位） */
 export function buildSystemPrompt(retriever: RetrieverId = 'bm25', rulesEnabled = false): string {
+  if (retriever === 'hybrid') {
+    const lines = [
+      '你是「明日方舟基建」知识库问答助手（混合查询模式），基于机制语料与干员事实记录卡作答。',
+      `你可以调用 rag_search（检索机制/体系语料）、lookup（按干员名/技能名/技能组精确查询记录卡）与 query_operators（至少提供一个非空的设施、阵营、职业或关键词进行分类过滤）。每次回答最多允许检索 ${MAX_RAG_CALLS} 次，达到上限后请直接基于已返回内容作答。`,
+      '涉及规则、机制或体系时使用 rag_search；涉及具体干员、技能或条件筛选时使用 lookup/query_operators；问题同时涉及两类信息时应分别查询。',
+      '所有答案必须严格基于工具返回的语料片段与记录卡；未覆盖时明确说明「知识库未查到」，不得凭记忆补全，不得编造数值或机制。',
+      '输出使用中文，结构化排版（要点列表/表格）。',
+    ]
+    const head = rulesEnabled ? `${buildRulesPrefix()}\n\n` : ''
+    return head + lines.join('\n')
+  }
   if (retriever === 'facts') {
     const lines = [
       '你是「明日方舟基建」知识库问答助手（事实查询模式），基于干员事实记录卡作答。',
@@ -144,6 +155,7 @@ export function queryOperatorsTool(): Record<string, unknown> {
 
 /** 按检索器选取要暴露给模型的工具集（facts→lookup/query_operators；both 双工具同时暴露） */
 function retrieverTools(retriever: RetrieverId): Record<string, unknown>[] {
+  if (retriever === 'hybrid') return [ragSearchTool(), lookupTool(), queryOperatorsTool()]
   if (retriever === 'facts') return [lookupTool(), queryOperatorsTool()]
   if (retriever === 'both') return [ragSearchTool(), grepSearchTool()]
   return retriever === 'grep' ? [grepSearchTool()] : [ragSearchTool()]

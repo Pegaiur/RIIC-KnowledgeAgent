@@ -210,6 +210,33 @@ function dryResult(messages: ChatMessage[], opts: ProviderOptions): ProviderResu
       truncated,
     }
   }
+  if (opts.config.retriever === 'hybrid') {
+    if (round === 1) {
+      return {
+        content: null,
+        toolCalls: [{ id: 'call_dry_1', name: 'rag_search', arguments: '{"query":"发电站 充能机制"}' }],
+        usage: { input: 6000, output: 620, cached: 0, reasoning: 0 },
+        model,
+        truncated,
+      }
+    }
+    if (round === 2) {
+      return {
+        content: null,
+        toolCalls: [{ id: 'call_dry_2', name: 'lookup', arguments: '{"term":"刻俄柏"}' }],
+        usage: { input: 6000 + round * 1800, output: 700, cached: 0, reasoning: 0 },
+        model,
+        truncated,
+      }
+    }
+    return {
+      content: '（dry 模拟回答）基于机制语料与记录卡，结论为……',
+      toolCalls: [],
+      usage: { input: 6000 + round * 1800, output: 1480, cached: 0, reasoning: 0 },
+      model,
+      truncated,
+    }
+  }
   if (round === 1) {
     return {
       content: null,

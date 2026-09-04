@@ -324,3 +324,60 @@ describe('runQuery（facts 模式）', () => {
     expect(msgs.some((m) => m.role === 'tool' && m.content.includes('已达到知识库检索上限'))).toBe(true)
   })
 })
+
+describe('runQuery（hybrid 模式）', () => {
+  const chunks: DocChunk[] = [
+    {
+      id: 'base/机制-制造站.md#效率计算',
+      file: 'base/机制-制造站.md',
+      heading: '效率计算',
+      text: '制造站效率由基础效率与干员技能加成共同决定。',
+      startLine: 1,
+      endLine: 1,
+    },
+  ]
+
+  beforeEach(() => mockCall.mockReset())
+
+  it('同一 Agent 暴露并派发 rag_search 与 lookup', async () => {
+    const config = loadConfig()
+    config.retriever = 'hybrid'
+    config.maxRounds = 2
+    const index = buildIndex(chunks)
+
+    mockCall
+      .mockResolvedValueOnce({
+        content: null,
+        toolCalls: [
+          { id: 'call_rag', name: 'rag_search', arguments: '{"query":"制造站 效率计算"}' },
+          { id: 'call_facts', name: 'lookup', arguments: '{"term":"刻俄柏"}' },
+        ],
+        usage: { input: 100, output: 50, cached: 0, reasoning: 0 },
+        model: 'qwen',
+        truncated: false,
+      })
+      .mockResolvedValueOnce({
+        content: '混合工具最终答案',
+        toolCalls: [],
+        usage: { input: 200, output: 60, cached: 0, reasoning: 0 },
+        model: 'qwen',
+        truncated: false,
+      })
+
+    const result = await runQuery(
+      { id: 'HYBRID', category: 'fact', question: '制造站机制与刻俄柏技能是什么？' },
+      { config, thinking: 'off', dry: false },
+      chunks,
+      index,
+    )
+
+    const exposed = (mockCall.mock.calls[0]?.[1] as Record<string, unknown>[]).map(toolName)
+    expect(exposed).toEqual(['rag_search', 'lookup', 'query_operators'])
+    expect(result.toolTrace[0]).toEqual(['rag_search', 'lookup'])
+    expect(result.injectedIds).toEqual(['base/机制-制造站.md#效率计算'])
+    const secondMessages = mockCall.mock.calls[1]?.[0] as Array<{ role: string; tool_call_id?: string; content: string }>
+    expect(secondMessages.some((message) => message.role === 'tool' && message.tool_call_id === 'call_rag')).toBe(true)
+    expect(secondMessages.some((message) => message.role === 'tool' && message.tool_call_id === 'call_facts' && message.content.includes('刻俄柏'))).toBe(true)
+    expect(result.finalAnswer).toBe('混合工具最终答案')
+  })
+})

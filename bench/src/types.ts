@@ -8,7 +8,7 @@ export type ThinkingMode = 'off' | 'low' | 'high'
 /** LLM Provider 标识 */
 export type ProviderId = 'hy3' | 'qwen'
 
-/** 工具标识（bm25→rag_search；grep→grep_search；both 双工具同时暴露；facts→lookup/query_operators） */
+/** 工具标识（hybrid 同时使用 rag_search 与 lookup/query_operators） */
 export type ToolId = 'rag_search' | 'grep_search' | 'lookup' | 'query_operators'
 
 /** 检索分词器标识（bigram 零依赖默认；jieba 见 ADR-001） */

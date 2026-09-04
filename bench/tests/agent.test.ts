@@ -48,6 +48,14 @@ describe('agent：grep/rag 检索工具 schema 拆分', () => {
     expect(prompt).toContain('分工')
     expect(prompt).toContain('按字面命中定位')
   })
+
+  it('hybrid 模式：系统提示同时描述 RAG 与 facts 三个工具', () => {
+    const prompt = buildSystemPrompt('hybrid')
+    expect(prompt).toContain('rag_search')
+    expect(prompt).toContain('lookup')
+    expect(prompt).toContain('query_operators')
+    expect(prompt).toContain('问题同时涉及两类信息时应分别查询')
+  })
 })
 
 describe('runQuery：轮次耗尽兜底（末位强制作答轮）', () => {
