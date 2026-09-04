@@ -1,10 +1,15 @@
-# 实施笔记：R5 事实查询（facts-first：LLM 转录记录卡 + 查询 tool）
+# 实施笔记：R5 事实查询基础设施（facts-first：确定性记录卡 + 查询 tool）
 
 > 对应 spec：docs/plan-hybrid-facts.md
 > 开始日期：2026-09-03
 
 ## 决策偏离
 > spec 中没有提到，但在实施中做出的重要决策
+
+### 2026-09-04 — 本轮交付范围收敛为 facts-first 基础设施
+- **用户决策**：不再把评测循环作为本轮合并目标；先合并确定性记录卡、全量核对和 lookup/query 工具，后续通过迭代补齐质量闭环。
+- **本轮验收**：记录卡字段与来源口径、确定性 references 解析、程序化 0 差异核对、查询工具、类型检查和测试。
+- **后续路由**：P0.4、语义字段人工抽检、12+5 查询/裸查评测、人工判定及 v3 结论登记移入 `docs/draft-facts-quality-iteration.md`，本轮不以这些事项作完成声明。
 
 ### 2026-09-04 — 全量记录卡机械事实改用确定性源解析
 - **背景**：原计划按全量 LLM 转录 + 程序化核对生成记录卡；实施细化时复核发现，当前 references 已有稳定的机械结构和生成索引。
@@ -81,8 +86,8 @@
 
 ## 进度快照
 - 已落地：`bench/src/facts/{card,mechanical,fixtures,store}.ts`（记录卡类型 + 解析/0 差异核对/findNameRow/运行时卡 store 与 lookup/query_operators）、`bench/tests/{facts,facts-tools}.test.ts`（TDD）、`agent.ts`（lookup/query_operators 工具 + facts 派发 + 系统提示）、`config.ts`（RetrieverId 'facts'）、`provider.ts`（dry facts 工具映射）、`runner.ts`/`cli.ts`（facts 语料旁路 + 守卫时序 + --retriever facts）。
-- 步骤 5（lookup + query_operators 最简接入，16 卡）已完成并纳入 plan 验收清单 `[x]`；全量 425 转录后由同一 store 承载（步骤 2 未做）。
+- 步骤 2（全量确定性解析与核对）及步骤 5（lookup + query_operators 最简接入）均已完成；全量 425 张卡由同一 store 承载，详细计数与验证见 `docs/plan-facts-record-cards-notes.md` P6。
 - 验证：`pnpm run typecheck` 通过；`pnpm run test` 10 文件 103 用例全通过（含 facts 23、facts-tools 20）；`pnpm run bench:dry`（已指向 `--retriever facts`）跑通，报告统计到 `lookup/query_operators`（toolTrace=lookup→query_operators，3 轮/题）。
 - 评审处理：独立审查（步骤 5 接入）无阻塞；已按评审补强 report 工具统计纳入 facts（`isFactTool`）、`bench:dry` 改指向 facts、facts 下跳过 minRag 引导原文、serializeCard 单卡 ≤1KB、并补「已达上限」分支测试。
 - 评审：独立审查子代理核实搜索字段充分性（分类过滤 sufficient；别名/合称/技能族 partial），结论已按用户裁定记录（合称另设方案、技能族维持现状、本轮仅记设计）。
-- 未做：转录脚本 LLM 调用（全量 425 卡）、P0.4 参考要点重制、人工抽检、评测 12+5、结论落盘；steps 2/3/4/6/7 及对应验收清单 checkbox 未勾选。
+- 后置：P0.4 参考要点重制、人工抽检、评测 12+5、结论落盘；这些事项已从本轮验收清单移出并转入 `docs/draft-facts-quality-iteration.md`。早期记录中的“步骤 2 未做”仅反映当时快照，已由后续 P6 实施收束。
