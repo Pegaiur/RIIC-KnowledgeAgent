@@ -51,7 +51,7 @@ rag-test/
 ├── knowledge/                      ← 明日方舟基建知识库（数据层为唯一真源；散文已废弃删除）
 │   ├── references/                 ← 数据层（解包直出：名册 / 技能分片×9 / 类别·技能等价组·歧义 / 数据源）
 │   ├── SKILL.md                    ← 公孙长乐基建问答技能（知识库用法 / 回答管线 / 计算政策）
-│   └── 基建物流链.md               ← 物流链指南（制造→贸易→简报字段 → 收支判断）
+│   └── base/                       ← 基线语料（机制-*.md / 基建物流链.md）
 ├── bench/                          ← 查询输出成本基准（简化版 Agent）
 │   ├── src/                        ← provider / retriever / agent / runner / report / cli
 │   ├── tests/                      ← vitest 单元测试
