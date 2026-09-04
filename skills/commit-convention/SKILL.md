@@ -33,11 +33,15 @@ description: 提交与 commit message——检查工作区改动、按单一关�
 1. **状态检查**：`git status` 读取工作区变更文件列表。
 2. **变更分析**：判断提交类型，按单一关注点分组（不同类型变更分多次提交）。
 3. **信息生成**：按规范拼装 commit message（前缀 + 中文描述，why 入正文）。
-4. **验证**：先运行 `git diff --check` 拦截尾随空白与文件末尾新增空行；再运行匹配变更范围的测试/类型检查（按仓库验证路由，如受影响模块的 test 命令，命令清单见 scripts/gates.mjs）并确认通过。
+4. **验证**：运行 `git diff --check` 检查已跟踪文件的差异，拦截尾随空白与文件末尾新增空行；随后运行匹配变更范围的测试/类型检查（按仓库验证路由，如受影响模块的 test 命令，命令清单见 scripts/gates.mjs）并确认通过。新文件与完整待提交内容的空白检查在第 6 步暂存后完成。
 5. **审查**：见下方「审查」。
-6. **精准暂存**：`git add <目标文件>`（按名添加），不用 `git add .` 或 `git add -A`；暂存前确认暂存区仅含目标文件，暂存后运行 `git diff --cached --check`，失败时先修复并重新精准暂存。
-7. **提交**：`git commit -m "前缀(领域): 中文描述"`。
+6. **精准暂存**：
+   - 先运行 `git diff --cached --name-status` 和 `git diff --cached --patch` 审查已有暂存内容。若存在未明确纳入本次目标的文件或 hunk，必须停止，不得继续提交；只有用户明确确认扩大本次范围后，才能重新记录目标范围并继续。
+   - 若目标文件已有与本次无关的暂存 hunk，不得用 `git add <文件>` 覆盖式暂存；应请求用户先拆分，或使用能保留既有 hunk 的逐块暂存方式，并重新审查完整 cached patch。不得擅自取消、覆盖或修改用户已有的暂存内容。
+   - 范围确认后，执行 `git add <目标文件>`（按名添加），不用 `git add .` 或 `git add -A`；暂存后再次检查 `git diff --cached --name-status` 和 `git diff --cached --patch`，确认文件与 hunk 均只属于已批准范围，并运行 `git diff --cached --check`，失败时先修复并重新精准暂存。
+7. **提交**：完成本技能前置检查、独立审查和精准暂存后，再次确认 cached 文件清单与 patch 仍符合已批准范围，仅提交已确认的暂存内容：`git commit -m "前缀(领域): 中文描述"`。该命令是本技能的正式步骤，不属于绕过技能流程的直接提交。
 8. **报告**：简述提交内容、文件数、审查结论。
+9. **提交后核验**：运行 `git diff-tree --no-commit-id --name-status -r HEAD`、`git status --short --branch` 和 `git log -1 --format=%h%x09%s`，将最新提交的文件清单与提交前已批准范围对照，确认最新提交信息正确，并确认剩余工作区变更仅为未纳入本次提交的内容；如需 hunk 级确认，再对照提交前审查过的 cached patch 与 `git show --format= --patch HEAD`。
 
 ## 审查（能力探测）
 
