@@ -32,6 +32,17 @@ describe('真实 knowledge 语料白名单', () => {
     expect(baseChunks.every((chunk) => chunk.anchor && chunk.anchor.length > 0)).toBe(true)
     expect(baseChunks.some((chunk) => chunk.heading === '公式与规则')).toBe(false)
 
+    const unlockText = baseChunks
+      .filter((chunk) => chunk.file === 'base/机制-技能解锁与练度.md')
+      .map((chunk) => chunk.text)
+      .join('\n')
+    expect(unlockText).toContain('一星、二星')
+    expect(unlockText).toContain('30 级')
+    expect(unlockText).toContain('三星、四星')
+    expect(unlockText).toContain('精一阶段')
+    expect(unlockText).toContain('具体解锁阶段仍以该技能在 references 中的解锁字段为准')
+    expect(unlockText).not.toContain('一至三星')
+
     const pollutedDocuments = [
       'SKILL.md',
       'raw/组合成员练度审阅稿.md',
