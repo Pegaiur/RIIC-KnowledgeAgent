@@ -34,3 +34,4 @@
 - [ ] **R5 facts 质量闭环后续迭代** — P0.4 F/G 参考要点重制、语义字段人工抽检、12+5 查询/裸查评测、人工判定表和 v3 结论登记 — 2026-09-04 — 暂缓，路由 `docs/draft-facts-quality-iteration.md`
 - [x] **知识语料显式白名单** — 非 facts RAG 仅加载 `knowledge/corpus-manifest.json` 登记的 Markdown；新增文件需显式批准，单模块 bug 修复无需 ADR — 2026-09-04 — 已落地
 - [x] **RAG + facts 混合工具模式** — 同一查询 Agent 同时暴露 BM25 机制语料检索与 facts 精确查询工具，并以 Qwen 关闭思考完成真实工具调用冒烟 — 2026-09-04 — 已落地，见 `docs/adr/ADR-003-rag-facts-hybrid-retriever.md`、`docs/plan-rag-facts-hybrid.md`
+- [x] **当前基准目标纠正为 Qwen** — 修正 AGENTS.md 与包元数据中仍把 Hy3 描述为当前目标的过时表述；默认目标为 Qwen3.7-Flash 关闭思考，Hy3 仅保留为对照 provider — 2026-09-04 — 已落地
