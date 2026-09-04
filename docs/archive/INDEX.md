@@ -12,6 +12,9 @@
 | 2026-09-04 | — | [plan-prts-crawl.md](plan-prts-crawl.md) | 按 PRTS 核对并落位 8 页基建机制公式基础规则 |
 | 2026-09-04 | — | [plan-rag-facts-hybrid.md](plan-rag-facts-hybrid.md) | 新增 hybrid 模式同时暴露 RAG 与 facts 工具并完成 Qwen 冒烟 |
 | 2026-09-04 | — | [plan-rag-prose-cleaning.md](plan-rag-prose-cleaning.md) | plan-rag-prose-cleaning |
+| 2026-09-04 | — | [plan-agent-facts-knowledge-layering.md](plan-agent-facts-knowledge-layering.md) | 将查询指令收敛为 knowledge/AGENTS.md 单一真源，并按 RAG 与 facts 能力动态生成工具契约 |
+| 2026-09-04 | — | [plan-base-corpus-optimization.md](plan-base-corpus-optimization.md) | 重建基建机制 base 语料、自然标题切块与 F01–F10 通用规则边界 |
+| 2026-09-04 | — | [plan-rag-facts-quality-loop.md](plan-rag-facts-quality-loop.md) | 重建 20 题 questions/gold/spec 门禁，并冻结 Qwen off + hybrid 首次真实质量基线（严格折算 25%） |
 | 2026-09-03 | — | [plan-facts-source-purge.md](plan-facts-source-purge.md) | plan-facts-source-purge |
 | 2026-09-02 | — | [plan-retrieval-tuning.md](plan-retrieval-tuning.md) | 以命中率评测（R2，recall@5=33.5%）为基准，验证检索注入收敛（R1，权衡后维持 topK=5/maxContextChars=12000）与中文分词 jieba（R3 全面略降，维持 bigram），落盘三项结论 |
 | 2026-09-02 | — | [plan-retrieval-experiment.md](plan-retrieval-experiment.md) | 受控实验评估检索策略：P1 minRag=1 采纳（消除 0 检索、成本最优）；P2 专名 boost 与 P3 grep 不采纳；P5 双工具不采纳但保留末位强制作答轮 |

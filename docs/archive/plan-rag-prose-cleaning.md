@@ -2,7 +2,7 @@
 
 > 创建日期：2026-09-04
 > 状态：已完成
-> 下游：`docs/draft-facts-quality-iteration.md`（质量闭环在本计划完成后执行）
+> 下游：`docs/archive/plan-agent-facts-knowledge-layering.md`、`docs/archive/plan-rag-facts-quality-loop.md`（知识分层与质量闭环均已完成并归档）
 
 ## 目标
 
