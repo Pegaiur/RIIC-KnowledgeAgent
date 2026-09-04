@@ -123,6 +123,12 @@ describe('store：queryOperators 分类过滤', () => {
     expect(text).toContain('6星')
     expect(text).toContain('超感')
   })
+
+  it('记录卡直接说明升级替换关系，并完整返回已审定干员备注', () => {
+    expect(serializeCards(getCardStore().lookup('温蒂'))).toContain('替换「自动化·β」')
+    expect(serializeCards(getCardStore().lookup('巫恋'))).toContain('「低语」与初始「裁缝·α」并存')
+    expect(serializeCards(getCardStore().lookup('孑'))).toContain('精英1并不必然优于精英0')
+  })
 })
 
 describe('agent：facts 工具 schema 与系统提示', () => {

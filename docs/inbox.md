@@ -29,9 +29,9 @@
 <!-- 格式: - [ ] **简短标题** — 描述 — 提出日期 — 可能路由 -->
 <!-- 完成后标记 [x]，发版时清理已完成条目；定期（如每季度）治理重估：确认暂缓原因仍成立、路由目标未悬空 -->
 
-- [x] **R5 事实查询基础设施（facts-first：规范化记录卡 + lookup/query 查询 tool）** — 在 bench 用 `knowledge/references/` 唯一原始事实源落地确定性记录卡、全量核对和查询工具；本轮不再以评测循环为目标，后续质量闭环见 `docs/draft-facts-quality-iteration.md` — 2026-09-04 — 路由 `docs/archive/plan-hybrid-facts.md`，记录卡细化至 `docs/archive/plan-facts-record-cards.md`
+- [x] **R5 事实查询基础设施（facts-first：规范化记录卡 + lookup/query 查询 tool）** — 在 bench 用 `knowledge/references/` 唯一原始事实源落地确定性记录卡、全量核对和查询工具；本轮不再以评测循环为目标，后续知识分层见 `docs/plan-agent-facts-knowledge-layering.md` — 2026-09-04 — 路由 `docs/archive/plan-hybrid-facts.md`，记录卡细化至 `docs/archive/plan-facts-record-cards.md`
 - [x] **R5 facts 查询契约高 ROI 收缩** — `query_operators` 移除低选择性的稀有度过滤，拒绝空查询、空白查询、仅排除条件与非法 JSON；暂不引入分页、截断或结果预算 — 2026-09-04 — 已落地，路由 `docs/archive/plan-facts-query-contract.md`
-- [ ] **R5 facts 质量闭环后续迭代** — P0.4 F/G 参考要点重制、notes 模型收口、全部 base/guides/知识入口与 facts 对象的语义备注适用性判定及 curation 全量覆盖、12+5 查询/裸查评测、人工判定表和 v3 结论登记；全量覆盖不等于强制每张卡写备注 — 2026-09-04 — 暂缓，路由 `docs/draft-facts-quality-iteration.md`
+- [x] **R5 查询 Agent 知识分层** — 从 SKILL/base 提炼稳定通用基础并通过 `knowledge/AGENTS.md` 注入 facts/hybrid；对象级详细机制进入对应 facts notes，详细机制与组合继续走 RAG；不建立全量审阅台账 — 2026-09-04 — 已落地，路由 `docs/plan-agent-facts-knowledge-layering.md`、`docs/adr/ADR-004-query-agent-knowledge-layering.md`
 - [ ] **RAG + facts 20 题实跑质量闭环** — 调用 agent 真实运行 20 题，逐题核查回答质量、检索/事实工具选择、参数与返回来源；汇总误路由、漏引证和幻觉风险，形成改进 plan — 2026-09-04 — 待评估，后续路由 `docs/plan-*.md`
 - [x] **RAG base 机制语料增量优化** — 修复 base 文档锚点与自然标题切块，核查 F01-F07 存量边界，从指定 raw 提炼心情/工休机制并补齐 F09/F10 通用规则；不处理 facts curation、答案基线或模型评测 — 2026-09-04 — 路由 `docs/plan-base-corpus-optimization.md`
 - [x] **RAG 散文清洗与索引组织** — 先把现有推荐散文清洗为五篇按自然标题切块的 guides，删除外部实现与过程噪声，人工通读后原子替换语料白名单；不建台账或额外索引体系 — 2026-09-04 — 已完成，路由 `docs/archive/plan-rag-prose-cleaning.md`

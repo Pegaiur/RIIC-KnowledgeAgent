@@ -20,7 +20,8 @@ function indexBy<T extends { id: string }>(items: readonly T[]): Map<string, T> 
 }
 
 function appendNote(notes: string[], note: string | undefined): void {
-  if (note !== undefined && note.trim() !== '') notes.push(note)
+  const normalized = note?.trim()
+  if (normalized && !notes.includes(normalized)) notes.push(normalized)
 }
 
 /** 将一组已通过门禁的规范化输入投影为一张卡对应一个名册干员。 */
@@ -60,8 +61,12 @@ export function projectRecordCards(options: RecordCardProjectionOptions): Record
       if (!fact) throw new Error(`事实投影失败：grant 缺少 SkillFact：${grant.id}`)
       const equivalences = equivalencesBySkill.get(fact.id) ?? []
       if (equivalences.length > 1) throw new Error(`事实投影失败：SkillFact 命中多个等价组：${fact.id}`)
-      if (mode === 'curated') appendNote(cardNotes, curations.grants.get(grant.id)?.notes)
       const skillCuration = mode === 'curated' ? curations.skills.get(fact.id) : undefined
+      const skillNotes: string[] = []
+      if (mode === 'curated') {
+        appendNote(skillNotes, skillCuration?.notes)
+        appendNote(skillNotes, curations.grants.get(grant.id)?.notes)
+      }
       return {
         grantId: grant.id,
         room: fact.room,
@@ -69,7 +74,7 @@ export function projectRecordCards(options: RecordCardProjectionOptions): Record
         unlockType: grant.unlockText,
         target: fact.rawAnnotationText,
         effectText: resolveSkillEffectText(fact, mode, curations),
-        ...(skillCuration?.notes === undefined ? {} : { notes: skillCuration.notes }),
+        ...(skillNotes.length === 0 ? {} : { notes: skillNotes.join('；') }),
         ...(grant.replacesGrantId === undefined ? {} : { replacesGrantId: grant.replacesGrantId }),
         skillCategories: categoriesBySkill.get(fact.id) ?? [],
         ...(equivalences.length === 0 ? {} : { equivalenceGroupId: equivalences[0].id }),

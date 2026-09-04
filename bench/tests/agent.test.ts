@@ -51,10 +51,17 @@ describe('agent：grep/rag 检索工具 schema 拆分', () => {
 
   it('hybrid 模式：系统提示同时描述 RAG 与 facts 三个工具', () => {
     const prompt = buildSystemPrompt('hybrid')
+    expect(prompt).toContain('明日方舟基建查询 Agent 常驻知识')
+    expect(prompt).toContain('技能标为“解锁”表示新增')
     expect(prompt).toContain('rag_search')
     expect(prompt).toContain('lookup')
     expect(prompt).toContain('query_operators')
     expect(prompt).toContain('问题同时涉及两类信息时应分别查询')
+  })
+
+  it('常驻知识只默认注入 facts/hybrid，不污染历史 BM25 对照模式', () => {
+    expect(buildSystemPrompt('facts')).toContain('明日方舟基建查询 Agent 常驻知识')
+    expect(buildSystemPrompt('bm25')).not.toContain('明日方舟基建查询 Agent 常驻知识')
   })
 })
 

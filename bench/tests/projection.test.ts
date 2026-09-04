@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { loadReferenceFacts } from '../src/facts/references.js'
 import { ALL_CURATIONS } from '../src/facts/curation/index.js'
-import { skillCurationHash, validateCurations } from '../src/facts/curation/types.js'
+import { grantCurationHash, skillCurationHash, validateCurations } from '../src/facts/curation/types.js'
 import { loadTaxonomy } from '../src/facts/taxonomy.js'
 import { loadEquivalenceGroups } from '../src/facts/equivalence.js'
 import { projectRecordCards } from '../src/facts/project.js'
@@ -53,11 +53,16 @@ describe('projection：规范化事实投影 RecordCard', () => {
   it('curated 有有效覆盖时替换效果，无覆盖时回退原文', () => {
     const inputs = loadInputs()
     const fact = inputs.facts.skillFacts.find((item) => item.name === '自动化·α')!
+    const grant = inputs.facts.grants.find((item) => item.operatorId === '森蚺' && item.skillId === fact.id)!
     const curations = validateCurations(inputs.facts, [
       {
         room: fact.room,
-        skills: [{ skillId: fact.id, expectedRawHash: skillCurationHash(fact), effectText: '人工确认后的效果原文', notes: '技能级人工确认说明' }],
-        grants: [],
+        skills: [{ skillId: fact.id, expectedRawHash: skillCurationHash(fact), effectText: '人工确认后的效果原文', notes: '共享技能说明' }],
+        grants: [{
+          grantId: grant.id,
+          expectedGrantHash: grantCurationHash(grant),
+          notes: '当前干员持有说明',
+        }],
         operators: [],
       },
     ])
@@ -67,7 +72,7 @@ describe('projection：规范化事实投影 RecordCard', () => {
     const curatedSkill = curated.find((card) => card.canonical === '森蚺')!.skills.find((skill) => skill.name === '自动化·α')!
     const rawSkill = raw.find((card) => card.canonical === '森蚺')!.skills.find((skill) => skill.name === '自动化·α')!
     expect(curatedSkill.effectText).toBe('人工确认后的效果原文')
-    expect(curatedSkill.notes).toBe('技能级人工确认说明')
+    expect(curatedSkill.notes).toBe('共享技能说明；当前干员持有说明')
     expect(rawSkill.effectText).not.toBe('人工确认后的效果原文')
     expect(rawSkill.notes).toBeUndefined()
   })

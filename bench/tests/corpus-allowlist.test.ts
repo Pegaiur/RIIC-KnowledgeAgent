@@ -23,6 +23,7 @@ describe('真实 knowledge 语料白名单', () => {
     expect([...actual].filter((file) => file.startsWith('references/'))).toHaveLength(14)
     expect([...actual].filter((file) => file.startsWith('guides/'))).toHaveLength(5)
     expect([...actual].filter((file) => file.startsWith('raw/'))).toHaveLength(0)
+    expect(actual.has('AGENTS.md')).toBe(false)
     expect(actual.has('base/机制-基建总览.md')).toBe(true)
     expect(actual.has('references/名册.md')).toBe(true)
     expect(actual.has('guides/贸易站组合.md')).toBe(true)

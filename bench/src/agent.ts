@@ -4,6 +4,8 @@
  * 保留要素：轮次预算（maxRounds）× provider 调用 × 工具执行 × 结果回写 messages。
  * 裁掉要素：Guardrail / Hook / 遥测 / 断路器 / subagent。
  */
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { loadConfig, type BenchConfig, type RetrieverId } from './config.js'
 import { search, type IndexEntry } from './retriever.js'
 import { grepSearch, buildGrepResult } from './grep-retriever.js'
@@ -34,27 +36,43 @@ export interface AgentOptions {
 /** 单次查询允许的知识库检索次数上限（system prompt 与 tool 侧共同约束） */
 export const MAX_RAG_CALLS = 2
 
+/** 读取查询 Agent 的常驻知识；只在构建提示时读取，不产生模块顶层副作用。 */
+export function loadKnowledgeAgentInstructions(root = process.cwd()): string {
+  try {
+    return readFileSync(join(root, 'knowledge', 'AGENTS.md'), 'utf-8').trim()
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error)
+    throw new Error(`读取查询 Agent 常驻知识失败：${detail}`)
+  }
+}
+
 /** 构建系统提示；工具名随检索器切换（双工具模式同时描述两个检索器及其定位） */
-export function buildSystemPrompt(retriever: RetrieverId = 'bm25', rulesEnabled = false): string {
+export function buildSystemPrompt(
+  retriever: RetrieverId = 'bm25',
+  rulesEnabled = false,
+  agentInstructions = retriever === 'facts' || retriever === 'hybrid' ? loadKnowledgeAgentInstructions() : '',
+): string {
   if (retriever === 'hybrid') {
     const lines = [
       '你是「明日方舟基建」知识库问答助手（混合查询模式），基于机制语料与干员事实记录卡作答。',
       `你可以调用 rag_search（检索机制/体系语料）、lookup（按干员名/技能名/技能组精确查询记录卡）与 query_operators（至少提供一个非空的设施、阵营、职业或关键词进行分类过滤）。每次回答最多允许检索 ${MAX_RAG_CALLS} 次，达到上限后请直接基于已返回内容作答。`,
       '涉及规则、机制或体系时使用 rag_search；涉及具体干员、技能或条件筛选时使用 lookup/query_operators；问题同时涉及两类信息时应分别查询。',
-      '所有答案必须严格基于工具返回的语料片段与记录卡；未覆盖时明确说明「知识库未查到」，不得凭记忆补全，不得编造数值或机制。',
+      '常驻知识可直接作为通用判断依据；具体干员、技能数值和组合结论必须严格基于工具返回的语料片段与记录卡。未覆盖时明确说明「知识库未查到」，不得凭记忆补全。',
       '输出使用中文，结构化排版（要点列表/表格）。',
     ]
     const head = rulesEnabled ? `${buildRulesPrefix()}\n\n` : ''
-    return head + lines.join('\n')
+    const knowledge = agentInstructions ? `${agentInstructions}\n\n` : ''
+    return head + knowledge + lines.join('\n')
   }
   if (retriever === 'facts') {
     const lines = [
       '你是「明日方舟基建」知识库问答助手（事实查询模式），基于干员事实记录卡作答。',
       `你可以调用 lookup（按干员名/技能名/技能组精确查询记录卡，返回记录卡列表）与 query_operators（至少提供一个非空的设施、阵营、职业或关键词，按这些条件分类过滤，支持 termQuery 关键词子串匹配），每次回答最多允许检索 ${MAX_RAG_CALLS} 次，达到上限后请直接基于已返回的记录卡作答。`,
-      '所有答案必须严格基于 lookup/query_operators 返回的记录卡；记录卡未覆盖时，明确说明「知识库未查到」，不得凭记忆补全，不得编造数值或机制。',
+      '常驻知识可直接作为通用判断依据；具体干员和技能结论必须严格基于 lookup/query_operators 返回的记录卡。记录卡未覆盖时明确说明「知识库未查到」，不得凭记忆补全。',
       '输出使用中文，结构化排版（要点列表/表格）。',
     ]
-    return lines.join('\n')
+    const knowledge = agentInstructions ? `${agentInstructions}\n\n` : ''
+    return knowledge + lines.join('\n')
   }
   const tools = retriever === 'both' ? 'rag_search（BM25 相关性排序）与 grep_search（字面命中定位）' : retriever === 'grep' ? 'grep_search' : 'rag_search'
   const lines = [
@@ -119,7 +137,7 @@ export function lookupTool(): Record<string, unknown> {
     type: 'function',
     function: {
       name: 'lookup',
-      description: '在明日方舟基建干员事实记录卡中按干员名/技能名/技能组精确查询，返回记录卡列表（≤1KB/卡）',
+      description: '在明日方舟基建干员事实记录卡中按干员名/技能名/技能组精确查询，返回紧凑记录卡列表',
       parameters: {
         type: 'object',
         properties: {
