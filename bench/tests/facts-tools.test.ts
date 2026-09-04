@@ -66,7 +66,7 @@ describe('store：queryOperators 分类过滤', () => {
 
   it('组合过滤（萨尔贡 + 制造站 → 森蚺）', () => {
     const canonicals = store.queryOperators({ faction: '萨尔贡', room: '制造站' }).map((c) => c.canonical)
-    expect(canonicals).toEqual(['森蚺'])
+    expect(canonicals).toContain('森蚺')
   })
 
   it('termQuery 字面子串命中（木天蓼 → 怪猎三卡）', () => {
@@ -78,8 +78,8 @@ describe('store：queryOperators 分类过滤', () => {
     expect(canonicals).not.toContain('森蚺')
   })
 
-  it('facility 不存在的设施返回空', () => {
-    expect(store.queryOperators({ room: '发电站' })).toEqual([])
+  it('不存在的设施返回空', () => {
+    expect(store.queryOperators({ room: '不存在设施' })).toEqual([])
   })
 
   it('room + termQuery 必须命中同一设施技能，不能跨设施串线', () => {

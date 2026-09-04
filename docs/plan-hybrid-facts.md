@@ -42,7 +42,7 @@
 3. **P0.4 参考要点重制**（H1 判定前提，勿低估工作量）：`docs/spec/rag-answer-baseline.md` 中事实类 12 题（F01-F10/G01/G02）以 references 真源重制要点（能定位 references 出处即可，不强制 file#小节），人工终审，spec 版本递进；S 类 8 题暂缓。
 4. **人工抽检**：语义字段（原文效果 / 代偿备注 / 相关组合）抽检 → 按条修正，而非全量终审；俗称、别名、合称和消歧后置。
 5. **bench 最简接入**：lookup + query_operators 两 tool（读运行时记录卡；复用现有 runQuery 检索预算），工具单测（精确技能命中、分类过滤）。验收：两 tool 接入 + 单测通过。
-   - **运行时卡数据源（本轮）**：`FACTS_FIXTURES` 16 张内存单例（`getCardStore()`，模块级惰性，避免改 `runQuery` 签名；全量解析后由同一 store 承载）。
+   - **运行时卡数据源（本轮）**：全量 425 张 RecordCard 内存单例（`getCardStore()`，模块级惰性，首次调用执行全量门禁；`FACTS_FIXTURES` 仅作兼容回归基线）。
    - **索引/存储**：`bench/src/facts/store.ts`——`byCanonical` / `byTerm`（canonical / skills[].name / skillGroups → canonical[]；`byAlias` 保留兼容结构但本轮为空）；`lookup(term): RecordCard[]`（解析顺序 canonical→技能名→skillGroups，返回卡列表；合称/子串消歧后置）、`queryOperators({ room, faction, rarity, profession, excludeIds, termQuery }): RecordCard[]`（termQuery 对 name/target/effectText/notes 字面子串；excludeIds 按 canonical；不含数值 minEff / 效率排序）。
    - **工具 schema + 派发**：`agent.ts` 增 `lookupTool()` / `queryOperatorsTool()`；`retrieverTools('facts')` 返回两工具；`runQuery` 循环内派发并套用 `MAX_RAG_CALLS` 预算（超出提示「已达检索上限」）；`buildSystemPrompt('facts')` 描述两 tool 职能并改契约（答案须基于 lookup/query 返回记录卡；片段未覆盖→明确「知识库未查到」，禁凭记忆补全/编造数值机制）。
    - **配置**：`RetrieverId` 增 `'facts'`（bm25/grep/both 不变，向后兼容）；`EXPERIMENT.retriever` 可切换 `'facts'`。

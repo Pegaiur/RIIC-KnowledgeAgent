@@ -18,10 +18,10 @@ import { aggregate, renderCrossProvider, renderCsv, renderMarkdown, type BenchRe
 import type { BenchQuery, CostRecord, ProviderId, ThinkingMode } from './types.js'
 
 /**
- * 散文 RAG（run）已临时重接（2026-09-03，smoke）：语料指向 knowledge/，run 方向放开。
+ * 非 facts 模式的散文 RAG 仍临时重接（2026-09-03，smoke）：语料指向 knowledge/，run 方向放开。
  * 但 hitrate 暂缓：其 gold 基线（bench/gold.json）仍引用已删 0-规则/2-体系/4-散件，未按 knowledge 语料重建，
  * 放开必然导致命令失败；report/compare 仅读历史运行结果、不依赖语料，保留可用。
- * TODO(tech-debt) R5：facts-first 全量转录后移除临时重接语义（lookup/query 取代 RAG）。
+ * facts 模式旁路散文加载，使用 lookup/query_operators 读取全量记录卡。
  */
 const HITRATE_SUSPENDED = true
 

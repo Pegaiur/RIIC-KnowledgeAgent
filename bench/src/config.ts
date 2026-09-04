@@ -99,8 +99,7 @@ export const EXPERIMENT: ExperimentConfig = {
   maxRounds: 3,
   maxTokens: 4096,
   retriever: 'bm25',
-  // 临时重接（smoke，S02/S04/S06）：语料指向 knowledge/（references 数据 + base 机制 + 基建物流链）。
-  // TODO(tech-debt) R5：facts-first 全量转录后，此处改读记录卡 store / knowledge（lookup/query 取代 RAG）。
+  // 非 facts 模式仍使用 knowledge 语料；facts 模式由 getCardStore() 的全量门禁与记录卡投影承载。
   corpusDir: 'knowledge',
 }
 

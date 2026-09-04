@@ -1,12 +1,12 @@
 /**
  * 运行时记录卡内存 store + 检索索引（plan 步骤 5）。
  *
- * 本轮以 `FACTS_FIXTURES`（16 张）为源；全量 425 转录后由同一 store 承载。
+ * 运行时以最终门禁通过的全量 RecordCard 为源；fixture 只保留为回归基线。
  * lookup 返回命中卡列表（合称/子串消歧后置，仅支持单指标签精确命中）；
  * query_operators 做分类过滤（含 termQuery 字面子串）。不做落盘、不做来源标注。
  */
 import type { RecordCard } from './card.js'
-import { FACTS_FIXTURES } from './fixtures.js'
+import { loadValidatedRecordCards } from './final.js'
 
 /** query_operators 过滤条件（全部可选；不含数值 minEff / 效率排序） */
 export interface OperatorFilters {
@@ -140,8 +140,8 @@ function serializeCard(card: RecordCard, filters: CardSerializationFilters): str
 
 let singleton: CardStore | undefined
 
-/** 运行时卡 store 单例（模块级惰性；全量转录后仍从 fixtures 或未来构建源接入） */
+/** 运行时卡 store 单例（模块级惰性；首次调用时执行全量门禁） */
 export function getCardStore(): CardStore {
-  if (!singleton) singleton = buildCardStore(FACTS_FIXTURES)
+  if (!singleton) singleton = buildCardStore(loadValidatedRecordCards(process.cwd(), 'curated'))
   return singleton
 }
