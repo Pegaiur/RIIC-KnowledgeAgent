@@ -53,6 +53,7 @@ rag-test/
 │   ├── references/                 ← 数据层（解包直出：名册 / 技能分片×9 / 类别·技能等价组·歧义 / 数据源）
 │   ├── base/                       ← 机制基线语料（机制-*.md / 基建物流链.md）
 │   ├── guides/                     ← 已审定的 RAG 玩家散文（组合 / 新手 / 散件）
+│   ├── raw/                        ← 待进一步核验与拆分的原始语料（默认不进入检索白名单）
 │   └── SKILL.md                    ← 公孙长乐基建问答技能（知识库用法 / 回答管线 / 计算政策）
 ├── bench/                          ← 查询输出成本基准（简化版 Agent）
 │   ├── src/                        ← provider / retriever / agent / runner / report / cli
