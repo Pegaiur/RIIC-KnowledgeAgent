@@ -3,7 +3,7 @@
 > 创建日期：2026-09-04
 > 状态：草案（draft）
 > 上游：`docs/archive/plan-hybrid-facts.md`（facts-first 基础设施已收口）
-> 前置：`docs/plan-rag-prose-cleaning.md`（先完成 RAG 散文清洗与白名单切换）
+> 前置：`docs/archive/plan-rag-prose-cleaning.md`（先完成 RAG 散文清洗与白名单切换）
 
 ## 目标
 
@@ -52,7 +52,7 @@
 5. **curation 全量录入**：把所有能够由 references 直接支持、符合收录边界的 `include` 项写入对应 curation；同一组合只在各成员处保留其局部角色和条件，不复制总效率与完整推导。录入时保留 references 指纹、来源定位和修订理由，并逐项人工复核；无法由 references 支持的候选一律标为 `support-only`。
 6. **查询/裸查对照**：定义 12 个事实题加 5 个组合题的固定题集，使用同模型、同参数分别运行查询组与无工具裸查组；题集覆盖 notes 的直接返回、房间作用域和组合值误用风险，运行结果、失败项和成本信息落盘。
 7. **人工判定与结论**：按重制后的 spec 逐题核查答案，落盘判定表；分别报告工具命中、notes 使用正确性、答案覆盖、错误外推、编造、成本和已知局限，不把结论外推到未测 provider。
-8. **v3 规划**：根据核查结论登记 S 类、`minEff` 数值效率、结构化组合模型和 references 再生脚本等后续工作；散文清洗已前置到 `docs/plan-rag-prose-cleaning.md`，不再重复登记；范围稳定后将本草案转为正式 plan。
+8. **v3 规划**：根据核查结论登记 S 类、`minEff` 数值效率、结构化组合模型和 references 再生脚本等后续工作；散文清洗已前置到 `docs/archive/plan-rag-prose-cleaning.md`，不再重复登记；范围稳定后将本草案转为正式 plan。
 
 ## 验收清单
 

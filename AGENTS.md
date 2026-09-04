@@ -49,10 +49,11 @@ rag-test/
 ├── AGENTS.md                       ← 本文件（规则索引 + 结构导航 + 工作流路由）
 ├── package.json                    ← 根包（bench 工具入口，pnpm）
 ├── tsconfig.json                   ← TypeScript 严格模式（NodeNext/ESM）
-├── knowledge/                      ← 明日方舟基建知识库（数据层为唯一真源；散文已废弃删除）
+├── knowledge/                      ← 明日方舟基建知识库（references 为机械事实真源；base/guides 为人工维护语料）
 │   ├── references/                 ← 数据层（解包直出：名册 / 技能分片×9 / 类别·技能等价组·歧义 / 数据源）
-│   ├── SKILL.md                    ← 公孙长乐基建问答技能（知识库用法 / 回答管线 / 计算政策）
-│   └── base/                       ← 基线语料（机制-*.md / 基建物流链.md）
+│   ├── base/                       ← 机制基线语料（机制-*.md / 基建物流链.md）
+│   ├── guides/                     ← 已审定的 RAG 玩家散文（组合 / 新手 / 散件）
+│   └── SKILL.md                    ← 公孙长乐基建问答技能（知识库用法 / 回答管线 / 计算政策）
 ├── bench/                          ← 查询输出成本基准（简化版 Agent）
 │   ├── src/                        ← provider / retriever / agent / runner / report / cli
 │   ├── tests/                      ← vitest 单元测试

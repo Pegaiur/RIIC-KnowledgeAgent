@@ -23,8 +23,10 @@
     "references/名册.md",
     "references/歧义.md",
     "references/数据源.md",
-    "recommendation/组合知识库.md",
-    "recommendation/高效率散件与搓玉名单.md",
-    "recommendation/新手必练与必收集名单.md"
+    "guides/贸易站组合.md",
+    "guides/制造站组合.md",
+    "guides/跨设施组合.md",
+    "guides/新手培养.md",
+    "guides/高效率散件.md"
   ]
 }
