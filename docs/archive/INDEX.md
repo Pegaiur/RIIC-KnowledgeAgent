@@ -6,6 +6,11 @@
 | 完成日期 | 版本 | 文件 | 摘要 |
 |----------|------|------|------|
 
+| 2026-09-04 | — | [plan-hybrid-facts.md](plan-hybrid-facts.md) | facts-first 确定性记录卡、lookup/query_operators 与全量 425 卡运行时切换完成 |
+| 2026-09-04 | — | [plan-facts-record-cards.md](plan-facts-record-cards.md) | 完成 425 名干员记录卡确定性解析、分类/等价关系拼装与全量门禁 |
+| 2026-09-04 | — | [plan-facts-query-contract.md](plan-facts-query-contract.md) | 收紧 query_operators 正向条件与非法参数校验，阻止无条件全库输出 |
+| 2026-09-04 | — | [plan-prts-crawl.md](plan-prts-crawl.md) | 按 PRTS 核对并落位 8 页基建机制公式基础规则 |
+| 2026-09-04 | — | [plan-rag-facts-hybrid.md](plan-rag-facts-hybrid.md) | 新增 hybrid 模式同时暴露 RAG 与 facts 工具并完成 Qwen 冒烟 |
 | 2026-09-03 | — | [plan-facts-source-purge.md](plan-facts-source-purge.md) | plan-facts-source-purge |
 | 2026-09-02 | — | [plan-retrieval-tuning.md](plan-retrieval-tuning.md) | 以命中率评测（R2，recall@5=33.5%）为基准，验证检索注入收敛（R1，权衡后维持 topK=5/maxContextChars=12000）与中文分词 jieba（R3 全面略降，维持 bigram），落盘三项结论 |
 | 2026-09-02 | — | [plan-retrieval-experiment.md](plan-retrieval-experiment.md) | 受控实验评估检索策略：P1 minRag=1 采纳（消除 0 检索、成本最优）；P2 专名 boost 与 P3 grep 不采纳；P5 双工具不采纳但保留末位强制作答轮 |

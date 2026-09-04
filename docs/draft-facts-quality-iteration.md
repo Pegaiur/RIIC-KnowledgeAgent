@@ -2,7 +2,7 @@
 
 > 创建日期：2026-09-04
 > 状态：草案（draft）
-> 上游：`docs/plan-hybrid-facts.md`（facts-first 基础设施已收口）
+> 上游：`docs/archive/plan-hybrid-facts.md`（facts-first 基础设施已收口）
 
 ## 目标
 

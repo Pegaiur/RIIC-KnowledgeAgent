@@ -7,5 +7,5 @@
 | 编号 | 状态 | 标题 | 日期 |
 |------|------|------|------|
 | [001](ADR-001-jieba-node-中文分词.md) | 已实施 | 引入 jieba-node 中文分词优化 BM25 检索 | 2026-09-01 |
-| [002](ADR-002-facts-record-card-source.md) | 已决策 | 事实记录卡采用确定性源解析 | 2026-09-04 |
+| [002](ADR-002-facts-record-card-source.md) | 已实施 | 事实记录卡采用确定性源解析 | 2026-09-04 |
 | [003](ADR-003-rag-facts-hybrid-retriever.md) | 已实施 | 新增 RAG 与 facts 混合检索模式 | 2026-09-04 |
