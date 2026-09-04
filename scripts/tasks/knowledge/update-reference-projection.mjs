@@ -38,7 +38,7 @@ export const REFERENCE_PREAMBLE = `**练度门槛**：\`精N\` = 精英化 N 阶
 
 const PREAMBLE_PATTERN = /\*\*练度门槛\*\*：[\s\S]*?(?=\r?\n\r?\n## 按干员)/
 
-function projectText(sourceText) {
+export function projectText(sourceText) {
   if (!sourceText.includes('## 按干员')) {
     throw new Error('技能分片缺少“## 按干员”锚点，拒绝覆盖：无法确认公共说明边界')
   }
@@ -46,7 +46,10 @@ function projectText(sourceText) {
     throw new Error('技能分片缺少可识别的公共练度说明，拒绝覆盖：请先核对生成格式')
   }
   const withHeader = sourceText.replace(/^<!--[\s\S]*?-->/, GENERATED_HEADER)
-  return withHeader.replace(PREAMBLE_PATTERN, REFERENCE_PREAMBLE)
+  // 保留检出文件的换行风格，避免 Windows core.autocrlf 将已投影内容误判为差异。
+  const lineEnding = sourceText.includes('\r\n') ? '\r\n' : '\n'
+  const preamble = REFERENCE_PREAMBLE.replace(/\n/g, lineEnding)
+  return withHeader.replace(PREAMBLE_PATTERN, preamble)
 }
 
 export function projectReferenceFragments(root, { write = true } = {}) {
