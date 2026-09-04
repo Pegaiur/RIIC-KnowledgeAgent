@@ -8,8 +8,8 @@ export type ThinkingMode = 'off' | 'low' | 'high'
 /** LLM Provider 标识 */
 export type ProviderId = 'hy3' | 'qwen'
 
-/** 检索工具标识（bm25→rag_search；grep→grep_search；both 双工具同时暴露） */
-export type ToolId = 'rag_search' | 'grep_search'
+/** 工具标识（hybrid 同时使用 rag_search 与 lookup/query_operators） */
+export type ToolId = 'rag_search' | 'grep_search' | 'lookup' | 'query_operators'
 
 /** 检索分词器标识（bigram 零依赖默认；jieba 见 ADR-001） */
 export type TokenizerId = 'bigram' | 'jieba'
@@ -110,4 +110,9 @@ export interface DocChunk {
 /** 是否为检索工具（rag_search / grep_search）；供 agent / report 复用，替代散落的硬编码字符串谓词 */
 export function isRetrievalTool(name: string | ToolId): name is ToolId {
   return name === 'rag_search' || name === 'grep_search'
+}
+
+/** 是否为 facts 查询工具（lookup / query_operators）；facts 模式代理统计用 */
+export function isFactTool(name: string | ToolId): boolean {
+  return name === 'lookup' || name === 'query_operators'
 }

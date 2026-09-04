@@ -12,22 +12,23 @@ import { loadConfig, type RetrieverId } from './config.js'
 import { corpusStats, loadCorpus } from './corpus.js'
 import { checkGold, loadGold, renderHitrate, runHitrate } from './hitrate.js'
 import { buildIndex } from './retriever.js'
+import { getCardStore } from './facts/store.js'
 import { runBenchmark } from './runner.js'
 import { aggregate, renderCrossProvider, renderCsv, renderMarkdown, type BenchReport } from './report.js'
 import type { BenchQuery, CostRecord, ProviderId, ThinkingMode } from './types.js'
 
 /**
- * RAG 查询工具临时停用（P0.7）。
- * 散文语料已废弃（P0.1，2026-09-03），facts-first（facts.json + lookup/query 工具）重建前不可用；
- * report/compare 仅读历史运行结果、不依赖语料，保留可用。
- * TODO(tech-debt) R5：facts-first 重建（facts.json + lookup/query 工具接入）后移除 RAG_TOOL_SUSPENDED 守卫，恢复 run/hitrate。
+ * 非 facts 模式的散文 RAG 仍临时重接（2026-09-03，smoke）：语料指向 knowledge/，run 方向放开。
+ * 但 hitrate 暂缓：其 gold 基线（bench/gold.json）仍引用已删 0-规则/2-体系/4-散件，未按 knowledge 语料重建，
+ * 放开必然导致命令失败；report/compare 仅读历史运行结果、不依赖语料，保留可用。
+ * facts 模式旁路散文加载，使用 lookup/query_operators 读取全量记录卡。
  */
-const RAG_TOOL_SUSPENDED = true
+const HITRATE_SUSPENDED = true
 
-function assertRagToolAvailable(): void {
-  if (!RAG_TOOL_SUSPENDED) return
+function assertHitrateAvailable(): void {
+  if (!HITRATE_SUSPENDED) return
   throw new Error(
-    'RAG 查询工具已临时停用：散文语料已废弃（2026-09-03，见 docs/notes-corpus-purge.md）。待 facts-first 重建（facts.json + lookup/query 工具，见 docs/plan-hybrid-facts.md）后恢复。',
+    'hitrate 暂缓：gold 基线（bench/gold.json）仍引用已删除散文路径，未按 knowledge 语料重建；请先更新 gold 后再用。',
   )
 }
 
@@ -41,7 +42,7 @@ interface ParsedArgs {
   questions: string | null
   out: string | null
   runDir: string | null
-  /** 检索器（bm25 | grep） */
+  /** 检索器（bm25 | grep | both | facts | hybrid） */
   retriever: RetrieverId | null
   /** 强制首检次数 */
   minRag: number | null
@@ -100,7 +101,7 @@ function printUsage(): void {
       'rag-test bench —— LLM 查询输出成本基准（Hy3 / Qwen3.7-Flash）',
       '',
       '用法：',
-      '  node dist/cli.js run [--provider hy3|qwen] [--thinking off|low|high] [--retriever bm25|grep] [--min-rag N] [--limit N] [--dry] [--questions <path>] [--out <dir>]',
+      '  node dist/cli.js run [--provider hy3|qwen] [--thinking off|low|high] [--retriever bm25|grep|both|facts|hybrid] [--min-rag N] [--limit N] [--dry] [--questions <path>] [--out <dir>]',
       '  node dist/cli.js report <runDir> [--out <path>]',
       '  node dist/cli.js compare <runDir1> <runDir2> [--out <path>]',
       '  node dist/cli.js hitrate [--topk 3,5,10] [--gold <path>] [--check-gold] [--out <path>]',
@@ -109,6 +110,7 @@ function printUsage(): void {
       '  node dist/cli.js run --dry --limit 2          # 干跑验证管线（不发请求）',
       '  node dist/cli.js run --provider qwen --thinking low   # 真实跑（需 DASHSCOPE_API_KEY）',
       '  node dist/cli.js run --provider qwen --thinking low --retriever grep --min-rag 1   # grep 对照（P3）',
+      '  node dist/cli.js run --retriever hybrid --thinking off   # BM25 RAG + facts 混合工具',
       '  node dist/cli.js report bench-runs/xxx        # 聚合最近一次运行',
       '  node dist/cli.js compare bench-runs/<hy3> bench-runs/<qwen>   # 跨模型对比',
       '  node dist/cli.js hitrate --check-gold         # 仅校验 gold ↔ 语料对应关系',
@@ -147,12 +149,12 @@ async function main(): Promise<void> {
   }
 
   if (args.command === 'run') {
-    assertRagToolAvailable()
     const config = loadConfig(args.provider)
     if (args.retriever) config.retriever = args.retriever
     if (args.minRag !== null) config.minRagCalls = args.minRag
-    const stats = corpusStats(config.corpusDir)
-    if (stats.files === 0) {
+    const isFacts = config.retriever === 'facts'
+    const stats = isFacts ? { files: 0 } : corpusStats(config.corpusDir)
+    if (!isFacts && stats.files === 0) {
       throw new Error(`语料目录为空：${config.corpusDir}（相对仓库根运行）`)
     }
 
@@ -161,7 +163,7 @@ async function main(): Promise<void> {
     const picked = args.limit ? questions.slice(0, args.limit) : questions
 
     process.stdout.write(
-      `Provider：${config.providerLabel}｜语料：${stats.files} 个文件｜问题：${picked.length}/${questions.length}｜档位：${args.thinking}｜检索器：${config.retriever}｜强制首检：${config.minRagCalls}｜dry：${args.dry}\n`,
+      `Provider：${config.providerLabel}｜语料：${isFacts ? `记录卡 ×${getCardStore().cards.length}` : `${stats.files} 个文件`}｜问题：${picked.length}/${questions.length}｜档位：${args.thinking}｜检索器：${config.retriever}｜强制首检：${config.minRagCalls}｜dry：${args.dry}\n`,
     )
 
     const out = await runBenchmark(picked, {
@@ -182,7 +184,7 @@ async function main(): Promise<void> {
   }
 
   if (args.command === 'hitrate') {
-    assertRagToolAvailable()
+    assertHitrateAvailable()
     const config = loadConfig()
     const goldPath = args.gold ?? join(process.cwd(), 'bench', 'gold.json')
     const gold = loadGold(goldPath)

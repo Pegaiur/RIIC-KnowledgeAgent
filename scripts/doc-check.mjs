@@ -16,6 +16,10 @@
  * 扩展点：monorepo 子包约定文档校验（如 PACKAGE.md 路径）、spec↔rule 双向引用等，
  * 可按仓库需要新增 D 检查。
  *
+ * TODO(tech-debt) R5-DOC：D3 仅覆盖 ADR-NNN 交叉引用，md→md 悬空引用（如 AGENTS.md/inbox 指向 plan-*.md
+ * 与 draft-*.md 的路径失同步，2026-09-03 实际发生）不在检查范围；重启条件：R5 facts 草案落地转 plan 时，
+ * 或同类失同步再次复发时，扩展 D3 扫描 docs/ 下 md 相对路径引用的有效性。
+ *
  * 退出码：0 = 全绿，1 = 有错误
  */
 

@@ -54,7 +54,7 @@ export const PROVIDERS: Record<ProviderId, ProviderSpec> = {
   },
 }
 
-export type RetrieverId = 'bm25' | 'grep' | 'both'
+export type RetrieverId = 'bm25' | 'grep' | 'both' | 'facts' | 'hybrid'
 
 /**
  * 实验参数集中配置（默认无污染）。
@@ -71,7 +71,7 @@ export interface ExperimentConfig {
   entityBoost: number
   /** 分词器（bigram | jieba） */
   tokenizer: TokenizerId
-  /** 强制首检次数（minRag） */
+  /** 作答前至少需调用检索工具的次数（minRag）；默认 1 = 必须调用一轮工具，0 = 不强制 */
   minRagCalls: number
   /** 检索 topK */
   topK: number
@@ -81,7 +81,7 @@ export interface ExperimentConfig {
   maxRounds: number
   /** 单次响应上限 */
   maxTokens: number
-  /** 检索器（bm25 | grep | both） */
+  /** 检索器（bm25 | grep | both | facts | hybrid） */
   retriever: RetrieverId
   /** 语料目录（相对仓库根） */
   corpusDir: string
@@ -93,14 +93,14 @@ export const EXPERIMENT: ExperimentConfig = {
   rules: false,
   entityBoost: 0,
   tokenizer: 'bigram',
-  minRagCalls: 0,
+  minRagCalls: 1,
   topK: 5,
   maxContextChars: 12000,
   maxRounds: 3,
   maxTokens: 4096,
   retriever: 'bm25',
-  // TODO(tech-debt) R5：散文语料已废弃（2026-09-03），facts-first 重建后此处改读 facts.json / knowledge（lookup/query 取代 RAG）。
-  corpusDir: 'arknights-base-vault/docs',
+  // 非 facts 模式仍使用 knowledge 语料；facts 模式由 getCardStore() 的全量门禁与记录卡投影承载。
+  corpusDir: 'knowledge',
 }
 
 export interface BenchConfig {
@@ -130,9 +130,9 @@ export interface BenchConfig {
   topK: number
   /** 单次注入检索片段的最大字符数 */
   maxContextChars: number
-  /** 检索器：bm25（BM25 加权）| grep（字面命中计数，P3 对照）| both（双工具同时暴露，P5 搭配实验） */
+  /** 检索器：hybrid 同时暴露 BM25 RAG 与 facts 查询工具；其余值保持原实验语义 */
   retriever: RetrieverId
-  /** 强制首检次数：模型直接作答前，至少先检索的次数（qwen 检索意愿实验用） */
+  /** 作答前至少需调用检索工具的次数：直接作答前至少先检索几次（默认 1 = 必须调用一轮工具；0 = 不强制） */
   minRagCalls: number
   /** 检索分词器：bigram（零依赖默认）| jieba（ADR-001，EXPERIMENT.tokenizer=jieba） */
   tokenizer: TokenizerId
