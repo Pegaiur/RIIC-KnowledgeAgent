@@ -39,7 +39,7 @@ export function buildSystemPrompt(retriever: RetrieverId = 'bm25', rulesEnabled 
   if (retriever === 'facts') {
     const lines = [
       '你是「明日方舟基建」知识库问答助手（事实查询模式），基于干员事实记录卡作答。',
-      `你可以调用 lookup（按干员名/技能名/技能组精确查询记录卡，返回记录卡列表）与 query_operators（按设施/阵营/星级/职业分类过滤，支持 termQuery 关键词子串匹配），每次回答最多允许检索 ${MAX_RAG_CALLS} 次，达到上限后请直接基于已返回的记录卡作答。`,
+      `你可以调用 lookup（按干员名/技能名/技能组精确查询记录卡，返回记录卡列表）与 query_operators（至少提供一个非空的设施、阵营、职业或关键词，按这些条件分类过滤，支持 termQuery 关键词子串匹配），每次回答最多允许检索 ${MAX_RAG_CALLS} 次，达到上限后请直接基于已返回的记录卡作答。`,
       '所有答案必须严格基于 lookup/query_operators 返回的记录卡；记录卡未覆盖时，明确说明「知识库未查到」，不得凭记忆补全，不得编造数值或机制。',
       '输出使用中文，结构化排版（要点列表/表格）。',
     ]
@@ -120,20 +120,19 @@ export function lookupTool(): Record<string, unknown> {
   }
 }
 
-/** query_operators 工具定义（facts：按设施/阵营/星级/职业分类过滤，含 termQuery 字面子串） */
+/** query_operators 工具定义（facts：按设施/阵营/职业分类过滤，含 termQuery 字面子串） */
 export function queryOperatorsTool(): Record<string, unknown> {
   return {
     type: 'function',
     function: {
       name: 'query_operators',
       description:
-        '在明日方舟基建干员事实记录卡中按设施/阵营/星级/职业分类过滤；termQuery 对技能名/效果/标签/备注做关键词子串匹配（不含数值效率比较）',
+        '在明日方舟基建干员事实记录卡中按设施/阵营/职业分类过滤（至少提供一个非空条件）；termQuery 对技能名/效果/标签/备注做关键词子串匹配（不含数值效率比较）',
       parameters: {
         type: 'object',
         properties: {
           room: { type: 'string', description: '精确匹配的设施名（如 制造站/贸易站）' },
           faction: { type: 'string', description: '所属阵营组（如 莱茵生命/怪物猎人小队）' },
-          rarity: { type: 'string', description: '星级 1~6（无符号）' },
           profession: { type: 'string', description: '职业（如 近卫/术师）' },
           excludeIds: { type: 'array', items: { type: 'string' }, description: '按标准名排除的干员列表' },
           termQuery: { type: 'string', description: '关键词子串（技能名/效果/标签/备注）' },
@@ -258,11 +257,16 @@ export async function runQuery(
             resultText = `已达到知识库检索上限（${MAX_RAG_CALLS} 次），请直接基于已返回的内容作答，勿再检索。`
           } else {
             retrievalCalls++
-            const store = getCardStore()
             if (tc.name === 'query_operators') {
-              const filters = safeParseFilters(tc.arguments) ?? {}
-              resultText = serializeCards(store.queryOperators(filters), filters)
+              const filters = safeParseFilters(tc.arguments)
+              if (!filters) {
+                resultText = '查询参数无效：请至少提供非空的设施、阵营、职业或关键词。'
+              } else {
+                const store = getCardStore()
+                resultText = serializeCards(store.queryOperators(filters), filters)
+              }
             } else {
+              const store = getCardStore()
               resultText = serializeCards(store.lookup(safeParseTerm(tc.arguments)))
             }
           }
@@ -320,17 +324,26 @@ function safeParseTerm(args: string): string {
 /** 解析 facts query_operators 的过滤参数（仅接收权威类型字段，其余忽略） */
 function safeParseFilters(args: string): OperatorFilters | null {
   try {
-    const obj = JSON.parse(args) as Record<string, unknown>
+    const obj = JSON.parse(args) as unknown
+    if (typeof obj !== 'object' || obj === null || Array.isArray(obj)) return null
+    const input = obj as Record<string, unknown>
     const filters: OperatorFilters = {}
-    if (typeof obj.room === 'string' && obj.room) filters.room = obj.room
-    if (typeof obj.faction === 'string' && obj.faction) filters.faction = obj.faction
-    if (typeof obj.rarity === 'string' && obj.rarity) filters.rarity = obj.rarity
-    if (typeof obj.profession === 'string' && obj.profession) filters.profession = obj.profession
-    if (typeof obj.termQuery === 'string' && obj.termQuery) filters.termQuery = obj.termQuery
-    if (Array.isArray(obj.excludeIds)) {
-      filters.excludeIds = obj.excludeIds.filter((x): x is string => typeof x === 'string')
+    const room = typeof input.room === 'string' ? input.room.trim() : ''
+    const faction = typeof input.faction === 'string' ? input.faction.trim() : ''
+    const profession = typeof input.profession === 'string' ? input.profession.trim() : ''
+    const termQuery = typeof input.termQuery === 'string' ? input.termQuery.trim() : ''
+    if (room) filters.room = room
+    if (faction) filters.faction = faction
+    if (profession) filters.profession = profession
+    if (termQuery) filters.termQuery = termQuery
+    if (Array.isArray(input.excludeIds)) {
+      const excludeIds = input.excludeIds
+        .filter((x): x is string => typeof x === 'string')
+        .map((x) => x.trim())
+        .filter(Boolean)
+      if (excludeIds.length > 0) filters.excludeIds = excludeIds
     }
-    return filters
+    return room || faction || profession || termQuery ? filters : null
   } catch {
     return null
   }

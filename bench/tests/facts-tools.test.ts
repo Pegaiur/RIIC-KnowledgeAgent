@@ -56,12 +56,6 @@ describe('store：queryOperators 分类过滤', () => {
     expect(store.queryOperators({ faction: '怪物猎人小队' })).toHaveLength(3)
   })
 
-  it('按星级 rarity 过滤（5 星）', () => {
-    const canonicals = store.queryOperators({ rarity: '5' }).map((c) => c.canonical)
-    expect(canonicals).toContain('巫恋')
-    expect(canonicals).not.toContain('刻俄柏')
-  })
-
   it('按职业 profession 过滤（近卫）', () => {
     const canonicals = store.queryOperators({ profession: '近卫' }).map((c) => c.canonical)
     expect(canonicals).toContain('火龙S黑角')
@@ -78,7 +72,7 @@ describe('store：queryOperators 分类过滤', () => {
   })
 
   it('excludeIds 按 canonical 排除', () => {
-    const canonicals = store.queryOperators({ room: '制造站', excludeIds: ['森蚺'] }).map((c) => c.canonical)
+    const canonicals = store.queryOperators({ room: '制造站', excludeIds: ['  森蚺 ', '', '   '] }).map((c) => c.canonical)
     expect(canonicals).not.toContain('森蚺')
   })
 
@@ -126,6 +120,7 @@ describe('store：queryOperators 分类过滤', () => {
   it('serializeCards 渲染命中卡', () => {
     const text = serializeCards(store.lookup('迷迭香'))
     expect(text).toContain('迷迭香')
+    expect(text).toContain('6星')
     expect(text).toContain('超感')
   })
 })
@@ -139,10 +134,12 @@ describe('agent：facts 工具 schema 与系统提示', () => {
   it('lookup 暴露 term 参数；query_operators 暴露过滤字段', () => {
     const lf = lookupTool().function as { parameters: { required: string[]; properties: Record<string, unknown> } }
     expect(lf.parameters.required).toEqual(['term'])
-    const qo = queryOperatorsTool().function as { parameters: { properties: Record<string, unknown> } }
-    for (const f of ['room', 'faction', 'rarity', 'profession', 'excludeIds', 'termQuery']) {
+    const qo = queryOperatorsTool().function as { description: string; parameters: { properties: Record<string, unknown> } }
+    for (const f of ['room', 'faction', 'profession', 'excludeIds', 'termQuery']) {
       expect(qo.parameters.properties[f]).toBeDefined()
     }
+    expect(qo.parameters.properties.rarity).toBeUndefined()
+    expect(qo.description).not.toContain('星级')
   })
 
   it('系统提示 facts 分支描述两工具与检索上限', () => {
@@ -150,11 +147,14 @@ describe('agent：facts 工具 schema 与系统提示', () => {
     expect(prompt).toContain('lookup')
     expect(prompt).toContain('query_operators')
     expect(prompt).toContain('知识库未查到')
+    expect(prompt).not.toContain('星级')
   })
 })
 
 describe('runQuery（facts 模式）', () => {
   const chunks: DocChunk[] = []
+  const queryOperatorsSpy = vi.spyOn(getCardStore(), 'queryOperators')
+  const INVALID_QUERY_RESULT = '查询参数无效：请至少提供非空的设施、阵营、职业或关键词。'
 
   function toolCall(name: string, args: string) {
     return { id: 'call_1', name, arguments: args }
@@ -171,7 +171,65 @@ describe('runQuery（facts 模式）', () => {
     }
   }
 
-  beforeEach(() => mockCall.mockReset())
+  beforeEach(() => {
+    mockCall.mockReset()
+    queryOperatorsSpy.mockClear()
+  })
+
+  async function runQueryOperatorsCall(argumentsText: string) {
+    const config = loadConfig()
+    config.retriever = 'facts'
+    config.maxRounds = 1
+    const index = buildIndex(chunks)
+
+    mockCall
+      .mockResolvedValueOnce(providerResult({ toolCalls: [{ ...toolCall('query_operators', argumentsText) } as any] }))
+      .mockResolvedValueOnce(providerResult({ content: '最终答案' }))
+
+    const result = await runQuery(
+      { id: 'INVALID', category: 'fact', question: '测试 query_operators 参数' },
+      { config, thinking: 'off', dry: false },
+      chunks,
+      index,
+    )
+    const secondCallMessages = mockCall.mock.calls[1]?.[0] as Array<{ role: string; content: string }> | undefined
+    const toolResult = secondCallMessages?.find((message) => message.role === 'tool')?.content
+    return { result, toolResult }
+  }
+
+  it.each([
+    ['空对象', '{}'],
+    ['非法 JSON', '{'],
+    ['空白 termQuery', '{"termQuery":"   "}'],
+    ['仅 excludeIds', '{"excludeIds":["刻俄柏"]}'],
+    ['仅已删除 rarity', '{"rarity":"5"}'],
+  ])('%s 被拒绝，且不查询或序列化干员卡', async (_label, argumentsText) => {
+    const { result, toolResult } = await runQueryOperatorsCall(argumentsText)
+
+    expect(toolResult).toBe(INVALID_QUERY_RESULT)
+    expect(toolResult).not.toContain('【')
+    expect(toolResult).not.toContain('刻俄柏')
+    expect(queryOperatorsSpy).not.toHaveBeenCalled()
+    expect(result.toolRounds).toBe(1)
+  })
+
+  it.each([
+    ['room', '{"room":"  制造站 "}', { room: '制造站' }],
+    ['faction', '{"faction":"  萨尔贡 "}', { faction: '萨尔贡' }],
+    ['profession', '{"profession":"  近卫 "}', { profession: '近卫' }],
+    ['termQuery', '{"termQuery":"  木天蓼 "}', { termQuery: '木天蓼' }],
+  ])('%s 作为单独正向条件有效并完成 trim', async (_label, argumentsText, expectedFilters) => {
+    await runQueryOperatorsCall(argumentsText)
+    expect(queryOperatorsSpy).toHaveBeenCalledWith(expectedFilters)
+  })
+
+  it('有效正向条件下 excludeIds 元素 trim 且忽略空字符串', async () => {
+    const { toolResult } = await runQueryOperatorsCall('{"room":"  制造站 ","excludeIds":["  森蚺 ","","   "]}')
+
+    expect(toolResult).toBeDefined()
+    expect(toolResult).not.toContain('【森蚺】')
+    expect(queryOperatorsSpy).toHaveBeenCalledWith({ room: '制造站', excludeIds: ['森蚺'] })
+  })
 
   it('facts 模式暴露 lookup，派发并统计工具调用', async () => {
     const config = loadConfig()

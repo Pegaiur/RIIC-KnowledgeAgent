@@ -8,11 +8,10 @@
 import type { RecordCard } from './card.js'
 import { loadValidatedRecordCards } from './final.js'
 
-/** query_operators 过滤条件（全部可选；不含数值 minEff / 效率排序） */
+/** query_operators 过滤条件（正向条件由派发层校验；不含数值 minEff / 效率排序） */
 export interface OperatorFilters {
   room?: string
   faction?: string
-  rarity?: string
   profession?: string
   /** 按 canonical 排除 */
   excludeIds?: string[]
@@ -84,12 +83,12 @@ export function buildCardStore(cards: RecordCard[]): CardStore {
   /** query_operators：分类过滤（含 termQuery 字面子串、excludeIds 按 canonical） */
   const queryOperators = (filters: OperatorFilters): RecordCard[] => {
     const q = (filters.termQuery ?? '').trim()
+    const excludeIds = new Set((filters.excludeIds ?? []).map((id) => id.trim()).filter(Boolean))
     return cards.filter((card) => {
       if (filters.room && !card.rooms.includes(filters.room)) return false
       if (filters.faction && !card.factionGroups.includes(filters.faction)) return false
-      if (filters.rarity && card.rarity !== filters.rarity) return false
       if (filters.profession && card.class !== filters.profession) return false
-      if (filters.excludeIds && filters.excludeIds.includes(card.canonical)) return false
+      if (excludeIds.has(card.canonical)) return false
       if (q && !matchTermQuery(card, q, filters.room)) return false
       return true
     })
