@@ -2,7 +2,7 @@
 
 > 创建日期：2026-09-03
 > 状态：草案（draft）——基于「20 题答覆充分性」评估的取材清单；定稿后转 `plan-*.md`
-> 关联：`docs/plan-hybrid-facts.md`（R5 事实查询，散文重写为其中 v3 预登记项）；`docs/spec/rag-answer-baseline.md`（F/G 批参考要点待 P0.4 以 references 真源重制）；`docs/archive/plan-facts-source-purge.md`（散文已删）
+> 关联：`docs/archive/plan-hybrid-facts.md`（R5 事实查询，散文重写为其中 v3 预登记项）；`docs/spec/rag-answer-baseline.md`（F/G 批参考要点待 P0.4 以 references 真源重制）；`docs/archive/plan-facts-source-purge.md`（散文已删）
 
 ## 背景
 
@@ -66,6 +66,6 @@
 
 ## 关联
 
-- `docs/plan-hybrid-facts.md`（R5 事实查询，v3 预登记「散文重写（数据引用以 references 为准）」——本草案为其取材范围）
+- `docs/archive/plan-hybrid-facts.md`（R5 事实查询，v3 预登记「散文重写（数据引用以 references 为准）」——本草案为其取材范围）
 - `docs/spec/rag-answer-baseline.md`（F/G 批参考要点待 P0.4 以 references 真源重制；本草案 A/C 为其重制提供机制/归类依据）
 - `docs/archive/plan-facts-source-purge.md`（散文已删的相关过程；重写即对本次删除的补回）

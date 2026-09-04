@@ -1,10 +1,10 @@
 /**
- * 记录卡（facts-first）：LLM 转录 + 程序化核对生成的干员事实卡片。
+ * 记录卡（facts-first）：references 确定性解析 + 程序化核对生成的干员事实卡片。
  *
  * 字段口径（plan 步骤 1）：
  * - 机械字段（canonical / rarity / class / rooms / factionGroups）：与 references 一致（rarity 规范化为 1~6，去 ☆；其余逐字），程序化核对断言覆盖。
- * - 语义字段（aliases / skillGroups / skills / notes）：LLM 转录 + 人工抽检，不参与机器比对。
- * 字段-来源对照表见 docs/plan-hybrid-facts-notes.md「决策偏离」。
+ * - 语义字段（aliases / skillGroups / skills / notes）：原文投影或人工 curation，fixture 仅作兼容回归基准。
+ * 字段-来源对照表见 docs/archive/plan-hybrid-facts.md「实施纪要」。
  */
 
 /** 单个基建技能（按 references 技能分片转录，效果原文不数值化） */

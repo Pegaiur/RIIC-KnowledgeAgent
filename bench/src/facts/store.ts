@@ -2,11 +2,16 @@
  * 运行时记录卡内存 store + 检索索引（plan 步骤 5）。
  *
  * 运行时以最终门禁通过的全量 RecordCard 为源；fixture 只保留为回归基线。
- * lookup 返回命中卡列表（合称/子串消歧后置，仅支持单指标签精确命中）；
+ * lookup 返回精确 term 的命中卡列表（别名/合称/子串消歧后置）；
  * query_operators 做分类过滤（含 termQuery 字面子串）。不做落盘、不做来源标注。
  */
 import type { RecordCard } from './card.js'
 import { loadValidatedRecordCards } from './final.js'
+
+/**
+ * TODO(tech-debt) R5-2：别名、合称与子串消歧仍未接入真实索引，当前只支持已核验的 canonical、技能名、技能组和等价组名精确查询；
+ * 待建立独立别名/合称真源并完成歧义核对后，接入多卡 lookup 与交互式消歧。
+ */
 
 /** query_operators 过滤条件（正向条件由派发层校验；不含数值 minEff / 效率排序） */
 export interface OperatorFilters {

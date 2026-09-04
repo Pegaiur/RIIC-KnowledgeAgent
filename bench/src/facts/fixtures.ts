@@ -4,10 +4,8 @@
  * 条目本体为 RecordCard，不携带 source 字段（plan 非目标「不做来源标注」）；
  * 程序化 0 差异核对时，由调用方按 canonical 从真源名册（knowledge/references/名册.md）
  * 解析出该行（见 mechanical.findNameRow），再行比对，避免条目自带出处造成自证。
- * 语义字段（aliases/skillGroups/skills/notes）为人工从 references 转录的基准值，供后续 LLM 转录 + 人工抽检对照。
- *
- * TODO(tech-debt) R5-1：技能字段（skills[].name/unlockType）暂为 fixture 基准值，未程序化解析；
- * 补 parseSkillRow（技能分片 → name/unlockType）并纳入机械核对后，此债务清偿、fixture 仅留语义基准。
+ * 语义字段（aliases/skillGroups/skills/notes）为人工从 references 转录的兼容基准值，供回归对照；
+ * 运行时全量卡的技能名、解锁文本和机械字段由 parseSkillFragment 等解析器确定性生成，fixture 不作为运行时事实源。
  */
 import type { RecordCard } from './card.js'
 
