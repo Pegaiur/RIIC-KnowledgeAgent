@@ -216,16 +216,37 @@ function hashArray(values: readonly unknown[]): string {
   return createHash('sha256').update(JSON.stringify(values)).digest('hex')
 }
 
+/** SkillFact 原文指纹，供人工优化层校验。 */
+export function hashSkillFact(fact: Pick<SkillFact, 'room' | 'name' | 'rawEffectText' | 'rawAnnotationText'>): string {
+  return hashArray([fact.room, fact.name, fact.rawEffectText, fact.rawAnnotationText])
+}
+
+/** grant 原文指纹，供人工优化层校验。 */
+export function hashSkillGrant(grant: Pick<
+  OperatorSkillGrant,
+  'operatorId' | 'skillId' | 'unlockText' | 'unlockKind' | 'elite' | 'level' | 'sourceBuffId'
+>): string {
+  return hashArray([
+    grant.operatorId,
+    grant.skillId,
+    grant.unlockText,
+    grant.unlockKind,
+    grant.elite ?? null,
+    grant.level ?? null,
+    grant.sourceBuffId ?? null,
+  ])
+}
+
 function buildSkillFact(room: RoomId, parsed: ParsedSkillLine): SkillFact {
   const annotation = parseAnnotation(parsed.rawAnnotationText)
-  return {
-    id: `skill:${hashArray([room, parsed.name, parsed.rawEffectText, parsed.rawAnnotationText])}`,
+  const fact = {
     room,
     name: parsed.name,
     rawEffectText: parsed.rawEffectText,
     rawAnnotationText: parsed.rawAnnotationText,
     ...annotation,
   }
+  return { id: `skill:${hashSkillFact(fact)}`, ...fact }
 }
 
 function parseOperatorHeading(line: string, room: RoomId, lineNumber: number): { canonical: string; rarity: string; profession: string } {
@@ -353,15 +374,15 @@ export function parseSkillFragment(
       }
 
       const grant: OperatorSkillGrant = {
-        id: `grant:${hashArray([
-          currentOperator.id,
-          fact.id,
-          unlock.unlockText,
-          unlock.unlockKind,
-          unlock.elite ?? null,
-          unlock.level ?? null,
-          parsed.sourceBuffId ?? null,
-        ])}`,
+        id: `grant:${hashSkillGrant({
+          operatorId: currentOperator.id,
+          skillId: fact.id,
+          unlockText: unlock.unlockText,
+          unlockKind: unlock.unlockKind,
+          elite: unlock.elite,
+          level: unlock.level,
+          sourceBuffId: parsed.sourceBuffId,
+        })}`,
         operatorId: currentOperator.id,
         skillId: fact.id,
         unlockText: unlock.unlockText,
