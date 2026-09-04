@@ -33,7 +33,7 @@
 - [x] **R5 facts 查询契约高 ROI 收缩** — `query_operators` 移除低选择性的稀有度过滤，拒绝空查询、空白查询、仅排除条件与非法 JSON；暂不引入分页、截断或结果预算 — 2026-09-04 — 已落地，路由 `docs/archive/plan-facts-query-contract.md`
 - [x] **R5 查询 Agent 知识分层** — 首版从 SKILL/base 提炼稳定通用基础并通过 `knowledge/AGENTS.md` 注入 facts/hybrid；对象级详细机制进入对应 facts notes，详细机制与组合继续走 RAG；该指令结构已由下一项进一步收敛 — 2026-09-04 — 已落地，路由 `docs/plan-agent-facts-knowledge-layering.md`、`docs/adr/ADR-004-query-agent-knowledge-layering.md`
 - [x] **R5 查询 Agent 指令单一真源** — 删除未被运行时消费的 `knowledge/SKILL.md` 与已证伪的 rules-prefix 注入，让所有检索模式只注入短 `knowledge/AGENTS.md` 决策契约，模式能力由代码生成 — 2026-09-04 — 已落地，合并路由至现有 `docs/plan-agent-facts-knowledge-layering.md`、`docs/adr/ADR-004-query-agent-knowledge-layering.md`
-- [ ] **RAG + facts 20 题实跑质量闭环** — 调用 agent 真实运行 20 题，逐题核查回答质量、检索/事实工具选择、参数与返回来源；汇总误路由、漏引证和幻觉风险，形成改进 plan — 2026-09-04 — 待评估，后续路由 `docs/plan-*.md`
+- [ ] **RAG + facts 20 题实跑质量闭环** — 先完成当前知识库快照下的 20 题基准、gold 与门禁；真实付费实跑及逐题质量核查留作下一阶段 — 2026-09-04 — 当前阶段路由 `docs/plan-rag-facts-quality-loop.md`
 - [x] **RAG base 机制语料增量优化** — 修复 base 文档锚点与自然标题切块，核查 F01-F07 存量边界，从指定 raw 提炼心情/工休机制并补齐 F09/F10 通用规则；不处理 facts curation、答案基线或模型评测 — 2026-09-04 — 路由 `docs/plan-base-corpus-optimization.md`
 - [x] **RAG 散文清洗与索引组织** — 先把现有推荐散文清洗为五篇按自然标题切块的 guides，删除外部实现与过程噪声，人工通读后原子替换语料白名单；不建台账或额外索引体系 — 2026-09-04 — 已完成，路由 `docs/archive/plan-rag-prose-cleaning.md`
 - [x] **RAG 散文统一术语** — 排查练度、稀有度与设施指标等同义写法，建立玩家侧规范词表、统一现有 base/guides 并加入自动门禁；references 直出层不改写 — 2026-09-04 — 已落地 `docs/rules/rag-prose-terminology.md`，实施记录见 `docs/archive/plan-rag-prose-cleaning.md`

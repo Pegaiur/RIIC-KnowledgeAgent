@@ -7,7 +7,7 @@
  *     不复制底层命令——换技术栈只改本文件；
  *   - 路由表或命令构成变化时，递增 lib/verify-profile.mjs 的 PROFILE_VERSION。
  *
- * rag-test 适配：单仓（pnpm 根包），门禁 = typecheck + test + doc-check。
+ * rag-test 适配：单仓（pnpm 根包），门禁 = references 投影 + typecheck + test + doc-check。
  */
 
 /** @typedef {{ id: string, label: string, command: string[] }} StepDef */
@@ -18,6 +18,7 @@
  */
 export const BASE_STEPS = [
   { id: 'prose-terms', label: 'RAG 散文术语', command: ['pnpm', 'run', 'check:prose-terms'] },
+  { id: 'reference-projection', label: 'references 公共练度投影', command: ['pnpm', 'run', 'check:reference-projection'] },
   { id: 'typecheck', label: '类型检查', command: ['pnpm', 'run', 'typecheck'] },
   { id: 'test', label: '测试', command: ['pnpm', 'run', 'test'] },
   // 文档一致性校验（plan checklist / ADR 索引 / 引用路径 / skills 结构），路径相对仓库根

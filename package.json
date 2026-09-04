@@ -10,6 +10,7 @@
   },
   "scripts": {
     "check:prose-terms": "node scripts/prose-terms-check.mjs",
+    "check:reference-projection": "node scripts/tasks/knowledge/update-reference-projection.mjs --check",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
     "build": "tsc -p tsconfig.build.json",
