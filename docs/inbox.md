@@ -31,7 +31,7 @@
 
 - [x] **R5 事实查询基础设施（facts-first：规范化记录卡 + lookup/query 查询 tool）** — 在 bench 用 `knowledge/references/` 唯一原始事实源落地确定性记录卡、全量核对和查询工具；本轮不再以评测循环为目标，后续质量闭环见 `docs/draft-facts-quality-iteration.md` — 2026-09-04 — 路由 `docs/archive/plan-hybrid-facts.md`，记录卡细化至 `docs/archive/plan-facts-record-cards.md`
 - [x] **R5 facts 查询契约高 ROI 收缩** — `query_operators` 移除低选择性的稀有度过滤，拒绝空查询、空白查询、仅排除条件与非法 JSON；暂不引入分页、截断或结果预算 — 2026-09-04 — 已落地，路由 `docs/archive/plan-facts-query-contract.md`
-- [ ] **R5 facts 质量闭环后续迭代** — P0.4 F/G 参考要点重制、语义字段人工抽检、12+5 查询/裸查评测、人工判定表和 v3 结论登记 — 2026-09-04 — 暂缓，路由 `docs/draft-facts-quality-iteration.md`
+- [ ] **R5 facts 质量闭环后续迭代** — P0.4 F/G 参考要点重制、notes 模型收口、全部 base/guides/知识入口与 facts 对象的语义备注适用性判定及 curation 全量覆盖、12+5 查询/裸查评测、人工判定表和 v3 结论登记；全量覆盖不等于强制每张卡写备注 — 2026-09-04 — 暂缓，路由 `docs/draft-facts-quality-iteration.md`
 - [ ] **RAG 散文清洗与索引组织** — 先把现有推荐散文清洗为五篇按自然标题切块的 guides，删除外部实现与过程噪声，人工通读后原子替换语料白名单；不建台账或额外索引体系 — 2026-09-04 — 施工中，路由 `docs/plan-rag-prose-cleaning.md`，完成后再启动 facts 质量闭环
 - [x] **RAG 散文统一术语** — 排查练度、稀有度与设施指标等同义写法，建立玩家侧规范词表、统一现有 base/guides 并加入自动门禁；references 直出层不改写 — 2026-09-04 — 已落地 `docs/rules/rag-prose-terminology.md`，实施记录见 `docs/plan-rag-prose-cleaning-notes.md`
 - [x] **知识语料显式白名单** — 非 facts RAG 仅加载 `knowledge/corpus-manifest.json` 登记的 Markdown；新增文件需显式批准，单模块 bug 修复无需 ADR — 2026-09-04 — 已落地
