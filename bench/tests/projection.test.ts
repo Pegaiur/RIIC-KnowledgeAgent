@@ -56,7 +56,7 @@ describe('projection：规范化事实投影 RecordCard', () => {
     const curations = validateCurations(inputs.facts, [
       {
         room: fact.room,
-        skills: [{ skillId: fact.id, expectedRawHash: skillCurationHash(fact), effectText: '人工确认后的效果原文' }],
+        skills: [{ skillId: fact.id, expectedRawHash: skillCurationHash(fact), effectText: '人工确认后的效果原文', notes: '技能级人工确认说明' }],
         grants: [],
         operators: [],
       },
@@ -67,6 +67,8 @@ describe('projection：规范化事实投影 RecordCard', () => {
     const curatedSkill = curated.find((card) => card.canonical === '森蚺')!.skills.find((skill) => skill.name === '自动化·α')!
     const rawSkill = raw.find((card) => card.canonical === '森蚺')!.skills.find((skill) => skill.name === '自动化·α')!
     expect(curatedSkill.effectText).toBe('人工确认后的效果原文')
+    expect(curatedSkill.notes).toBe('技能级人工确认说明')
     expect(rawSkill.effectText).not.toBe('人工确认后的效果原文')
+    expect(rawSkill.notes).toBeUndefined()
   })
 })

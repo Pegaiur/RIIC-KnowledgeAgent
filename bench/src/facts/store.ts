@@ -65,7 +65,10 @@ export function buildCardStore(cards: RecordCard[]): CardStore {
       list.push(card.canonical)
       byAlias.set(alias, list)
     }
-    for (const skill of card.skills) addTerm(byTerm, skill.name, card.canonical)
+    for (const skill of card.skills) {
+      addTerm(byTerm, skill.name, card.canonical)
+      for (const equivalenceName of skill.equivalenceSkillNames ?? []) addTerm(byTerm, equivalenceName, card.canonical)
+    }
     for (const group of card.skillGroups) addTerm(byTerm, group, card.canonical)
   }
 
@@ -106,11 +109,19 @@ function skillsInRoom(card: RecordCard, room?: string): RecordCard['skills'] {
 function matchTermQuery(card: RecordCard, q: string, room?: string): boolean {
   if (card.canonical.includes(q)) return true
   if (card.aliases.some((a) => a.includes(q))) return true
-  for (const skill of skillsInRoom(card, room)) {
-    if (skill.name.includes(q) || skill.target.includes(q) || skill.effectText.includes(q)) return true
-  }
-  if (card.skillGroups.some((g) => g.includes(q))) return true
-  return card.notes.includes(q)
+  if (skillsInRoom(card, room).some((skill) => skillMatchesTerm(skill, q))) return true
+  const cardScopeSafe = room === undefined || (card.rooms.length === 1 && card.rooms[0] === room)
+  if (cardScopeSafe && card.skillGroups.some((g) => g.includes(q))) return true
+  return cardScopeSafe && card.notes.includes(q)
+}
+
+function skillMatchesTerm(skill: RecordCard['skills'][number], q: string): boolean {
+  return skill.name.includes(q)
+    || skill.target.includes(q)
+    || skill.effectText.includes(q)
+    || (skill.notes?.includes(q) ?? false)
+    || (skill.skillCategories?.some((category) => category.includes(q)) ?? false)
+    || (skill.equivalenceSkillNames?.some((name) => name.includes(q)) ?? false)
 }
 
 /** 渲染命中卡列表为工具结果文本（单卡限额 1KB，摘要 + 技能效果原文） */
@@ -123,14 +134,15 @@ function serializeCard(card: RecordCard, filters: CardSerializationFilters): str
   const scopedSkills = skillsInRoom(card, filters.room)
   const q = (filters.termQuery ?? '').trim()
   const matchingSkills = q
-    ? scopedSkills.filter((skill) => skill.name.includes(q) || skill.target.includes(q) || skill.effectText.includes(q))
+    ? scopedSkills.filter((skill) => skillMatchesTerm(skill, q))
     : scopedSkills
   const skills = q && matchingSkills.length > 0 ? matchingSkills : scopedSkills
   const lines = [
     `【${card.canonical}】${card.rarity}星·${card.class}｜设施：${card.rooms.join('、')}｜阵营：${card.factionGroups.join('、') || '无'}`,
   ]
   for (const skill of skills) {
-    lines.push(`- ${skill.unlockType}「${skill.name}」：${skill.effectText}`)
+    const note = skill.notes === undefined ? '' : `；备注：${skill.notes}`
+    lines.push(`- ${skill.unlockType}「${skill.name}」：${skill.effectText}${note}`)
   }
   if (card.skillGroups.length > 0) lines.push(`技能组：${card.skillGroups.join('、')}`)
   if (card.notes) lines.push(`备注：${card.notes}`)

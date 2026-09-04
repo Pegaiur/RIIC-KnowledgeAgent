@@ -88,3 +88,8 @@
 - **切换**：`getCardStore()` 首次调用执行全量门禁并使用 425 张 curated 卡；fixture 仅用于最终兼容回归。事实工具仍保持 `lookup` / `query_operators` 和 `runQuery` 签名不变。
 - **验证**：`pnpm run typecheck` 通过；全量测试 17 个文件、144 个测试通过；`pnpm run build` 通过；facts dry run 执行 `bench/questions.json` 全部 20 题（F01–F10、S01–S08、G01–G02），60 次 dry 调用、0 截断，工具统计为 lookup 20 次、query_operators 20 次，总成本 ¥0.1528（dry 模拟口径）。
 - **边界**：上述 dry run 验证的是工具链路、计数和成本管线，不替代 LLM 答案人工核查；上游计划中的 P0.4 参考要点重制与 12+5 题人工判定仍未宣称完成。
+
+### 2026-09-04 — P7 复审问题修复
+- **修复**：`SkillCuration.notes` 现在进入 curated `RecordSkill.notes`，raw 仍不携带人工备注；等价组成员名复制到技能索引元数据，`lookup` 可按组内任意技能名返回全部精确持有者。
+- **修复**：设施化 `termQuery` 统一通过同设施技能匹配技能类别和技能级备注；多设施卡的卡级 `skillGroups`/`notes` 不再绕过设施作用域，单设施旧 fixture 保留兼容。
+- **证据**：新增三类回归覆盖技能备注、`裁缝·β` 四名持有者和类别/备注设施隔离；定向测试 28 个通过，随后执行全量验证。

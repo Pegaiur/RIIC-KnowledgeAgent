@@ -61,6 +61,7 @@ export function projectRecordCards(options: RecordCardProjectionOptions): Record
       const equivalences = equivalencesBySkill.get(fact.id) ?? []
       if (equivalences.length > 1) throw new Error(`事实投影失败：SkillFact 命中多个等价组：${fact.id}`)
       if (mode === 'curated') appendNote(cardNotes, curations.grants.get(grant.id)?.notes)
+      const skillCuration = mode === 'curated' ? curations.skills.get(fact.id) : undefined
       return {
         grantId: grant.id,
         room: fact.room,
@@ -68,9 +69,11 @@ export function projectRecordCards(options: RecordCardProjectionOptions): Record
         unlockType: grant.unlockText,
         target: fact.rawAnnotationText,
         effectText: resolveSkillEffectText(fact, mode, curations),
+        ...(skillCuration?.notes === undefined ? {} : { notes: skillCuration.notes }),
         ...(grant.replacesGrantId === undefined ? {} : { replacesGrantId: grant.replacesGrantId }),
         skillCategories: categoriesBySkill.get(fact.id) ?? [],
         ...(equivalences.length === 0 ? {} : { equivalenceGroupId: equivalences[0].id }),
+        ...(equivalences.length === 0 ? {} : { equivalenceSkillNames: [...equivalences[0].skillNames] }),
       }
     })
 

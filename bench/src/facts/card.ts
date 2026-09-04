@@ -21,12 +21,16 @@ export interface RecordSkill {
   target: string
   /** 效果原文（references 原句，不做 minEff 数值化） */
   effectText: string
+  /** 技能级人工备注；raw 模式缺省 */
+  notes?: string
   /** 被替换的具体 grant；仅升级技能存在 */
   replacesGrantId?: string
   /** `类别.md` 中命中的技能类别 */
   skillCategories?: string[]
   /** `技能等价组.md` 中命中的等价组 */
   equivalenceGroupId?: string
+  /** 等价组内可用于 lookup 展开的技能名 */
+  equivalenceSkillNames?: string[]
 }
 
 /** 干员记录卡 */

@@ -154,13 +154,15 @@ interface RecordSkill {
   unlockType: string
   effectText: string
   target: string
+  notes?: string
   replacesGrantId?: string
   skillCategories: string[]
   equivalenceGroupId?: string
+  equivalenceSkillNames?: string[]
 }
 ```
 
-`query_operators` 同时带 `room` 与 `termQuery` 时，两个条件必须在同一 `RecordSkill` 上满足，不能用干员的 A 设施满足 room、B 设施技能满足关键词。序列化器按查询条件裁剪到相关设施/技能，避免无关技能占用上下文。
+`query_operators` 同时带 `room` 与 `termQuery` 时，技能名、效果、标签、技能级备注、技能类别和等价组成员名必须在同一 `RecordSkill` 上满足，不能用干员的 A 设施满足 room、B 设施技能满足关键词；多设施卡的卡级技能组/备注不得绕过该作用域。序列化器按查询条件裁剪到相关设施/技能，避免无关技能占用上下文。
 
 ## 实施方案
 
@@ -214,7 +216,7 @@ interface RecordSkill {
 
 - 实现 `raw` / `curated` 两种拼装模式。
 - `RecordSkill` 增加设施和 grant/替换信息；store 继续消费拼装后的 `RecordCard[]`。
-- store 构建前验证 canonical 唯一，禁止 `Map.set` 静默覆盖。
+- store 构建前验证 canonical 唯一，禁止 `Map.set` 静默覆盖；等价组成员名展开到同一技能索引，支持按组内任一名称 lookup 全部持有者。
 - 修正多设施 `room + termQuery` 串线，并按命中范围序列化技能。
 - raw 与现有 fixture 的回归比较只比较兼容字段（含 `target` 原文）；新增 `grantId`、`room`、替换边、类别和等价组字段单独按规范化真源断言，不要求旧 fixture 预先携带新元数据。
 - 保持 `lookup` / `query_operators` 对外工具名和 `runQuery` 调用签名不变。

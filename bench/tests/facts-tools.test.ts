@@ -33,6 +33,10 @@ describe('store：lookup 解析', () => {
     expect(store.lookup('莱茵科技类技能').map((c) => c.canonical)).toEqual(['多萝西'])
   })
 
+  it('等价组技能名展开命中全部同效持有者', () => {
+    expect(new Set(getCardStore().lookup('裁缝·β').map((card) => card.canonical))).toEqual(new Set(['卡夫卡', '折光', '明椒', '柏喙']))
+  })
+
   it('未命中返回空列表', () => {
     expect(store.lookup('不存在的干员')).toEqual([])
   })
@@ -107,6 +111,12 @@ describe('store：queryOperators 分类过滤', () => {
 
   it('旧多设施 fixture 缺少技能 room 时宁可不命中，也不跨设施串线', () => {
     expect(store.queryOperators({ room: '控制中枢', termQuery: '每个发电站' })).toEqual([])
+  })
+
+  it('技能类别和人工备注也必须受 room 作用域约束', () => {
+    expect(store.queryOperators({ room: '办公室', termQuery: '莱茵科技类技能' }).map((card) => card.canonical)).not.toContain('淬羽赫默')
+    expect(store.queryOperators({ room: '会客室', termQuery: '标准化类技能' }).map((card) => card.canonical)).not.toContain('杰西卡')
+    expect(store.queryOperators({ room: '办公室', termQuery: '技能级人工确认说明' })).toEqual([])
   })
 
   it('拒绝重复 canonical，避免索引静默覆盖', () => {
