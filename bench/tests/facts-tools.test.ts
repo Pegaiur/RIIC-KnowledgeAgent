@@ -6,6 +6,7 @@ import { buildCardStore, getCardStore, serializeCards } from '../src/facts/store
 import { FACTS_FIXTURES } from '../src/facts/fixtures.js'
 import type { ProviderResult } from '../src/types.js'
 import type { DocChunk } from '../src/types.js'
+import type { RecordCard } from '../src/facts/card.js'
 
 const { mockCall } = vi.hoisted(() => ({ mockCall: vi.fn() }))
 vi.mock('../src/provider.js', () => ({ callLLM: mockCall }))
@@ -79,6 +80,37 @@ describe('store：queryOperators 分类过滤', () => {
 
   it('facility 不存在的设施返回空', () => {
     expect(store.queryOperators({ room: '发电站' })).toEqual([])
+  })
+
+  it('room + termQuery 必须命中同一设施技能，不能跨设施串线', () => {
+    const multiRoom: RecordCard = {
+      canonical: '跨设施样例',
+      aliases: [],
+      rarity: '6',
+      class: '术师',
+      rooms: ['制造站', '会客室'],
+      factionGroups: [],
+      skillGroups: [],
+      skills: [
+        { name: '制造技能', unlockType: '初始解锁', target: '', effectText: '制造站专用关键词', room: '制造站', grantId: 'grant:1' },
+        { name: '会客技能', unlockType: '初始解锁', target: '', effectText: '会客室其他内容', room: '会客室', grantId: 'grant:2' },
+      ],
+      notes: '',
+    }
+    const scopedStore = buildCardStore([multiRoom])
+    expect(scopedStore.queryOperators({ room: '制造站', termQuery: '制造站专用' })).toHaveLength(1)
+    expect(scopedStore.queryOperators({ room: '会客室', termQuery: '制造站专用' })).toHaveLength(0)
+    const serialized = serializeCards(scopedStore.queryOperators({ room: '会客室' }), { room: '会客室' })
+    expect(serialized).toContain('会客技能')
+    expect(serialized).not.toContain('制造技能')
+  })
+
+  it('旧多设施 fixture 缺少技能 room 时宁可不命中，也不跨设施串线', () => {
+    expect(store.queryOperators({ room: '控制中枢', termQuery: '每个发电站' })).toEqual([])
+  })
+
+  it('拒绝重复 canonical，避免索引静默覆盖', () => {
+    expect(() => buildCardStore([FACTS_FIXTURES[0], { ...FACTS_FIXTURES[0] }])).toThrow('记录卡 canonical 重复')
   })
 
   it('serializeCards 渲染命中卡', () => {

@@ -9,6 +9,10 @@
 
 /** 单个基建技能（按 references 技能分片转录，效果原文不数值化） */
 export interface RecordSkill {
+  /** 规范化事实中的 grant 稳定 ID；兼容旧 fixture 时可缺省 */
+  grantId?: string
+  /** 技能所属设施；兼容旧 fixture 时可缺省 */
+  room?: string
   /** 技能名（去除「」后的名称） */
   name: string
   /** 解锁方式：初始解锁 / 精英 N 解锁 / 精英 N 提升 */
@@ -17,6 +21,12 @@ export interface RecordSkill {
   target: string
   /** 效果原文（references 原句，不做 minEff 数值化） */
   effectText: string
+  /** 被替换的具体 grant；仅升级技能存在 */
+  replacesGrantId?: string
+  /** `类别.md` 中命中的技能类别 */
+  skillCategories?: string[]
+  /** `技能等价组.md` 中命中的等价组 */
+  equivalenceGroupId?: string
 }
 
 /** 干员记录卡 */

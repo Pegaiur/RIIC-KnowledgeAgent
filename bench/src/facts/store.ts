@@ -33,6 +33,11 @@ export interface CardStore {
   queryOperators: (filters: OperatorFilters) => RecordCard[]
 }
 
+export interface CardSerializationFilters {
+  room?: string
+  termQuery?: string
+}
+
 function addTerm(byTerm: Map<string, Set<string>>, term: string, canonical: string): void {
   if (!term) return
   let set = byTerm.get(term)
@@ -50,6 +55,8 @@ export function buildCardStore(cards: RecordCard[]): CardStore {
   const byTerm = new Map<string, Set<string>>()
 
   for (const card of cards) {
+    if (!card.canonical) throw new Error('记录卡 canonical 不能为空')
+    if (byCanonical.has(card.canonical)) throw new Error(`记录卡 canonical 重复：${card.canonical}`)
     byCanonical.set(card.canonical, card)
     addTerm(byTerm, card.canonical, card.canonical)
     for (const alias of card.aliases) {
@@ -80,7 +87,7 @@ export function buildCardStore(cards: RecordCard[]): CardStore {
       if (filters.rarity && card.rarity !== filters.rarity) return false
       if (filters.profession && card.class !== filters.profession) return false
       if (filters.excludeIds && filters.excludeIds.includes(card.canonical)) return false
-      if (q && !matchTermQuery(card, q)) return false
+      if (q && !matchTermQuery(card, q, filters.room)) return false
       return true
     })
   }
@@ -88,11 +95,18 @@ export function buildCardStore(cards: RecordCard[]): CardStore {
   return { cards, byCanonical, byAlias, byTerm, lookup, queryOperators }
 }
 
-/** termQuery 子串命中：卡内 name/target/effectText/notes/aliases 任一包含 q */
-function matchTermQuery(card: RecordCard, q: string): boolean {
+function skillsInRoom(card: RecordCard, room?: string): RecordCard['skills'] {
+  if (!room) return card.skills
+  return card.skills.filter((skill) => skill.room === room || (
+    skill.room === undefined && card.rooms.length === 1 && card.rooms[0] === room
+  ))
+}
+
+/** termQuery 子串命中：room 存在时只检查该设施技能，卡级字段仍全卡匹配。 */
+function matchTermQuery(card: RecordCard, q: string, room?: string): boolean {
   if (card.canonical.includes(q)) return true
   if (card.aliases.some((a) => a.includes(q))) return true
-  for (const skill of card.skills) {
+  for (const skill of skillsInRoom(card, room)) {
     if (skill.name.includes(q) || skill.target.includes(q) || skill.effectText.includes(q)) return true
   }
   if (card.skillGroups.some((g) => g.includes(q))) return true
@@ -100,16 +114,22 @@ function matchTermQuery(card: RecordCard, q: string): boolean {
 }
 
 /** 渲染命中卡列表为工具结果文本（单卡限额 1KB，摘要 + 技能效果原文） */
-export function serializeCards(cards: RecordCard[]): string {
+export function serializeCards(cards: RecordCard[], filters: CardSerializationFilters = {}): string {
   if (cards.length === 0) return '（无匹配记录卡）'
-  return cards.map(serializeCard).join('\n\n')
+  return cards.map((card) => serializeCard(card, filters)).join('\n\n')
 }
 
-function serializeCard(card: RecordCard): string {
+function serializeCard(card: RecordCard, filters: CardSerializationFilters): string {
+  const scopedSkills = skillsInRoom(card, filters.room)
+  const q = (filters.termQuery ?? '').trim()
+  const matchingSkills = q
+    ? scopedSkills.filter((skill) => skill.name.includes(q) || skill.target.includes(q) || skill.effectText.includes(q))
+    : scopedSkills
+  const skills = q && matchingSkills.length > 0 ? matchingSkills : scopedSkills
   const lines = [
     `【${card.canonical}】${card.rarity}星·${card.class}｜设施：${card.rooms.join('、')}｜阵营：${card.factionGroups.join('、') || '无'}`,
   ]
-  for (const skill of card.skills) {
+  for (const skill of skills) {
     lines.push(`- ${skill.unlockType}「${skill.name}」：${skill.effectText}`)
   }
   if (card.skillGroups.length > 0) lines.push(`技能组：${card.skillGroups.join('、')}`)

@@ -260,7 +260,8 @@ export async function runQuery(
             retrievalCalls++
             const store = getCardStore()
             if (tc.name === 'query_operators') {
-              resultText = serializeCards(store.queryOperators(safeParseFilters(tc.arguments) ?? {}))
+              const filters = safeParseFilters(tc.arguments) ?? {}
+              resultText = serializeCards(store.queryOperators(filters), filters)
             } else {
               resultText = serializeCards(store.lookup(safeParseTerm(tc.arguments)))
             }
