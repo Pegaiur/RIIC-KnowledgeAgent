@@ -2,10 +2,10 @@
 
 ## 项目概述
 
-**rag-test** 是明日方舟基建 RAG 知识库（`knowledge/`，数据层为唯一真源）及其基准测试工具集。当前基准目标：基于腾讯混元 Hy3（TokenHub API）的 LLM 查询输出成本测量——参考 Concliude 的 agent loop 骨架实现简化版查询 Agent（现状：散文语料已废弃，查询工具临时停用，待 facts-first 重建，见 `docs/plan-hybrid-facts.md`）。
+**rag-test** 是明日方舟基建 RAG 知识库（`knowledge/`，数据层为唯一真源）及其基准测试工具集。当前基准目标：基于 Qwen3.7-Flash（阿里云百炼 DashScope）的 RAG + facts 查询 Agent 工具链与查询输出成本测量——参考 Concliude 的 agent loop 骨架实现简化版查询 Agent；默认使用 Qwen 关闭思考，Hy3 保留为对照 provider。
 
 - TypeScript / Node.js · pnpm 单包（ESM，NodeNext）· 仅本机运行
-- LLM：腾讯混元 Hy3（腾讯云 TokenHub，OpenAI 兼容端点），输入 1 元/M、输出 4 元/M、缓存命中 0.25 元/M
+- 默认 LLM：Qwen3.7-Flash（阿里云百炼 DashScope，OpenAI 兼容端点），输入 0.2 元/M、输出 0.8 元/M、缓存命中 0.04 元/M；Hy3（TokenHub）保留为对照 provider
 
 ## 全局规则
 
