@@ -18,8 +18,8 @@ describe('真实 knowledge 语料白名单', () => {
 
     expect(actual).toEqual(approved)
     expect(loadedChunks).toEqual(approved)
-    expect(actual.size).toBe(28)
-    expect([...actual].filter((file) => file.startsWith('base/'))).toHaveLength(9)
+    expect(actual.size).toBe(31)
+    expect([...actual].filter((file) => file.startsWith('base/'))).toHaveLength(12)
     expect([...actual].filter((file) => file.startsWith('references/'))).toHaveLength(14)
     expect([...actual].filter((file) => file.startsWith('guides/'))).toHaveLength(5)
     expect([...actual].filter((file) => file.startsWith('raw/'))).toHaveLength(0)
@@ -27,6 +27,10 @@ describe('真实 knowledge 语料白名单', () => {
     expect(actual.has('references/名册.md')).toBe(true)
     expect(actual.has('guides/贸易站组合.md')).toBe(true)
     expect(actual.has('guides/新手培养.md')).toBe(true)
+
+    const baseChunks = loadCorpus(KNOWLEDGE_ROOT).filter((chunk) => chunk.file.startsWith('base/'))
+    expect(baseChunks.every((chunk) => chunk.anchor && chunk.anchor.length > 0)).toBe(true)
+    expect(baseChunks.some((chunk) => chunk.heading === '公式与规则')).toBe(false)
 
     const pollutedDocuments = [
       'SKILL.md',
