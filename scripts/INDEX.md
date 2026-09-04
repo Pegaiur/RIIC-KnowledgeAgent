@@ -11,6 +11,7 @@
 | `scripts/verify.mjs` | 合并/发版门禁唯一入口（执行引擎，命令清单见 gates.mjs） | ✅ |
 | `scripts/gates.mjs` | 门禁命令清单（适配层：换技术栈唯一必改文件） | ✅ |
 | `scripts/doc-check.mjs` | 文档一致性校验（合并门禁组成部分） | ✅ |
+| `scripts/prose-terms-check.mjs` | RAG 玩家侧散文统一术语检查（扫描 base/guides） | ✅ |
 | `scripts/lib/` | 共享基元（单一职责、只读边界显式、接受注入依赖便于测试） | ✅ |
 | `scripts/tasks/` | 可复用开发任务（目录发现即注册，无 manifest） | ✅ |
 | `scripts/scratch/` | 一次性脚本（`tooling new` 生成，不入库） | ❌ |

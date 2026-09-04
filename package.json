@@ -9,6 +9,7 @@
     "node": ">=20"
   },
   "scripts": {
+    "check:prose-terms": "node scripts/prose-terms-check.mjs",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
     "build": "tsc -p tsconfig.build.json",

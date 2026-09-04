@@ -28,6 +28,7 @@
 | 2 | 分支工作流：禁止直接在主分支提交，走 `feature/<描述>` 分支；合并后删除分支 | — |
 | 3 | 合并门槛：合并前一律执行 `node scripts/verify.mjs merge -- --base main`（门禁唯一入口，命令清单见 `scripts/gates.mjs`） | `docs/rules/document-lifecycle.md` |
 | 4 | 文档模板：ADR 参照 `docs/templates/adr.md`，plan 参照 `docs/templates/plan.md`，实施笔记参照 `docs/templates/notes.md` | — |
+| 5 | RAG 散文清洗统一使用玩家侧规范词；references 直出层保留原格式 | `docs/rules/rag-prose-terminology.md` |
 
 ## 工作流路由
 
