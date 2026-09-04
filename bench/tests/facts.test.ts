@@ -82,4 +82,13 @@ describe('程序化核对断言：机械字段与真源名册行逐字段 0 差�
     const tampered: RecordCard = { ...card, canonical: '' }
     expect(verifyMechanicalCard(tampered, row).ok).toBe(false)
   })
+
+  it('设施集合顺序变化也被断言打回', () => {
+    const card = FACTS_FIXTURES.find((item) => item.rooms.length > 1)!
+    const row = findNameRow(nameListText, card.canonical)!
+    const tampered: RecordCard = { ...card, rooms: [...card.rooms].reverse() }
+    const res = verifyMechanicalCard(tampered, row)
+    expect(res.ok).toBe(false)
+    expect(res.mismatches[0]).toContain('rooms：')
+  })
 })

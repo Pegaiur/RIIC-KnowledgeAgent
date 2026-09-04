@@ -57,14 +57,15 @@ export interface VerificationResult {
  */
 export function verifyMechanicalCard(card: RecordCard, sourceLine: string): VerificationResult {
   const mismatches: string[] = []
-  if (!card.canonical || !sourceLine.includes(card.canonical)) mismatches.push(`canonical：${card.canonical || '(空)'}`)
-  if (!card.rarity || !sourceLine.includes(`☆${card.rarity}`)) mismatches.push(`rarity：${card.rarity || '(空)'}`)
-  if (!card.class || !sourceLine.includes(card.class)) mismatches.push(`class：${card.class || '(空)'}`)
-  for (const room of card.rooms) {
-    if (!sourceLine.includes(room)) mismatches.push(`rooms：${room}`)
+  const source = parseNameRow(sourceLine)
+  if (card.canonical !== source.canonical) mismatches.push(`canonical：${card.canonical || '(空)'}`)
+  if (card.rarity !== source.rarity) mismatches.push(`rarity：${card.rarity || '(空)'}`)
+  if (card.class !== source.class) mismatches.push(`class：${card.class || '(空)'}`)
+  if (JSON.stringify(card.rooms) !== JSON.stringify(source.rooms)) {
+    mismatches.push(`rooms：${card.rooms.join('、') || '(空)'}`)
   }
-  for (const group of card.factionGroups) {
-    if (!sourceLine.includes(group)) mismatches.push(`factionGroups：${group}`)
+  if (JSON.stringify(card.factionGroups) !== JSON.stringify(source.factionGroups)) {
+    mismatches.push(`factionGroups：${card.factionGroups.join('、') || '(空)'}`)
   }
   return { ok: mismatches.length === 0, mismatches }
 }
