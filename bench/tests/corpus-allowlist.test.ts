@@ -18,13 +18,15 @@ describe('真实 knowledge 语料白名单', () => {
 
     expect(actual).toEqual(approved)
     expect(loadedChunks).toEqual(approved)
-    expect(actual.size).toBe(26)
+    expect(actual.size).toBe(28)
     expect([...actual].filter((file) => file.startsWith('base/'))).toHaveLength(9)
     expect([...actual].filter((file) => file.startsWith('references/'))).toHaveLength(14)
-    expect([...actual].filter((file) => file.startsWith('recommendation/'))).toHaveLength(3)
+    expect([...actual].filter((file) => file.startsWith('guides/'))).toHaveLength(5)
+    expect([...actual].filter((file) => file.startsWith('recommendation/'))).toHaveLength(0)
     expect(actual.has('base/机制-基建总览.md')).toBe(true)
     expect(actual.has('references/名册.md')).toBe(true)
-    expect(actual.has('recommendation/组合知识库.md')).toBe(true)
+    expect(actual.has('guides/贸易站组合.md')).toBe(true)
+    expect(actual.has('guides/新手培养.md')).toBe(true)
 
     const pollutedDocuments = [
       'SKILL.md',
@@ -36,6 +38,9 @@ describe('真实 knowledge 语料白名单', () => {
       'recommendation/精英干员组后端缺口.md',
       'recommendation/自然语言推荐层设计.md',
       'recommendation/自然语言推荐层实现交接与验收.md',
+      'recommendation/组合知识库.md',
+      'recommendation/高效率散件与搓玉名单.md',
+      'recommendation/新手必练与必收集名单.md',
     ]
     expect(pollutedDocuments.filter((file) => actual.has(file))).toEqual([])
   })

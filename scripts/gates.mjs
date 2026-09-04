@@ -17,6 +17,7 @@
  * merge profile 基础命令：始终执行，固定顺序，失败即停。
  */
 export const BASE_STEPS = [
+  { id: 'prose-terms', label: 'RAG 散文术语', command: ['pnpm', 'run', 'check:prose-terms'] },
   { id: 'typecheck', label: '类型检查', command: ['pnpm', 'run', 'typecheck'] },
   { id: 'test', label: '测试', command: ['pnpm', 'run', 'test'] },
   // 文档一致性校验（plan checklist / ADR 索引 / 引用路径 / skills 结构），路径相对仓库根

@@ -24,10 +24,11 @@
 
 | # | 规则 | 详情 |
 | - | ---- | ---- |
-| 1 | 提交必须通过 `commit-convention` 技能，禁止直接使用 `git commit` | 见下方「工作流路由」 |
+| 1 | 提交必须完整执行 `commit-convention` 技能；禁止绕过其检查、审查和精准暂存流程直接提交 | 见下方「工作流路由」 |
 | 2 | 分支工作流：禁止直接在主分支提交，走 `feature/<描述>` 分支；合并后删除分支 | — |
 | 3 | 合并门槛：合并前一律执行 `node scripts/verify.mjs merge -- --base main`（门禁唯一入口，命令清单见 `scripts/gates.mjs`） | `docs/rules/document-lifecycle.md` |
 | 4 | 文档模板：ADR 参照 `docs/templates/adr.md`，plan 参照 `docs/templates/plan.md`，实施笔记参照 `docs/templates/notes.md` | — |
+| 5 | RAG 散文清洗统一使用玩家侧规范词；references 直出层保留原格式 | `docs/rules/rag-prose-terminology.md` |
 
 ## 工作流路由
 
@@ -35,7 +36,7 @@
 
 | 工作流 | 入口 |
 | ------- | ---- |
-| 提交 | `skills/commit-convention`（禁止直接 `git commit`） |
+| 提交 | `skills/commit-convention` |
 | 发版 | `skills/release-workflow` + `node scripts/tooling.mjs run release/*` |
 | 技术债治理 | `skills/tech-debt-governance` |
 | 验证（合并前） | `node scripts/verify.mjs merge`（门禁唯一入口） |
@@ -48,10 +49,11 @@ rag-test/
 ├── AGENTS.md                       ← 本文件（规则索引 + 结构导航 + 工作流路由）
 ├── package.json                    ← 根包（bench 工具入口，pnpm）
 ├── tsconfig.json                   ← TypeScript 严格模式（NodeNext/ESM）
-├── knowledge/                      ← 明日方舟基建知识库（数据层为唯一真源；散文已废弃删除）
+├── knowledge/                      ← 明日方舟基建知识库（references 为机械事实真源；base/guides 为人工维护语料）
 │   ├── references/                 ← 数据层（解包直出：名册 / 技能分片×9 / 类别·技能等价组·歧义 / 数据源）
-│   ├── SKILL.md                    ← 公孙长乐基建问答技能（知识库用法 / 回答管线 / 计算政策）
-│   └── base/                       ← 基线语料（机制-*.md / 基建物流链.md）
+│   ├── base/                       ← 机制基线语料（机制-*.md / 基建物流链.md）
+│   ├── guides/                     ← 已审定的 RAG 玩家散文（组合 / 新手 / 散件）
+│   └── SKILL.md                    ← 公孙长乐基建问答技能（知识库用法 / 回答管线 / 计算政策）
 ├── bench/                          ← 查询输出成本基准（简化版 Agent）
 │   ├── src/                        ← provider / retriever / agent / runner / report / cli
 │   ├── tests/                      ← vitest 单元测试
