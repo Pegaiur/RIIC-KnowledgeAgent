@@ -75,6 +75,9 @@ describe('agent：统一 knowledge 工具 schema', () => {
     expect(prompt).toContain('称为“龙舌兰组”')
     expect(prompt).toContain('特殊订单边界')
     expect(prompt).toContain('每一笔订单分别判断')
+    expect(prompt).toContain('不写成游戏会自动把干员调离工作设施')
+    expect(prompt).toContain('不擅自补 10%/90% 等固定效率')
+    expect(prompt).toContain('维娜·维多利亚是可选增强')
   })
 
   it('人工规则只从调用方提供的 AGENTS 内容注入一次', () => {
