@@ -71,6 +71,12 @@ export interface ExperimentConfig {
   tokenizer: TokenizerId
   /** 作答前至少需调用检索工具的次数（minRag）；默认 1 = 必须调用一轮工具，0 = 不强制 */
   minRagCalls: number
+  /** 每题工具调用积分上限；每次真实用户提问开始时重置 */
+  toolBudget: number
+  /** 每题总超时（毫秒），覆盖请求、重试、等待、工具和后续模型步骤 */
+  sessionTimeoutMs: number
+  /** 未调用工具直接作答时是否允许一次宿主回馈 */
+  feedbackOnNoToolAnswer: boolean
   /** 检索 topK */
   topK: number
   /** 注入上下文最大字符数 */
@@ -93,6 +99,9 @@ export const EXPERIMENT: ExperimentConfig = {
   entityBoost: 0,
   tokenizer: 'bigram',
   minRagCalls: 1,
+  toolBudget: 5,
+  sessionTimeoutMs: 300_000,
+  feedbackOnNoToolAnswer: true,
   topK: 5,
   maxContextChars: 12000,
   maxRounds: 3,
@@ -136,6 +145,12 @@ export interface BenchConfig {
   retriever: RetrieverId
   /** 作答前至少需调用检索工具的次数：直接作答前至少先检索几次（默认 1 = 必须调用一轮工具；0 = 不强制） */
   minRagCalls: number
+  /** 每题工具调用积分上限；每次真实用户提问开始时重置 */
+  toolBudget: number
+  /** 每题总超时（毫秒），覆盖请求、重试、等待、工具和后续模型步骤 */
+  sessionTimeoutMs: number
+  /** 未调用工具直接作答时是否允许一次宿主回馈 */
+  feedbackOnNoToolAnswer: boolean
   /** 检索分词器：bigram（零依赖默认）| jieba（ADR-001，EXPERIMENT.tokenizer=jieba） */
   tokenizer: TokenizerId
   /** 实体词加权因子（0 = 关闭；>0 时 BM25 精确命中实体词元得分 × 该因子，见 EXPERIMENT.entityBoost） */
@@ -163,8 +178,23 @@ export function loadConfig(providerInput?: ProviderId): BenchConfig {
     maxContextChars: EXPERIMENT.maxContextChars,
     retriever: EXPERIMENT.retriever,
     minRagCalls: EXPERIMENT.minRagCalls,
+    toolBudget: EXPERIMENT.toolBudget,
+    sessionTimeoutMs: EXPERIMENT.sessionTimeoutMs,
+    feedbackOnNoToolAnswer: EXPERIMENT.feedbackOnNoToolAnswer,
     tokenizer: EXPERIMENT.tokenizer,
     entityBoost: EXPERIMENT.entityBoost,
+  }
+}
+
+/** 校验单题生命周期相关配置；CLI 覆盖参数后也必须调用。 */
+export function validateBenchConfig(config: Pick<BenchConfig, 'toolBudget' | 'sessionTimeoutMs'>): void {
+  for (const [name, value] of [
+    ['toolBudget', config.toolBudget],
+    ['sessionTimeoutMs', config.sessionTimeoutMs],
+  ] as const) {
+    if (!Number.isInteger(value) || value <= 0) {
+      throw new Error(`${name} 必须是正整数：${value}`)
+    }
   }
 }
 
