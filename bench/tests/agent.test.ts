@@ -85,6 +85,8 @@ describe('agent：统一 knowledge 工具 schema', () => {
     expect(prompt).toContain('回答 S07 时焰尾与薇薇安娜属于中枢侧')
     expect(prompt).toContain('制造站名单只按远牙、灰毫、野鬃等红松骑士团成员回答')
     expect(prompt).toContain('不把它们未经确认地相加成固定总效率')
+    expect(prompt).toContain('S02 中泰拉大陆调查团只能出现在贸易站/制造站语境')
+    expect(prompt).toContain('S07 中薇薇安娜只能出现在控制中枢语境')
   })
 
   it('人工规则只从调用方提供的 AGENTS 内容注入一次', () => {
