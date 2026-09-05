@@ -76,7 +76,7 @@ export async function runBenchmark(
       const result = await runQuery(q, agentOpts, chunks, index)
       for (const r of result.records) lines.push(JSON.stringify(r))
       injectedMap[q.id] = result.injectedIds
-      if (result.finalAnswer != null) {
+      if (result.status === 'completed' && result.finalAnswer != null) {
         answers.push({
           queryId: q.id,
           category: q.category,
@@ -86,8 +86,22 @@ export async function runBenchmark(
           toolTrace: result.toolTrace.flat(),
           answer: result.finalAnswer,
         })
+        process.stderr.write(`问题 ${q.id} 完成：${result.rounds} 轮\n`)
+      } else {
+        failed++
+        const message = result.failure?.message ?? `查询未完成：${result.terminationReason}`
+        answers.push({
+          queryId: q.id,
+          category: q.category,
+          question: q.question,
+          rounds: result.rounds,
+          toolRounds: result.toolRounds,
+          toolTrace: result.toolTrace.flat(),
+          answer: `（查询未完成：${message}）`,
+        })
+        if (result.failure) markTraceFailed(trace, result.failure)
+        process.stderr.write(`问题 ${q.id} 未完成：${message}\n`)
       }
-      process.stderr.write(`问题 ${q.id} 完成：${result.rounds} 轮\n`)
     } catch (err) {
       // 单题失败不中断整批：记录失败原因，继续下一题
       failed++

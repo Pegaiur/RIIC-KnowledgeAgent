@@ -65,7 +65,7 @@ export interface ToolUsageAgg {
   calls: number
 }
 
-const sum = (vals: number[]) => vals.reduce((a, c) => a + c, 0)
+const sum = (vals: Array<number | null | undefined>): number => vals.reduce<number>((a, c) => a + (c ?? 0), 0)
 const mean = (vals: number[]) => (vals.length ? sum(vals) / vals.length : 0)
 const p95 = (vals: number[]) => {
   if (!vals.length) return 0

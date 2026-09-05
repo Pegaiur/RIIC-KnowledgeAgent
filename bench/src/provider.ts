@@ -10,7 +10,7 @@
  *   / completion_tokens_details.reasoning_tokens
  */
 import type { BenchConfig } from './config.js'
-import type { LlmUsage, ProviderResult, ThinkingMode, ToolCall } from './types.js'
+import type { LlmUsage, ProviderResult, ThinkingMode, ToolCall, UsageCompleteness } from './types.js'
 import { acquireRateLimitToken } from './rate-limiter.js'
 
 export interface ProviderOptions {
@@ -19,6 +19,8 @@ export interface ProviderOptions {
   thinking: ThinkingMode
   /** dry 模式：模拟返回，不发起网络请求 */
   dry: boolean
+  /** 单题总超时信号；请求、限流和重试均必须尊重。 */
+  signal?: AbortSignal
 }
 
 /** OpenAI 兼容 assistant 消息 */
@@ -83,7 +85,7 @@ export async function callLLM(
       Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify(body),
-  }, opts.config.providerLabel)
+  }, opts.config.providerLabel, opts.signal)
 
   const data = (await res.json()) as Record<string, any>
   const choice = data.choices?.[0]
@@ -118,21 +120,25 @@ const BACKOFF_BASE_MS = 1000
 const RETRYABLE_STATUS = new Set([408, 425, 429, 500, 502, 503, 504])
 
 /** 网络调用：令牌桶限流 + 指数退避重试 + 尊重 Retry-After */
-async function fetchWithRetry(url: string, init: RequestInit, label: string): Promise<Response> {
+async function fetchWithRetry(url: string, init: RequestInit, label: string, signal?: AbortSignal): Promise<Response> {
   let lastErr: unknown
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     // 限流：每次请求前先取令牌；dry 模式不会走到这里
-    await acquireRateLimitToken()
+    await acquireRateLimitToken(signal)
 
     let res: Response
+    const request = requestSignal(signal)
     try {
-      res = await fetch(url, { ...init, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) })
+      res = await fetch(url, { ...init, signal: request.signal })
     } catch (err) {
+      if (signal?.aborted) throw abortError(signal)
       // 网络错误 / 超时：可重试
       lastErr = err instanceof Error && err.name === 'TimeoutError' ? new Error(`${label} 请求超时`) : err
       if (attempt === MAX_ATTEMPTS) break
-      await sleep(BACKOFF_BASE_MS * 2 ** (attempt - 1))
+      await sleep(BACKOFF_BASE_MS * 2 ** (attempt - 1), signal)
       continue
+    } finally {
+      request.cleanup()
     }
 
     if (res.ok) return res
@@ -141,7 +147,7 @@ async function fetchWithRetry(url: string, init: RequestInit, label: string): Pr
       lastErr = new Error(`LLM API 返回 ${res.status}（可重试）：${text.slice(0, 200)}`)
       if (attempt === MAX_ATTEMPTS) break
       const retryAfterMs = parseRetryAfter(res)
-      await sleep(retryAfterMs ?? BACKOFF_BASE_MS * 2 ** (attempt - 1))
+      await sleep(retryAfterMs ?? BACKOFF_BASE_MS * 2 ** (attempt - 1), signal)
       continue
     }
     // 永久错误（参数 / 鉴权 / 不存在等）：不重试，直接失败
@@ -163,17 +169,76 @@ function parseRetryAfter(res: Response): number | null {
   return Math.max(0, date - Date.now())
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms))
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) return Promise.reject(abortError(signal))
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort)
+      resolve()
+    }, ms)
+    const onAbort = () => {
+      clearTimeout(timer)
+      reject(abortError(signal))
+    }
+    signal?.addEventListener('abort', onAbort, { once: true })
+  })
 }
 
-function parseUsage(u: any): LlmUsage {
-  return {
-    input: Number(u?.prompt_tokens ?? 0),
-    output: Number(u?.completion_tokens ?? 0),
-    cached: Number(u?.prompt_tokens_details?.cached_tokens ?? 0),
-    reasoning: Number(u?.completion_tokens_details?.reasoning_tokens ?? 0),
+function requestSignal(sessionSignal?: AbortSignal): { signal: AbortSignal; cleanup: () => void } {
+  const requestController = new AbortController()
+  const timer = setTimeout(() => requestController.abort(new Error('单次请求超时')), REQUEST_TIMEOUT_MS)
+  const onSessionAbort = () => requestController.abort(sessionSignal?.reason)
+  sessionSignal?.addEventListener('abort', onSessionAbort, { once: true })
+  const cleanup = () => {
+    clearTimeout(timer)
+    sessionSignal?.removeEventListener('abort', onSessionAbort)
   }
+  return { signal: requestController.signal, cleanup }
+}
+
+function abortError(signal?: AbortSignal): Error {
+  const reason = signal?.reason
+  return reason instanceof Error ? reason : new Error('任务已取消')
+}
+
+function validToken(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) && Number.isInteger(value) && value >= 0
+    ? value
+    : null
+}
+
+/** 解析 usage；不把缺失/无效的必需 token 字段静默转成 0。 */
+export function parseUsage(u: unknown): LlmUsage {
+  if (typeof u !== 'object' || u === null || Array.isArray(u)) {
+    return { input: null, output: null, cached: 0, reasoning: 0, completeness: 'unknown' }
+  }
+  const usage = u as Record<string, unknown>
+  const input = validToken(usage.prompt_tokens)
+  const output = validToken(usage.completion_tokens)
+  const promptDetails = usage.prompt_tokens_details
+  const completionDetails = usage.completion_tokens_details
+  const cachedRaw = typeof promptDetails === 'object' && promptDetails !== null
+    ? (promptDetails as Record<string, unknown>).cached_tokens
+    : undefined
+  const reasoningRaw = typeof completionDetails === 'object' && completionDetails !== null
+    ? (completionDetails as Record<string, unknown>).reasoning_tokens
+    : undefined
+  const cached = cachedRaw === undefined ? 0 : validToken(cachedRaw)
+  const reasoning = reasoningRaw === undefined ? 0 : validToken(reasoningRaw)
+  const requiredComplete = input !== null && output !== null
+  const optionalComplete = cached !== null && reasoning !== null
+  const hasRequiredFields = Object.prototype.hasOwnProperty.call(usage, 'prompt_tokens')
+    || Object.prototype.hasOwnProperty.call(usage, 'completion_tokens')
+  const completeness: UsageCompleteness = requiredComplete && optionalComplete
+    ? 'complete'
+    : !hasRequiredFields && input === null && output === null && cached === 0 && reasoning === 0 && cachedRaw === undefined && reasoningRaw === undefined
+      ? 'unknown'
+      : 'partial'
+  return { input, output, cached, reasoning, completeness }
+}
+
+function dryUsage(input: number, output: number): LlmUsage {
+  return { input, output, cached: 0, reasoning: 0, completeness: 'complete' }
 }
 
 /**
@@ -189,7 +254,7 @@ function dryResult(messages: ChatMessage[], opts: ProviderOptions): ProviderResu
       return {
         content: null,
         toolCalls: [{ id: 'call_dry_1', name: 'lookup', arguments: '{"term":"刻俄柏"}' }],
-        usage: { input: 6000, output: 620, cached: 0, reasoning: 0 },
+        usage: dryUsage(6000, 620),
         model,
         truncated,
       }
@@ -198,7 +263,7 @@ function dryResult(messages: ChatMessage[], opts: ProviderOptions): ProviderResu
       return {
         content: null,
         toolCalls: [{ id: 'call_dry_2', name: 'query_operators', arguments: '{"room":"制造站"}' }],
-        usage: { input: 6000 + round * 1800, output: 700, cached: 0, reasoning: 0 },
+        usage: dryUsage(6000 + round * 1800, 700),
         model,
         truncated,
       }
@@ -206,7 +271,7 @@ function dryResult(messages: ChatMessage[], opts: ProviderOptions): ProviderResu
     return {
       content: '（dry 模拟回答）基于记录卡，制造站相关干员为……',
       toolCalls: [],
-      usage: { input: 6000 + round * 1800, output: 1480, cached: 0, reasoning: 0 },
+      usage: dryUsage(6000 + round * 1800, 1480),
       model,
       truncated,
     }
@@ -216,7 +281,7 @@ function dryResult(messages: ChatMessage[], opts: ProviderOptions): ProviderResu
       return {
         content: null,
         toolCalls: [{ id: 'call_dry_1', name: 'rag_search', arguments: '{"query":"发电站 充能机制"}' }],
-        usage: { input: 6000, output: 620, cached: 0, reasoning: 0 },
+        usage: dryUsage(6000, 620),
         model,
         truncated,
       }
@@ -225,7 +290,7 @@ function dryResult(messages: ChatMessage[], opts: ProviderOptions): ProviderResu
       return {
         content: null,
         toolCalls: [{ id: 'call_dry_2', name: 'lookup', arguments: '{"term":"刻俄柏"}' }],
-        usage: { input: 6000 + round * 1800, output: 700, cached: 0, reasoning: 0 },
+        usage: dryUsage(6000 + round * 1800, 700),
         model,
         truncated,
       }
@@ -233,7 +298,7 @@ function dryResult(messages: ChatMessage[], opts: ProviderOptions): ProviderResu
     return {
       content: '（dry 模拟回答）基于机制语料与记录卡，结论为……',
       toolCalls: [],
-      usage: { input: 6000 + round * 1800, output: 1480, cached: 0, reasoning: 0 },
+        usage: dryUsage(6000 + round * 1800, 1480),
       model,
       truncated,
     }
@@ -249,7 +314,7 @@ function dryResult(messages: ChatMessage[], opts: ProviderOptions): ProviderResu
           arguments: '{"query":"占位查询"}',
         },
       ],
-      usage: { input: 6000, output: 620, cached: 0, reasoning: 0 },
+      usage: dryUsage(6000, 620),
       model,
       truncated,
     }
@@ -257,7 +322,7 @@ function dryResult(messages: ChatMessage[], opts: ProviderOptions): ProviderResu
   return {
     content: '（dry 模拟回答）根据检索片段，基建排班的要点为……',
     toolCalls: [],
-    usage: { input: 6000 + round * 1800, output: 1480, cached: 0, reasoning: 0 },
+    usage: dryUsage(6000 + round * 1800, 1480),
     model,
     truncated,
   }

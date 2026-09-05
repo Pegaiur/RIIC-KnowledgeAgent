@@ -25,22 +25,31 @@ export const PRICE_OUT_PER_M = HY3_PRICES.outPerM
 export const PRICE_CACHE_PER_M = HY3_PRICES.cachePerM
 
 export interface CostBreakdown {
-  costIn: number
-  costOut: number
-  costTotal: number
+  costIn: number | null
+  costOut: number | null
+  costTotal: number | null
 }
 
 /** 按 usage 计算费用（四舍五入到 6 位小数，单位元） */
-export function computeCosts(input: number, output: number, cached: number, prices: Prices = HY3_PRICES): CostBreakdown {
+export function computeCosts(
+  input: number | null,
+  output: number | null,
+  cached: number | null,
+  prices: Prices = HY3_PRICES,
+): CostBreakdown {
   // 防御：缓存命中数不超过输入总数（异常数据时按输入上限 clamp）
-  const cachedIn = Math.min(cached, input)
-  const uncachedIn = input - cachedIn
-  const costIn = (uncachedIn * prices.inPerM + cachedIn * prices.cachePerM) / 1_000_000
-  const costOut = (output * prices.outPerM) / 1_000_000
+  const costIn = input === null || cached === null
+    ? null
+    : (() => {
+        const cachedIn = Math.min(cached, input)
+        const uncachedIn = input - cachedIn
+        return round6((uncachedIn * prices.inPerM + cachedIn * prices.cachePerM) / 1_000_000)
+      })()
+  const costOut = output === null ? null : round6((output * prices.outPerM) / 1_000_000)
   return {
-    costIn: round6(costIn),
-    costOut: round6(costOut),
-    costTotal: round6(costIn + costOut),
+    costIn,
+    costOut,
+    costTotal: costIn === null || costOut === null ? null : round6(costIn + costOut),
   }
 }
 

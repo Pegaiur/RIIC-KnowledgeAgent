@@ -2,7 +2,7 @@
  * Agent 单题执行记录：只承载人工复盘所需的公开调用事实。
  * 不记录 hidden reasoning、请求 headers 或完整运行配置。
  */
-import type { BenchQuery, LlmUsage, ToolCall } from './types.js'
+import type { BenchQuery, LlmUsage, TerminationReason, ToolCall } from './types.js'
 
 export interface TraceLlmEvent {
   type: 'llm_call'
@@ -41,24 +41,25 @@ export interface TraceControlEvent {
 export type TraceEvent = TraceLlmEvent | TraceToolEvent | TraceControlEvent
 
 export interface TraceFailure {
-  stage: 'llm' | 'tool' | 'runner'
+  stage: 'llm' | 'tool' | 'runner' | 'timeout' | 'cancelled'
   message: string
   round?: number
   toolCallId?: string
 }
 
 export interface QueryTrace {
-  schemaVersion: 1
+  schemaVersion: 2
   queryId: string
   question: string
-  status: 'completed' | 'failed'
+  status: 'completed' | 'failed' | 'cancelled'
+  terminationReason?: TerminationReason
   events: TraceEvent[]
   failure?: TraceFailure
 }
 
 export function createQueryTrace(query: BenchQuery): QueryTrace {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2 as const,
     queryId: query.id,
     question: query.question,
     status: 'completed',
@@ -68,7 +69,16 @@ export function createQueryTrace(query: BenchQuery): QueryTrace {
 
 /** 只保留第一次失败位置，避免 runner 的兜底错误覆盖 Agent 内部定位。 */
 export function markTraceFailed(trace: QueryTrace, failure: TraceFailure): void {
-  trace.status = 'failed'
+  trace.status = failure.stage === 'timeout' || failure.stage === 'cancelled' ? 'cancelled' : 'failed'
+  trace.terminationReason = failure.stage === 'timeout'
+    ? 'timeout'
+    : failure.stage === 'cancelled'
+      ? 'cancelled'
+      : failure.stage === 'llm'
+        ? 'llm_error'
+        : failure.stage === 'tool'
+          ? 'tool_error'
+          : 'protocol_error'
   if (!trace.failure) trace.failure = failure
 }
 

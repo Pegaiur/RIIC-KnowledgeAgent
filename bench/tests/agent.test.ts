@@ -324,4 +324,46 @@ describe('runQuery：trace 事件记录', () => {
     expect(trace.events.map((event) => event.type)).toEqual(['llm_call', 'control', 'llm_call', 'tool_call', 'llm_call'])
     expect(trace.events[1]).toMatchObject({ type: 'control', round: 1, kind: 'min_retrieval' })
   })
+
+  it('provider 在已有模型响应后失败时返回失败结果并保留前面记录', async () => {
+    const config = loadConfig()
+    config.toolBudget = 5
+    const query = { id: 'FAIL-KEEP-1', category: 'fact' as const, question: '保留前序记录' }
+    const trace = createQueryTrace(query)
+    const index = buildIndex(chunks)
+
+    mockCall
+      .mockResolvedValueOnce(providerResult({ content: '第一步暂不作答' }))
+      .mockRejectedValueOnce(new Error('第二次请求失败'))
+
+    const result = await runQuery(query, { config, thinking: 'off', dry: false, trace }, chunks, index)
+
+    expect(result.status).toBe('failed')
+    expect(result.terminationReason).toBe('llm_error')
+    expect(result.records).toHaveLength(1)
+    expect(result.records[0]?.output).toBe(50)
+    expect(trace.status).toBe('failed')
+    expect(trace.events.map((event) => event.type)).toEqual(['llm_call', 'control', 'llm_call'])
+  })
+
+  it('单题总超时返回 cancelled，不启动新的模型步骤', async () => {
+    const config = loadConfig()
+    config.toolBudget = 5
+    config.sessionTimeoutMs = 5
+    const query = { id: 'TIMEOUT-1', category: 'fact' as const, question: '超时测试' }
+    const trace = createQueryTrace(query)
+    const index = buildIndex(chunks)
+
+    mockCall.mockImplementation(() => new Promise<ProviderResult>((resolve) => {
+      setTimeout(() => resolve(providerResult({ content: '过晚的回答' })), 50)
+    }))
+
+    const result = await runQuery(query, { config, thinking: 'off', dry: false, trace }, chunks, index)
+
+    expect(result.status).toBe('cancelled')
+    expect(result.terminationReason).toBe('timeout')
+    expect(result.finalAnswer).toBeNull()
+    expect(mockCall).toHaveBeenCalledTimes(1)
+    expect(trace.failure?.stage).toBe('timeout')
+  })
 })

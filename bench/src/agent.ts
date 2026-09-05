@@ -6,17 +6,28 @@
  */
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { loadConfig, type BenchConfig, type RetrieverId } from './config.js'
+import { loadConfig, validateBenchConfig, type BenchConfig, type RetrieverId } from './config.js'
 import { search, type IndexEntry } from './retriever.js'
 import { grepSearch, buildGrepResult } from './grep-retriever.js'
 import type { DocChunk } from './types.js'
 import { callLLM, type ChatMessage, type ProviderOptions } from './provider.js'
 import { computeCosts } from './pricing.js'
-import { isRetrievalTool, isFactTool, type BenchQuery, type CostRecord, type ThinkingMode, type ToolId } from './types.js'
+import {
+  isRetrievalTool,
+  isFactTool,
+  type BenchQuery,
+  type CostRecord,
+  type TerminationReason,
+  type ThinkingMode,
+  type ToolId,
+} from './types.js'
 import { getCardStore, serializeCards, type OperatorFilters } from './facts/store.js'
-import type { QueryTrace, TraceLlmEvent, TraceToolEvent } from './trace.js'
+import { markTraceFailed, type QueryTrace, type TraceFailure, type TraceLlmEvent, type TraceToolEvent } from './trace.js'
 
 export interface AgentResult {
+  status: 'completed' | 'failed' | 'cancelled'
+  terminationReason: TerminationReason
+  failure?: TraceFailure
   records: CostRecord[]
   finalAnswer: string | null
   rounds: number
@@ -25,6 +36,8 @@ export interface AgentResult {
   toolTrace: ToolId[][]
   /** 实际注入上下文的 chunk id（按注入顺序去重；rag 路径按 maxContextChars 截断偏移判定，供注入覆盖率计算） */
   injectedIds: string[]
+  /** 已发起的模型生成步骤数；失败/取消也保留真实值。 */
+  modelSteps: number
 }
 
 export interface AgentOptions {
@@ -39,6 +52,16 @@ export interface AgentOptions {
 
 /** 单次查询允许的知识库检索次数上限（system prompt 与 tool 侧共同约束） */
 export const MAX_RAG_CALLS = 2
+
+class AgentExecutionError extends Error {
+  constructor(
+    message: string,
+    readonly reason: TerminationReason,
+    readonly stage: 'llm' | 'tool' | 'runner' | 'timeout' | 'cancelled' = 'runner',
+  ) {
+    super(message)
+  }
+}
 
 /** 读取查询 Agent 的决策契约；只在构建提示时读取，不产生模块顶层副作用。 */
 export function loadKnowledgeAgentInstructions(root = process.cwd()): string {
@@ -168,12 +191,24 @@ export async function runQuery(
   index: IndexEntry,
 ): Promise<AgentResult> {
   const config = opts.config ?? loadConfig()
+  validateBenchConfig(config)
   const records: CostRecord[] = []
   const messages: ChatMessage[] = [
     { role: 'system', content: buildSystemPrompt(config.retriever, opts.agentInstructions ?? loadKnowledgeAgentInstructions()) },
     { role: 'user', content: query.question },
   ]
-  const providerOpts: ProviderOptions = { config, thinking: opts.thinking, dry: opts.dry }
+  const sessionController = new AbortController()
+  let timedOut = false
+  const timeoutHandle = setTimeout(() => {
+    timedOut = true
+    sessionController.abort(new Error('单题总超时'))
+  }, config.sessionTimeoutMs)
+  const providerOpts: ProviderOptions = {
+    config,
+    thinking: opts.thinking,
+    dry: opts.dry,
+    signal: sessionController.signal,
+  }
   const now = new Date().toISOString()
 
   let finalAnswer: string | null = null
@@ -184,8 +219,13 @@ export async function runQuery(
   const toolTrace: ToolId[][] = []
   /** 实际注入上下文的 chunk id（按注入顺序去重；供 R1 注入覆盖率计算） */
   const injectedIds: string[] = []
+  let status: AgentResult['status'] = 'completed'
+  let terminationReason: TerminationReason = 'answer'
+  let failure: TraceFailure | undefined
 
-  for (let round = 1; round <= config.maxRounds + 1; round++) {
+  try {
+    for (let round = 1; round <= config.maxRounds + 1; round++) {
+      if (sessionController.signal.aborted) throw abortErrorForSession(timedOut)
     rounds++
     // 超轮次：最后一轮不再暴露检索工具（空工具集），强制模型直接基于已有片段作答，
     // 避免「轮次耗尽仍有 tool use → finalAnswer=null 不落盘」的缺失答案问题。
@@ -203,17 +243,14 @@ export async function runQuery(
     const llmStarted = Date.now()
     let resp
     try {
-      resp = await callLLM(messages, offeredTools, providerOpts)
+      resp = await awaitWithAbort(callLLM(messages, offeredTools, providerOpts), sessionController.signal)
     } catch (error) {
       if (llmEvent) {
         llmEvent.elapsedMs = Date.now() - llmStarted
         llmEvent.error = errorMessage(error)
       }
-      if (opts.trace) {
-        opts.trace.status = 'failed'
-        opts.trace.failure ??= { stage: 'llm', message: errorMessage(error), round }
-      }
-      throw error
+      const reason = timedOut ? 'timeout' : 'llm_error'
+      throw new AgentExecutionError(errorMessage(error), reason, timedOut ? 'timeout' : 'llm')
     }
     if (llmEvent) {
       llmEvent.elapsedMs = Date.now() - llmStarted
@@ -240,11 +277,16 @@ export async function runQuery(
       costIn: costs.costIn,
       costOut: costs.costOut,
       costTotal: costs.costTotal,
+      usageCompleteness: resp.usage.completeness,
       truncated: resp.truncated,
       // 本轮实际调用的检索工具（无工具调用则省略；双工具模式统计）
       tools: usedTools.length > 0 ? usedTools : undefined,
     })
     toolTrace.push(usedTools)
+
+    if (resp.truncated) {
+      throw new AgentExecutionError('模型响应被截断，未执行其中的工具调用或接受正文', 'truncated', 'llm')
+    }
 
     if (resp.toolCalls.length > 0 && !isAnswerFallback) {
       toolRounds++
@@ -260,6 +302,7 @@ export async function runQuery(
       })
       // 执行工具：rag_search（BM25）与 grep_search（字面命中）分别路由，逐个执行并回写结果
       for (const tc of resp.toolCalls) {
+        if (sessionController.signal.aborted) throw abortErrorForSession(timedOut)
         let resultText: string
         const toolEvent: TraceToolEvent | undefined = opts.trace
           ? { type: 'tool_call', round, callId: tc.id, tool: tc.name, rawArguments: tc.arguments, elapsedMs: 0 }
@@ -369,11 +412,7 @@ export async function runQuery(
             toolEvent.elapsedMs = Date.now() - toolStarted
             toolEvent.error = errorMessage(error)
           }
-          if (opts.trace) {
-            opts.trace.status = 'failed'
-            opts.trace.failure ??= { stage: 'tool', message: errorMessage(error), round, toolCallId: tc.id }
-          }
-          throw error
+          throw new AgentExecutionError(errorMessage(error), timedOut ? 'timeout' : 'tool_error', timedOut ? 'timeout' : 'tool')
         }
       }
       continue
@@ -394,11 +433,67 @@ export async function runQuery(
     }
 
     // 无工具调用 → 最终回答（若无内容则产出显式占位，保证 answers.md 落盘）
-    finalAnswer = resp.content ?? '（模型未返回最终答案）'
+    if (typeof resp.content !== 'string' || resp.content.trim() === '') {
+      throw new AgentExecutionError('模型未返回非空最终答案', 'empty_response', 'llm')
+    }
+    finalAnswer = resp.content
     break
   }
+  } catch (error) {
+    status = timedOut ? 'cancelled' : error instanceof AgentExecutionError && (error.reason === 'timeout' || error.reason === 'cancelled') ? 'cancelled' : 'failed'
+    terminationReason = timedOut
+      ? 'timeout'
+      : error instanceof AgentExecutionError
+        ? error.reason
+        : 'llm_error'
+    const stage = timedOut
+      ? 'timeout'
+      : error instanceof AgentExecutionError
+        ? error.stage
+        : 'llm'
+    failure = {
+      stage,
+      message: errorMessage(error),
+      round: rounds || undefined,
+    }
+    if (error instanceof AgentExecutionError && error.stage === 'tool' && opts.trace) {
+      const lastTool = [...opts.trace.events].reverse().find((event): event is TraceToolEvent => event.type === 'tool_call')
+      if (lastTool) failure.toolCallId = lastTool.callId
+    }
+    if (opts.trace) {
+      markTraceFailed(opts.trace, failure)
+      // stage 只描述失败位置，精确终止原因来自 Agent 业务判定。
+      opts.trace.terminationReason = terminationReason
+    }
+  } finally {
+    clearTimeout(timeoutHandle)
+  }
 
-  return { records, finalAnswer, rounds, toolRounds, toolTrace, injectedIds }
+  return { status, terminationReason, failure, records, finalAnswer, rounds, toolRounds, toolTrace, injectedIds, modelSteps: rounds }
+}
+
+function abortErrorForSession(timedOut: boolean): AgentExecutionError {
+  return timedOut
+    ? new AgentExecutionError('单题总超时', 'timeout', 'timeout')
+    : new AgentExecutionError('任务已取消', 'cancelled', 'cancelled')
+}
+
+function awaitWithAbort<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
+  if (signal.aborted) return Promise.reject(abortErrorForSession(true))
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(signal.reason instanceof Error ? signal.reason : new Error('任务已取消'))
+    signal.addEventListener('abort', onAbort, { once: true })
+    promise.then(
+      (value) => {
+        signal.removeEventListener('abort', onAbort)
+        resolve(value)
+      },
+      (error: unknown) => {
+        signal.removeEventListener('abort', onAbort)
+        reject(error)
+      },
+    )
+  })
 }
 
 function parseQuery(args: string): { value: string | null; reason?: string } {

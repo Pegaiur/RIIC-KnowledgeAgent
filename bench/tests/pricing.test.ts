@@ -31,6 +31,11 @@ describe('pricing：Hy3 费用计算', () => {
     // clamp 后 cachedIn=1000 → 1000 × 0.25 / 1M
     expect(c.costIn).toBe(0.00025)
   })
+
+  it('usage 分项未知时保留已知费用并不伪造总费用', () => {
+    expect(computeCosts(null, 1_000_000, 0)).toEqual({ costIn: null, costOut: 4, costTotal: null })
+    expect(computeCosts(1_000, 0, null)).toEqual({ costIn: null, costOut: 0, costTotal: null })
+  })
 })
 
 describe('pricing：Qwen3.7-Flash 费用计算', () => {

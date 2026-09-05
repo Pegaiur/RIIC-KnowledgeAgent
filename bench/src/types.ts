@@ -14,16 +14,33 @@ export type ToolId = 'rag_search' | 'grep_search' | 'lookup' | 'query_operators'
 /** 检索分词器标识（bigram 零依赖默认；jieba 见 ADR-001） */
 export type TokenizerId = 'bigram' | 'jieba'
 
+/** usage 完整性；partial 保留已知分项，unknown 不得当作零费用。 */
+export type UsageCompleteness = 'complete' | 'partial' | 'unknown'
+
+/** 单题终止原因；供 Agent、trace 和报告共用口径。 */
+export type TerminationReason =
+  | 'answer'
+  | 'no_tool_after_feedback'
+  | 'llm_error'
+  | 'tool_error'
+  | 'timeout'
+  | 'cancelled'
+  | 'empty_response'
+  | 'truncated'
+  | 'protocol_error'
+
 /** 单次 LLM 调用的 token 用量（TokenHub OpenAI 兼容口径） */
 export interface LlmUsage {
   /** prompt_tokens（含缓存命中部分） */
-  input: number
+  input: number | null
   /** completion_tokens（含思考 token 与工具调用参数） */
-  output: number
-  /** prompt_tokens_details.cached_tokens，无则为 0 */
-  cached: number
-  /** completion_tokens_details.reasoning_tokens（思考 token），无则为 0 */
-  reasoning: number
+  output: number | null
+  /** prompt_tokens_details.cached_tokens；接口允许省略时为 0，显式无效时为 null */
+  cached: number | null
+  /** completion_tokens_details.reasoning_tokens；接口允许省略时为 0，显式无效时为 null */
+  reasoning: number | null
+  /** 旧测试/旧运行构造的 usage 可缺省，provider 解析结果始终提供。 */
+  completeness?: UsageCompleteness
 }
 
 /** 单次 LLM 调用的成本记录（写入 JSONL 的一行） */
@@ -43,19 +60,21 @@ export interface CostRecord {
   /** 模型名 */
   model: string
   /** 输入 token 数 */
-  input: number
+  input: number | null
   /** 输出 token 数 */
-  output: number
+  output: number | null
   /** 缓存命中输入 token 数 */
-  cached: number
+  cached: number | null
   /** 思考 token 数（reasoning_tokens），无则为 0 */
-  reasoning: number
+  reasoning: number | null
   /** 输入费用（元） */
-  costIn: number
+  costIn: number | null
   /** 输出费用（元） */
-  costOut: number
+  costOut: number | null
   /** 总费用（元） */
-  costTotal: number
+  costTotal: number | null
+  /** usage 完整性；旧记录缺失时保持不可用而不是回填 complete。 */
+  usageCompleteness?: UsageCompleteness
   /** 是否因 max_tokens 截断 */
   truncated: boolean
   /** 本轮实际调用的检索工具名（双工具模式下统计；无工具调用则省略） */

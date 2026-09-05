@@ -298,7 +298,11 @@ describe('runQuery（facts 模式）', () => {
     })
     mockCall.mockResolvedValueOnce(providerResult({ toolCalls: [{ ...toolCall('lookup', '{"term":"刻俄柏"}') } as any] }))
 
-    await expect(runQuery(query, { config, thinking: 'off', dry: false, trace }, chunks, index)).rejects.toThrow('lookup store 测试异常')
+    const result = await runQuery(query, { config, thinking: 'off', dry: false, trace }, chunks, index)
+
+    expect(result.status).toBe('failed')
+    expect(result.terminationReason).toBe('tool_error')
+    expect(result.failure?.message).toBe('lookup store 测试异常')
 
     expect(trace.events[1]).toMatchObject({
       type: 'tool_call',
@@ -319,7 +323,11 @@ describe('runQuery（facts 模式）', () => {
     })
     mockCall.mockResolvedValueOnce(providerResult({ toolCalls: [{ ...toolCall('query_operators', '{"room":"制造站"}') } as any] }))
 
-    await expect(runQuery(query, { config, thinking: 'off', dry: false, trace }, chunks, index)).rejects.toThrow('query_operators store 测试异常')
+    const result = await runQuery(query, { config, thinking: 'off', dry: false, trace }, chunks, index)
+
+    expect(result.status).toBe('failed')
+    expect(result.terminationReason).toBe('tool_error')
+    expect(result.failure?.message).toBe('query_operators store 测试异常')
 
     expect(trace.events[1]).toMatchObject({
       type: 'tool_call',

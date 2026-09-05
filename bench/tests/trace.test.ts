@@ -15,6 +15,15 @@ describe('trace 记录模型', () => {
     expect(trace.failure).toEqual({ stage: 'llm', message: '第一次失败', round: 1 })
   })
 
+  it('支持取消状态及终止原因', () => {
+    const trace = createQueryTrace(QUERY)
+
+    markTraceFailed(trace, { stage: 'timeout', message: '单题总超时', round: 2 })
+
+    expect(trace.status).toBe('cancelled')
+    expect(trace.terminationReason).toBe('timeout')
+  })
+
   it('只在序列化写盘副本时遮蔽已知敏感值', () => {
     const trace = createQueryTrace(QUERY)
     trace.events.push({
