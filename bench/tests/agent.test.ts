@@ -76,7 +76,7 @@ describe('agent：统一 knowledge 工具 schema', () => {
     expect(prompt).toContain('特殊订单边界')
     expect(prompt).toContain('每一笔订单分别判断')
     expect(prompt).toContain('不写成游戏会自动把干员调离工作设施')
-    expect(prompt).toContain('不擅自补 10%/90% 等固定效率')
+    expect(prompt).toContain('禁止输出 5%/10%/45%/90% 等固定效率')
     expect(prompt).toContain('维娜·维多利亚是可选增强')
     expect(prompt).toContain('禁止补塞雷娅、星熊等额外成员')
   })
