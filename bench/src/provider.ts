@@ -10,6 +10,7 @@
  *   / completion_tokens_details.reasoning_tokens
  */
 import type { BenchConfig } from './config.js'
+import { aggregateUsages } from './pricing.js'
 import type { HttpAttempt, LlmUsage, ProviderResult, ThinkingMode, ToolCall, UsageCompleteness } from './types.js'
 import { acquireRateLimitToken } from './rate-limiter.js'
 
@@ -21,6 +22,14 @@ export interface ProviderOptions {
   dry: boolean
   /** 单题总超时信号；请求、限流和重试均必须尊重。 */
   signal?: AbortSignal
+  /** 当前模型步骤的共享台账；取消竞争时由 Agent 用它收集已发生的 HTTP 尝试。 */
+  ledger?: ProviderCallLedger
+}
+
+export interface ProviderCallLedger {
+  attempts: HttpAttempt[]
+  usage?: LlmUsage
+  model?: string
 }
 
 /** OpenAI 兼容 assistant 消息 */
@@ -86,16 +95,22 @@ export async function callLLM(
       Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify(body),
-  }, opts.config.providerLabel, model, opts.signal)
+  }, opts.config.providerLabel, model, opts.signal, opts.ledger)
 
   const data = fetched.data
   const usage = parseUsage(data.usage)
+  const accountingUsage = aggregateUsages(fetched.attempts.map((attempt) => attempt.usage))
+  if (opts.ledger) {
+    opts.ledger.attempts = fetched.attempts
+    opts.ledger.usage = accountingUsage
+    opts.ledger.model = data.model ?? model
+  }
   const responseModel = data.model ?? model
   const choice = data.choices?.[0]
   if (!choice) {
     throw new ProviderCallError(
       `${opts.config.providerLabel} 响应无 choices：${JSON.stringify(data).slice(0, 400)}`,
-      usage,
+      accountingUsage,
       responseModel,
       fetched.attempts,
     )
@@ -139,40 +154,77 @@ async function fetchWithRetry(
   label: string,
   model: string,
   signal?: AbortSignal,
+  ledger?: ProviderCallLedger,
 ): Promise<FetchedResponse> {
   let lastErr: unknown
-  let lastUsage: LlmUsage = unknownUsage()
-  const attempts: HttpAttempt[] = []
+  const attempts: HttpAttempt[] = ledger?.attempts ?? []
+  attempts.length = 0
+  const publish = () => {
+    if (ledger) {
+      ledger.attempts = attempts
+      ledger.usage = aggregateUsages(attempts.map((attempt) => attempt.usage))
+      ledger.model = model
+    }
+  }
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     // 限流：每次请求前先取令牌；dry 模式不会走到这里
-    await acquireRateLimitToken(signal)
+    try {
+      await acquireRateLimitToken(signal)
+    } catch (err) {
+      throw new ProviderCallError(errorMessage(err), aggregateUsages(attempts.map((item) => item.usage)), model, attempts)
+    }
+
+    if (signal?.aborted) {
+      throw new ProviderCallError(errorMessage(signal.reason), aggregateUsages(attempts.map((item) => item.usage)), model, attempts)
+    }
 
     const request = requestSignal(signal)
+    let response: Response | undefined
+    const currentAttempt: HttpAttempt = {
+      attempt,
+      status: null,
+      outcome: 'in_flight',
+      usage: unknownUsage(),
+    }
+    attempts.push(currentAttempt)
+    publish()
     try {
-      const res = await fetch(url, { ...init, signal: request.signal })
+      response = await fetch(url, { ...init, signal: request.signal })
+      currentAttempt.status = response.status
+      publish()
       // Response 返回只代表响应头到达；保持 request signal 到正文消费完成。
-      const text = await res.text()
+      const text = await response.text()
       const data = parseJsonObject(text)
       const usage = parseUsage(data.usage)
-      lastUsage = usage
-      if (res.ok) {
-        attempts.push({ attempt, status: res.status, outcome: 'accepted', usage })
+      if (response.ok) {
+        currentAttempt.status = response.status
+        currentAttempt.outcome = 'accepted'
+        currentAttempt.usage = usage
+        publish()
         request.cleanup()
         return { data, attempts }
       }
 
-      const retryable = RETRYABLE_STATUS.has(res.status)
-      const message = `LLM API 返回 ${res.status}（${retryable ? '可重试' : '不可重试'}）：${text.slice(0, retryable ? 200 : 400)}`
-      attempts.push({ attempt, status: res.status, outcome: retryable ? 'retry' : 'failed', usage, error: message })
+      const retryable = RETRYABLE_STATUS.has(response.status)
+      const message = `LLM API 返回 ${response.status}（${retryable ? '可重试' : '不可重试'}）：${text.slice(0, retryable ? 200 : 400)}`
+      currentAttempt.status = response.status
+      currentAttempt.outcome = retryable ? 'retry' : 'failed'
+      currentAttempt.usage = usage
+      currentAttempt.error = message
+      publish()
       lastErr = new Error(message)
       request.cleanup()
       if (retryable) {
         if (attempt === MAX_ATTEMPTS) break
-        const retryAfterMs = parseRetryAfter(res)
-        await sleep(retryAfterMs ?? BACKOFF_BASE_MS * 2 ** (attempt - 1), signal)
+        const retryAfterMs = parseRetryAfter(response)
+        try {
+          await sleep(retryAfterMs ?? BACKOFF_BASE_MS * 2 ** (attempt - 1), signal)
+        } catch (err) {
+          throw new ProviderCallError(errorMessage(err), aggregateUsages(attempts.map((item) => item.usage)), model, attempts)
+        }
         continue
       }
-      throw new ProviderCallError(message, usage, model, attempts)
+      throw new ProviderCallError(message, aggregateUsages(attempts.map((item) => item.usage)), model, attempts)
     } catch (err) {
       request.cleanup()
       if (err instanceof ProviderCallError) throw err
@@ -182,22 +234,24 @@ async function fetchWithRetry(
         : err instanceof Error && err.name === 'TimeoutError'
           ? new Error(`${label} 请求超时`)
           : err
-      attempts.push({
-        attempt,
-        status: null,
-        outcome: aborted ? 'aborted' : 'failed',
-        usage: unknownUsage(),
-        error: error instanceof Error ? error.message : String(error),
-      })
-      if (signal?.aborted) throw new ProviderCallError(errorMessage(error), unknownUsage(), model, attempts)
+      currentAttempt.status = response?.status ?? null
+      currentAttempt.outcome = aborted ? 'aborted' : 'failed'
+      currentAttempt.usage = unknownUsage()
+      currentAttempt.error = error instanceof Error ? error.message : String(error)
+      publish()
+      if (signal?.aborted) throw new ProviderCallError(errorMessage(error), aggregateUsages(attempts.map((item) => item.usage)), model, attempts)
       lastErr = error
       if (attempt === MAX_ATTEMPTS) break
-      await sleep(BACKOFF_BASE_MS * 2 ** (attempt - 1), signal)
+      try {
+        await sleep(BACKOFF_BASE_MS * 2 ** (attempt - 1), signal)
+      } catch (sleepError) {
+        throw new ProviderCallError(errorMessage(sleepError), aggregateUsages(attempts.map((item) => item.usage)), model, attempts)
+      }
     }
   }
   throw new ProviderCallError(
     `LLM 调用失败（重试 ${MAX_ATTEMPTS} 次后仍失败）：${lastErr instanceof Error ? lastErr.message : String(lastErr)}`,
-    lastUsage,
+    aggregateUsages(attempts.map((attempt) => attempt.usage)),
     model,
     attempts,
   )
@@ -267,7 +321,8 @@ function requestSignal(sessionSignal?: AbortSignal): { signal: AbortSignal; clea
   const requestController = new AbortController()
   const timer = setTimeout(() => requestController.abort(new Error('单次请求超时')), REQUEST_TIMEOUT_MS)
   const onSessionAbort = () => requestController.abort(sessionSignal?.reason)
-  sessionSignal?.addEventListener('abort', onSessionAbort, { once: true })
+  if (sessionSignal?.aborted) requestController.abort(sessionSignal.reason)
+  else sessionSignal?.addEventListener('abort', onSessionAbort, { once: true })
   const cleanup = () => {
     clearTimeout(timer)
     sessionSignal?.removeEventListener('abort', onSessionAbort)

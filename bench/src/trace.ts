@@ -11,6 +11,9 @@ export interface TraceLlmEvent {
   offeredTools: string[]
   elapsedMs: number
   usage?: LlmUsage
+  /** provider 最终响应中的 usage；usage 字段按台账汇总，用于和 records/report 对齐。 */
+  responseUsage?: LlmUsage
+  usageAggregation?: 'response' | 'http_attempts'
   truncated?: boolean
   content?: string | null
   toolCalls?: ToolCall[]

@@ -51,6 +51,10 @@ export interface LlmUsage {
   cached: number | null
   /** completion_tokens_details.reasoning_tokens；接口允许省略时为 0，显式无效时为 null */
   reasoning: number | null
+  /** 已观察到的输入 token 小计；exact input 未知时仍可保留非空尝试的小计。 */
+  knownInput?: number | null
+  /** 已观察到的输出 token 小计；exact output 未知时仍可保留非空尝试的小计。 */
+  knownOutput?: number | null
   /** 旧测试/旧运行构造的 usage 可缺省，provider 解析结果始终提供。 */
   completeness?: UsageCompleteness
 }
@@ -59,7 +63,7 @@ export interface LlmUsage {
 export interface HttpAttempt {
   attempt: number
   status: number | null
-  outcome: 'accepted' | 'retry' | 'failed' | 'aborted'
+  outcome: 'accepted' | 'retry' | 'failed' | 'aborted' | 'in_flight'
   usage: LlmUsage
   error?: string
 }
@@ -84,6 +88,10 @@ export interface CostRecord {
   input: number | null
   /** 输出 token 数 */
   output: number | null
+  /** 已观察到的输入 token 小计；exact input 未知时仍可保留非空尝试的小计。 */
+  knownInput?: number | null
+  /** 已观察到的输出 token 小计；exact output 未知时仍可保留非空尝试的小计。 */
+  knownOutput?: number | null
   /** 缓存命中输入 token 数 */
   cached: number | null
   /** 思考 token 数（reasoning_tokens），无则为 0 */
@@ -96,6 +104,8 @@ export interface CostRecord {
   costTotal: number | null
   /** usage 完整性；旧记录缺失时保持不可用而不是回填 complete。 */
   usageCompleteness?: UsageCompleteness
+  /** 新记录的计量字段来自所有已观察 HTTP 尝试；旧记录缺失时按旧格式兼容读取。 */
+  usageAggregation?: 'response' | 'http_attempts'
   /** 本模型步骤的 HTTP 尝试台账；每次重试各占一项。 */
   httpAttempts?: HttpAttempt[]
   /** 是否因 max_tokens 截断 */

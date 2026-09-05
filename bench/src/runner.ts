@@ -10,6 +10,7 @@ import { buildIndex } from './retriever.js'
 import { loadKnowledgeAgentInstructions, runQuery, type AgentOptions } from './agent.js'
 import type { BenchQuery, CostRecord, TerminationReason, ThinkingMode } from './types.js'
 import { createQueryTrace, markTraceFailed, serializeTrace } from './trace.js'
+import { aggregate } from './report.js'
 
 export interface RunOutput {
   records: CostRecord[]
@@ -81,8 +82,6 @@ export async function runBenchmark(
   let toolCallsDenied = 0
   let toolErrors = 0
   let toolResultChars = 0
-  let httpAttempts = 0
-  let retryAttempts = 0
   let feedbackUsed = 0
   const terminationReasons: Partial<Record<TerminationReason, number>> = {}
 
@@ -100,8 +99,6 @@ export async function runBenchmark(
       feedbackUsed += result.feedbackUsed ? 1 : 0
       terminationReasons[result.terminationReason] = (terminationReasons[result.terminationReason] ?? 0) + 1
       for (const r of result.records) {
-        httpAttempts += r.httpAttempts?.length ?? 0
-        retryAttempts += r.httpAttempts?.filter((attempt) => attempt.outcome === 'retry').length ?? 0
         if (r.toolBatch) {
           toolCallsGranted += r.toolBatch.granted
           toolErrors += r.toolBatch.errors
@@ -180,6 +177,8 @@ export async function runBenchmark(
   writeFileSync(answersPath, renderAnswers(answers) + '\n', 'utf-8')
   const injectedPath = join(runDir, 'injected.json')
   writeFileSync(injectedPath, JSON.stringify(injectedMap, null, 2) + '\n', 'utf-8')
+  const runRecords = lines.map((line) => JSON.parse(line) as CostRecord)
+  const runReport = aggregate(runRecords)
   writeFileSync(
     metaPath,
     JSON.stringify(
@@ -208,6 +207,16 @@ export async function runBenchmark(
         chunks: chunks.length,
         questions: questions.length,
         records: lines.length,
+        inputTokens: runReport.totalInput,
+        outputTokens: runReport.totalOutput,
+        inputTokensExact: runReport.totalInputExact,
+        outputTokensExact: runReport.totalOutputExact,
+        totalCostIn: runReport.totalCostIn,
+        totalCostOut: runReport.totalCostOut,
+        totalCost: runReport.totalCost,
+        costComplete: runReport.costComplete,
+        incompleteUsageCalls: runReport.incompleteUsageCalls,
+        unknownUsageCalls: runReport.unknownUsageCalls,
         failed,
         modelSteps,
         toolBatches,
@@ -217,8 +226,8 @@ export async function runBenchmark(
         toolCallsDenied,
         toolErrors,
         toolResultChars,
-        httpAttempts,
-        retryAttempts,
+        httpAttempts: runReport.totalHttpAttempts,
+        retryAttempts: runReport.retryAttempts,
         feedbackUsed,
         terminationReasons,
         elapsedMs: Date.now() - started,
@@ -230,7 +239,7 @@ export async function runBenchmark(
   )
 
   return {
-    records: lines.map((l) => JSON.parse(l) as CostRecord),
+    records: runRecords,
     jsonlPath,
     metaPath,
     answersPath,

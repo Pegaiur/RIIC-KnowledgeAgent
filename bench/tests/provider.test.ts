@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { loadConfig } from '../src/config.js'
-import { buildChatBody, callLLM, type ChatMessage, type ProviderOptions } from '../src/provider.js'
+import { buildChatBody, callLLM, type ChatMessage, type ProviderCallLedger, type ProviderOptions } from '../src/provider.js'
 
 const messages: ChatMessage[] = [{ role: 'user', content: '测试' }]
 const tools: unknown[] = [{ type: 'function', function: { name: 'rag_search' } }]
@@ -123,5 +123,45 @@ describe('provider：请求体参数映射', () => {
       { attempt: 1, status: 503, outcome: 'retry', usage: { completeness: 'unknown' } },
       { attempt: 2, status: 200, outcome: 'accepted', usage: { input: 10, output: 2 } },
     ])
+  })
+
+  it('HTTP 重试的共享台账保留各次已知 usage', async () => {
+    const config = loadConfig('qwen')
+    config.apiKey = 'test-key'
+    const ledger: ProviderCallLedger = { attempts: [] }
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ error: '暂时不可用', usage: { prompt_tokens: 123, completion_tokens: 45 } }), { status: 503, headers: { 'retry-after': '0' } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        model: 'offline',
+        choices: [{ message: { content: '答案' }, finish_reason: 'stop' }],
+        usage: { prompt_tokens: 100, completion_tokens: 10 },
+      }), { status: 200 })))
+
+    const result = await callLLM(messages, [], { config, thinking: 'off', dry: false, ledger })
+
+    expect(ledger.attempts).toHaveLength(2)
+    expect(ledger.usage).toMatchObject({ input: 223, output: 55, completeness: 'complete' })
+    expect(result.usage).toMatchObject({ input: 100, output: 10 })
+  })
+
+  it('退避期间取消时 provider 错误保留已有 usage 而不虚增 HTTP 尝试', async () => {
+    const config = loadConfig('qwen')
+    config.apiKey = 'test-key'
+    const session = new AbortController()
+    const ledger: ProviderCallLedger = { attempts: [] }
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+      error: '暂时不可用',
+      usage: { prompt_tokens: 123, completion_tokens: 45 },
+    }), { status: 503, headers: { 'retry-after': '1' } })))
+
+    const pending = callLLM(messages, [], { config, thinking: 'off', dry: false, signal: session.signal, ledger })
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    session.abort(new Error('测试取消'))
+
+    await expect(pending).rejects.toMatchObject({
+      usage: { input: 123, output: 45, completeness: 'complete' },
+      httpAttempts: [{ attempt: 1, status: 503, outcome: 'retry' }],
+    })
+    expect(ledger.attempts).toHaveLength(1)
   })
 })

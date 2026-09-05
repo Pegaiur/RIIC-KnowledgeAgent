@@ -9,8 +9,8 @@ import { join } from 'node:path'
 import { loadConfig, validateBenchConfig, type BenchConfig, type RetrieverId } from './config.js'
 import type { IndexEntry } from './retriever.js'
 import type { DocChunk, BenchQuery, CostRecord, HttpAttempt, LlmUsage, TerminationReason, ThinkingMode, ToolBatchStats, ToolId } from './types.js'
-import { callLLM, type ChatMessage, type ProviderOptions } from './provider.js'
-import { computeCosts } from './pricing.js'
+import { callLLM, type ChatMessage, type ProviderCallLedger, type ProviderOptions } from './provider.js'
+import { aggregateAttemptCosts, aggregateUsages, computeCosts } from './pricing.js'
 import { isRetrievalTool, isFactTool } from './types.js'
 import { markTraceFailed, type QueryTrace, type TraceFailure, type TraceLlmEvent, type TraceToolEvent } from './trace.js'
 import {
@@ -117,7 +117,7 @@ export async function runQuery(
     timedOut = true
     sessionController.abort(new Error('单题总超时'))
   }, config.sessionTimeoutMs)
-  const providerOpts: ProviderOptions = { config, thinking: opts.thinking, dry: opts.dry, signal: sessionController.signal }
+  const providerOptsBase: Omit<ProviderOptions, 'ledger'> = { config, thinking: opts.thinking, dry: opts.dry, signal: sessionController.signal }
   const now = new Date().toISOString()
 
   let finalAnswer: string | null = null
@@ -141,15 +141,21 @@ export async function runQuery(
       if (llmEvent) opts.trace?.events.push(llmEvent)
       const llmStarted = Date.now()
       let resp
+      const providerLedger: ProviderCallLedger = { attempts: [] }
+      const providerPromise = Promise.resolve().then(() => {
+        if (sessionController.signal.aborted) throw abortErrorForSession(timedOut)
+        return callLLM(messages, offeredTools, { ...providerOptsBase, ledger: providerLedger })
+      })
       try {
-        resp = await awaitWithAbort(callLLM(messages, offeredTools, providerOpts), sessionController.signal)
+        resp = await awaitWithAbort(providerPromise, sessionController.signal)
       } catch (error) {
-        const providerFailure = readProviderFailure(error)
+        const providerFailure = readProviderFailure(error) ?? readProviderLedger(providerLedger, config.model)
         if (llmEvent) {
           llmEvent.elapsedMs = Date.now() - llmStarted
           llmEvent.error = errorMessage(error)
           if (providerFailure) {
             llmEvent.usage = providerFailure.usage
+            llmEvent.usageAggregation = providerFailure.httpAttempts.length > 0 ? 'http_attempts' : 'response'
             llmEvent.httpAttempts = providerFailure.httpAttempts
           }
         }
@@ -168,16 +174,20 @@ export async function runQuery(
         const reason = timedOut ? 'timeout' : 'llm_error'
         throw new AgentExecutionError(errorMessage(error), reason, timedOut ? 'timeout' : 'llm')
       }
+      const httpAttempts = snapshotHttpAttempts(resp.httpAttempts)
       if (llmEvent) {
         llmEvent.elapsedMs = Date.now() - llmStarted
-        llmEvent.usage = resp.usage
-        llmEvent.httpAttempts = resp.httpAttempts
+        llmEvent.usage = accountingUsage(resp.usage, httpAttempts)
+        llmEvent.responseUsage = resp.usage
+        llmEvent.usageAggregation = httpAttempts.length > 0 ? 'http_attempts' : 'response'
+        llmEvent.httpAttempts = httpAttempts.length > 0 ? httpAttempts : undefined
         llmEvent.truncated = resp.truncated
         llmEvent.content = resp.content
         llmEvent.toolCalls = resp.toolCalls
       }
 
-      const costs = computeCosts(resp.usage.input, resp.usage.output, resp.usage.cached, config.prices)
+      const usage = accountingUsage(resp.usage, httpAttempts)
+      const costs = accountingCosts(resp.usage, httpAttempts, config)
       const requestedTools = resp.toolCalls
         .map((tc) => operationFromCall(tc))
         .filter((name): name is ToolId => typeof name === 'string' && (isRetrievalTool(name) || isFactTool(name)))
@@ -189,17 +199,20 @@ export async function runQuery(
         thinking: opts.thinking,
         provider: config.provider,
         model: resp.model,
-        input: resp.usage.input,
-        output: resp.usage.output,
-        cached: resp.usage.cached,
-        reasoning: resp.usage.reasoning,
+        input: usage.input,
+        output: usage.output,
+        knownInput: usage.knownInput,
+        knownOutput: usage.knownOutput,
+        cached: usage.cached,
+        reasoning: usage.reasoning,
         costIn: costs.costIn,
         costOut: costs.costOut,
         costTotal: costs.costTotal,
-        usageCompleteness: resp.usage.completeness,
+        usageCompleteness: usage.completeness,
+        usageAggregation: httpAttempts.length > 0 ? 'http_attempts' : 'response',
         truncated: resp.truncated,
         tools: requestedTools.length > 0 ? requestedTools : undefined,
-        httpAttempts: resp.httpAttempts,
+        httpAttempts: httpAttempts.length > 0 ? httpAttempts : undefined,
       }
       records.push(record)
 
@@ -368,10 +381,11 @@ function readProviderFailure(error: unknown): ProviderFailureLike | undefined {
   if (value.providerFailure !== true || !value.usage || typeof value.model !== 'string' || !Array.isArray(value.httpAttempts)) {
     return undefined
   }
+  const httpAttempts = snapshotHttpAttempts(value.httpAttempts)
   return {
-    usage: value.usage,
+    usage: httpAttempts.length > 0 ? aggregateUsages(attemptUsages(httpAttempts)) : normalizeUsage(value.usage),
     model: value.model,
-    httpAttempts: value.httpAttempts,
+    httpAttempts,
   }
 }
 
@@ -385,7 +399,11 @@ function createCostRecord(
   truncated: boolean,
   httpAttempts?: HttpAttempt[],
 ): CostRecord {
-  const costs = computeCosts(usage.input, usage.output, usage.cached, config.prices)
+  const stableAttempts = snapshotHttpAttempts(httpAttempts)
+  const accounting = stableAttempts.length > 0
+    ? aggregateUsages(attemptUsages(stableAttempts))
+    : normalizeUsage(usage)
+  const costs = accountingCosts(usage, stableAttempts, config)
   return {
     ts: new Date().toISOString(),
     queryId: query.id,
@@ -394,16 +412,19 @@ function createCostRecord(
     thinking: opts.thinking,
     provider: config.provider,
     model,
-    input: usage.input,
-    output: usage.output,
-    cached: usage.cached,
-    reasoning: usage.reasoning,
+    input: accounting.input,
+    output: accounting.output,
+    knownInput: accounting.knownInput,
+    knownOutput: accounting.knownOutput,
+    cached: accounting.cached,
+    reasoning: accounting.reasoning,
     costIn: costs.costIn,
     costOut: costs.costOut,
     costTotal: costs.costTotal,
-    usageCompleteness: usage.completeness,
+    usageCompleteness: accounting.completeness,
+    usageAggregation: stableAttempts.length > 0 ? 'http_attempts' : 'response',
     truncated,
-    httpAttempts,
+    httpAttempts: stableAttempts.length > 0 ? stableAttempts : undefined,
   }
 }
 
@@ -425,6 +446,53 @@ function abortErrorForSession(timedOut: boolean): AgentExecutionError {
   return timedOut
     ? new AgentExecutionError('单题总超时', 'timeout', 'timeout')
     : new AgentExecutionError('任务已取消', 'cancelled', 'cancelled')
+}
+
+function accountingUsage(responseUsage: LlmUsage, httpAttempts?: HttpAttempt[]): LlmUsage {
+  return httpAttempts && httpAttempts.length > 0
+    ? aggregateUsages(attemptUsages(httpAttempts))
+    : normalizeUsage(responseUsage)
+}
+
+function accountingCosts(responseUsage: LlmUsage, httpAttempts: HttpAttempt[] | undefined, config: BenchConfig) {
+  return httpAttempts && httpAttempts.length > 0
+    ? aggregateAttemptCosts(attemptUsages(httpAttempts), config.prices)
+    : computeCosts(responseUsage.input, responseUsage.output, responseUsage.cached, config.prices)
+}
+
+function attemptUsages(httpAttempts: HttpAttempt[]): LlmUsage[] {
+  return httpAttempts.map((attempt) => attempt.usage ?? unknownUsage())
+}
+
+function unknownUsage(): LlmUsage {
+  return { input: null, output: null, cached: null, reasoning: null, knownInput: null, knownOutput: null, completeness: 'unknown' }
+}
+
+function readProviderLedger(ledger: ProviderCallLedger, fallbackModel: string): ProviderFailureLike | undefined {
+  const httpAttempts = snapshotHttpAttempts(ledger.attempts)
+  if (httpAttempts.length === 0) return undefined
+  return {
+    usage: aggregateUsages(attemptUsages(httpAttempts)),
+    model: ledger.model ?? fallbackModel,
+    httpAttempts,
+  }
+}
+
+function normalizeUsage(usage: LlmUsage): LlmUsage {
+  return {
+    ...usage,
+    knownInput: usage.knownInput ?? usage.input,
+    knownOutput: usage.knownOutput ?? usage.output,
+  }
+}
+
+function snapshotHttpAttempts(httpAttempts: readonly HttpAttempt[] | undefined): HttpAttempt[] {
+  return (httpAttempts ?? []).map((attempt) => ({
+    ...attempt,
+    outcome: attempt.outcome === 'in_flight' ? 'aborted' : attempt.outcome,
+    error: attempt.outcome === 'in_flight' && !attempt.error ? '任务已取消，传输结果未结算' : attempt.error,
+    usage: { ...(attempt.usage ?? unknownUsage()) },
+  }))
 }
 
 function awaitWithAbort<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {

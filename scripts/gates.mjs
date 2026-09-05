@@ -8,6 +8,7 @@
  *   - 路由表或命令构成变化时，递增 lib/verify-profile.mjs 的 PROFILE_VERSION。
  *
  * rag-test 适配：单仓（pnpm 根包），门禁 = references 投影 + typecheck + test + doc-check。
+ * 回答质量、逐题人工评分和真实 LLM 对照不是自动门禁；本门禁只校验功能、协议、计量、facts 完整性与文档一致性。
  */
 
 /** @typedef {{ id: string, label: string, command: string[] }} StepDef */
