@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { loadConfig } from '../src/config.js'
-import { buildChatBody, type ChatMessage, type ProviderOptions } from '../src/provider.js'
+import { buildChatBody, callLLM, type ChatMessage, type ProviderOptions } from '../src/provider.js'
 
 const messages: ChatMessage[] = [{ role: 'user', content: '测试' }]
 const tools: unknown[] = [{ type: 'function', function: { name: 'rag_search' } }]
@@ -47,5 +47,16 @@ describe('provider：请求体参数映射', () => {
   it('Qwen 显式开启并行工具调用，Hy3 不套用未实测参数', () => {
     expect(buildChatBody(messages, tools, opts('qwen', 'off')).parallel_tool_calls).toBe(true)
     expect(buildChatBody(messages, tools, opts('hy3', 'off'))).not.toHaveProperty('parallel_tool_calls')
+  })
+
+  it.each([
+    ['bm25', 'rag_search'],
+    ['grep', 'grep_search'],
+  ] as const)('dry %s 使用统一 knowledge envelope', async (retriever, operation) => {
+    const config = loadConfig('qwen')
+    config.retriever = retriever
+    const result = await callLLM(messages, [], { config, thinking: 'off', dry: true })
+    expect(result.toolCalls[0]).toMatchObject({ name: 'knowledge' })
+    expect(JSON.parse(result.toolCalls[0]!.arguments)).toMatchObject({ operation, params: { query: '占位查询' } })
   })
 })

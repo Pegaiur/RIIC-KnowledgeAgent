@@ -310,9 +310,11 @@ function dryResult(messages: ChatMessage[], opts: ProviderOptions): ProviderResu
       toolCalls: [
         {
           id: 'call_dry_1',
-          // 工具名随检索器切换，使 dry 也能走对应的路由分支
-          name: opts.config.retriever === 'grep' ? 'grep_search' : 'rag_search',
-          arguments: '{"query":"占位查询"}',
+          name: 'knowledge',
+          arguments: JSON.stringify({
+            operation: opts.config.retriever === 'grep' ? 'grep_search' : 'rag_search',
+            params: { query: '占位查询' },
+          }),
         },
       ],
       usage: dryUsage(6000, 620),
