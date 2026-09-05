@@ -2,7 +2,7 @@
 
 > 对应 spec：[实施计划](plan-agent-auto-tool-budget.md)
 > 开始日期：2026-09-05
-> 当前阶段：阶段 5「同步可观测性、报告和 dry 管线」施工中。
+> 当前阶段：阶段 6「回归验证与成本、质量对照」施工中。
 
 ## 决策偏离
 
@@ -69,6 +69,19 @@
 - **审查**：本地自审（宿主无可用独立审查型子代理）；逐项核对主循环顺序为“保存 usage/费用 → 截断检查 → 批次执行或正文判定”，核对未调用工具与已调用工具的回馈分支、预算快照和失败 trace；`git diff --check` 通过。
 - **验证**：`pnpm run typecheck`、`pnpm run test`（28 个测试文件 / 229 个测试）、`pnpm run build`、`pnpm run bench:dry` 均通过；未发起真实网络请求。
 - **结论**：阶段 4 完成；进入阶段 5「同步可观测性、报告和 dry 管线」。
+
+### 2026-09-05 — 可观测性与 dry 管线同步
+
+- **spec 原文**：记录模型步骤、工具批次、提出/准入/执行/错误/拒绝、预算前后值、回馈次数、终止原因和结果字符数；meta 固定记录 auto、并行、预算、超时、schema 版本；报告不得把不完整 usage 当作完整零费用。
+- **实际做法**：新增 `ToolBatchStats` 并写入每次模型记录；trace 增加工具结果状态、执行标记、余额和单题 summary；runner 的 `meta.json` 增加 schema、生命周期、工具账本、回馈与终止原因汇总，answers 改展示工具批次与预算；report 聚合工具批次和结果字符数，并区分完整/部分/未知 usage，费用字段保持已知小计语义。dry provider 已切换为统一 `knowledge` envelope。
+- **原因**：将模型步骤、工具批次和实际 operation 分层保存，既保留外层协议事实，也支持成本/质量复核不把并行批次误当单次调用。
+
+### 2026-09-05 — 阶段 5 审查通过
+
+- **范围**：records、trace、answers、meta、report 的可观测字段与不完整 usage 展示，以及 facts dry 管线。
+- **审查**：本地自审（宿主无可用独立审查型子代理）；核对预算前后值、批次结果字符数、回馈后终止原因、失败题模型步骤保留和旧记录缺失完整性字段时不冒充完整费用；抽查 dry 生成的 `meta.json` 与 `trace.jsonl`，确认 `toolChoice=auto`、Qwen 并行开关、统一 envelope 和终止摘要均落盘。
+- **验证**：`pnpm run typecheck`、`pnpm run test`（28 个测试文件 / 231 个测试）、`pnpm run build`、`pnpm run bench:dry` 均通过；未发起真实网络请求。
+- **结论**：阶段 5 完成；进入阶段 6「回归验证与成本、质量对照」。
 
 ## 债务记录
 

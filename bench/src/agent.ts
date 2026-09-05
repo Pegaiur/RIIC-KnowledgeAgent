@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { loadConfig, validateBenchConfig, type BenchConfig, type RetrieverId } from './config.js'
 import type { IndexEntry } from './retriever.js'
-import type { DocChunk, BenchQuery, CostRecord, TerminationReason, ThinkingMode, ToolId } from './types.js'
+import type { DocChunk, BenchQuery, CostRecord, TerminationReason, ThinkingMode, ToolBatchStats, ToolId } from './types.js'
 import { callLLM, type ChatMessage, type ProviderOptions } from './provider.js'
 import { computeCosts } from './pricing.js'
 import { isRetrievalTool, isFactTool } from './types.js'
@@ -163,7 +163,7 @@ export async function runQuery(
       const requestedTools = resp.toolCalls
         .map((tc) => operationFromCall(tc))
         .filter((name): name is ToolId => typeof name === 'string' && (isRetrievalTool(name) || isFactTool(name)))
-      records.push({
+      const record: CostRecord = {
         ts: now,
         queryId: query.id,
         category: query.category,
@@ -181,7 +181,8 @@ export async function runQuery(
         usageCompleteness: resp.usage.completeness,
         truncated: resp.truncated,
         tools: requestedTools.length > 0 ? requestedTools : undefined,
-      })
+      }
+      records.push(record)
 
       if (resp.truncated) {
         throw new AgentExecutionError('模型响应被截断，未执行其中的工具调用或接受正文', 'truncated', 'llm')
@@ -196,8 +197,36 @@ export async function runQuery(
           content: resp.content ?? '',
           tool_calls: executorCalls.map((tc) => ({ id: tc.id, type: 'function' as const, function: { name: tc.name, arguments: tc.arguments } })),
         })
+        const budgetBefore = executor.snapshot()
         const batch = await awaitWithAbort(executor.executeBatch(executorCalls), sessionController.signal)
-        if (batch.protocolError) throw new AgentExecutionError(batch.protocolError, 'protocol_error', 'runner')
+        if (batch.protocolError) {
+          const protocolStats: ToolBatchStats = {
+            requested: executorCalls.length,
+            granted: 0,
+            executed: 0,
+            denied: 0,
+            errors: 1,
+            budgetBefore: budgetBefore.remaining,
+            budgetAfter: batch.snapshot.remaining,
+            resultChars: 0,
+          }
+          record.toolBatch = protocolStats
+          if (llmEvent) llmEvent.toolBatch = protocolStats
+          throw new AgentExecutionError(batch.protocolError, 'protocol_error', 'runner')
+        }
+
+        const toolBatch: ToolBatchStats = {
+          requested: executorCalls.length,
+          granted: batch.results.filter((item) => item.status !== 'budget_exhausted').length,
+          executed: batch.results.filter((item) => item.executed).length,
+          denied: batch.results.filter((item) => item.status === 'budget_exhausted').length,
+          errors: batch.results.filter((item) => item.status === 'error').length,
+          budgetBefore: budgetBefore.remaining,
+          budgetAfter: batch.snapshot.remaining,
+          resultChars: 0,
+        }
+        record.toolBatch = toolBatch
+        if (llmEvent) llmEvent.toolBatch = toolBatch
 
         const pendingMessages: ChatMessage[] = []
         let fatalResult: ToolExecutionResult | undefined
@@ -211,6 +240,9 @@ export async function runQuery(
                 tool: item.operation ?? tc?.name ?? 'knowledge',
                 rawArguments: tc?.arguments ?? '',
                 elapsedMs: 0,
+                status: item.status,
+                executed: item.executed,
+                budgetRemaining: item.budgetRemaining,
               }
             : undefined
           const writtenContent = serializeToolResult(item)
@@ -220,6 +252,7 @@ export async function runQuery(
             toolEvent.injectedIds = item.injectedIds
             toolEvent.writtenContent = writtenContent
             toolEvent.reason = item.message
+            toolBatch.resultChars += writtenContent.length
             if (item.status === 'error') toolEvent.error = item.message
             opts.trace?.events.push(toolEvent)
           }
@@ -241,7 +274,7 @@ export async function runQuery(
         feedbackUsed = true
         const content = '请先调用本次可用的知识库工具查证，再依据结果作答。'
         messages.push({ role: 'user', content })
-        opts.trace?.events.push({ type: 'control', round: rounds, kind: 'no_tool_answer_feedback', content })
+        opts.trace?.events.push({ type: 'control', round: rounds, kind: 'no_tool_answer_feedback', origin: 'host_fallback', content })
         continue
       }
       if (!sawToolCall && feedbackUsed) {
@@ -269,6 +302,25 @@ export async function runQuery(
     clearTimeout(timeoutHandle)
   }
 
+  const budget = executor.snapshot()
+  if (opts.trace) {
+    const batches = records.map((record) => record.toolBatch).filter((batch): batch is ToolBatchStats => Boolean(batch))
+    opts.trace.terminationReason = terminationReason
+    opts.trace.summary = {
+      modelSteps: rounds,
+      toolBatches: toolRounds,
+      toolCallsRequested: batches.reduce((sum, batch) => sum + batch.requested, 0),
+      toolCallsGranted: batches.reduce((sum, batch) => sum + batch.granted, 0),
+      toolCallsExecuted: batches.reduce((sum, batch) => sum + batch.executed, 0),
+      toolCallsDenied: batches.reduce((sum, batch) => sum + batch.denied, 0),
+      toolErrors: batches.reduce((sum, batch) => sum + batch.errors, 0),
+      toolResultChars: batches.reduce((sum, batch) => sum + batch.resultChars, 0),
+      feedbackUsed,
+      terminationReason,
+      budget,
+    }
+  }
+
   return {
     status,
     terminationReason,
@@ -280,7 +332,7 @@ export async function runQuery(
     toolTrace,
     injectedIds,
     modelSteps: rounds,
-    budget: executor.snapshot(),
+    budget,
     feedbackUsed,
   }
 }

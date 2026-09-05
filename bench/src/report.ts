@@ -38,11 +38,16 @@ export interface BenchReport {
   totalCostOut: number
   totalCost: number
   truncatedCalls: number
+  /** usage 不完整的模型调用数；totalCost 仅为已知费用小计。 */
+  incompleteUsageCalls: number
+  unknownUsageCalls: number
+  costComplete: boolean
   byQuery: QueryAgg[]
   byThinking: ThinkingAgg[]
   byProvider: ProviderAgg[]
   /** 检索工具调用统计（双工具模式；单工具模式返回空数组） */
   toolUsage: ToolUsageAgg[]
+  toolStats: ToolStatsAgg
 }
 
 /** 按 provider 聚合（跨模型对比用） */
@@ -63,6 +68,16 @@ export interface ProviderAgg {
 export interface ToolUsageAgg {
   tool: string
   calls: number
+}
+
+export interface ToolStatsAgg {
+  batches: number
+  requested: number
+  granted: number
+  executed: number
+  denied: number
+  errors: number
+  resultChars: number
 }
 
 const sum = (vals: Array<number | null | undefined>): number => vals.reduce<number>((a, c) => a + (c ?? 0), 0)
@@ -164,10 +179,14 @@ export function aggregate(records: CostRecord[]): BenchReport {
     totalCostOut: sum(records.map((r) => r.costOut)),
     totalCost: sum(records.map((r) => r.costTotal)),
     truncatedCalls: records.filter((r) => r.truncated).length,
+    incompleteUsageCalls: records.filter((r) => r.usageCompleteness !== 'complete').length,
+    unknownUsageCalls: records.filter((r) => !r.usageCompleteness || r.usageCompleteness === 'unknown').length,
+    costComplete: records.every((r) => r.usageCompleteness === 'complete' && r.costTotal !== null),
     byQuery: queryAggs,
     byThinking: thinkingAggs,
     byProvider: providerAggs,
     toolUsage: aggregateToolUsage(records),
+    toolStats: aggregateToolStats(records),
   }
 }
 
@@ -184,6 +203,19 @@ function aggregateToolUsage(records: CostRecord[]): ToolUsageAgg[] {
     .sort((a, b) => b.calls - a.calls || a.tool.localeCompare(b.tool))
 }
 
+function aggregateToolStats(records: CostRecord[]): ToolStatsAgg {
+  const batches = records.map((record) => record.toolBatch).filter((batch): batch is NonNullable<CostRecord['toolBatch']> => Boolean(batch))
+  return {
+    batches: batches.length,
+    requested: sum(batches.map((batch) => batch.requested)),
+    granted: sum(batches.map((batch) => batch.granted)),
+    executed: sum(batches.map((batch) => batch.executed)),
+    denied: sum(batches.map((batch) => batch.denied)),
+    errors: sum(batches.map((batch) => batch.errors)),
+    resultChars: sum(batches.map((batch) => batch.resultChars)),
+  }
+}
+
 const f2 = (v: number) => v.toFixed(2)
 const f4 = (v: number) => v.toFixed(4)
 
@@ -196,8 +228,10 @@ export function renderMarkdown(report: BenchReport): string {
     '',
     `- 查询数：${report.totalQueries}｜LLM 调用数：${report.totalCalls}｜截断调用：${report.truncatedCalls}`,
     `- 总输入 tokens：${report.totalInput.toLocaleString()}｜总输出 tokens：${report.totalOutput.toLocaleString()}`,
-    `- 总成本：¥${f4(report.totalCost)}（输入 ¥${f4(report.totalCostIn)} + 输出 ¥${f4(report.totalCostOut)}）`,
+    `- 总成本（已知）：¥${f4(report.totalCost)}（输入 ¥${f4(report.totalCostIn)} + 输出 ¥${f4(report.totalCostOut)}）`,
+    `- 费用状态：${report.costComplete ? '完整' : '不完整'}｜不完整 usage 调用：${report.incompleteUsageCalls}｜用量未知调用：${report.unknownUsageCalls}`,
     `- 每查询输出 tokens：均值 ${avgOut}｜P95 ${p95Out.toLocaleString()}`,
+    `- 工具批次：${report.toolStats.batches}｜提出 ${report.toolStats.requested}｜准入 ${report.toolStats.granted}｜执行 ${report.toolStats.executed}｜拒绝 ${report.toolStats.denied}｜错误 ${report.toolStats.errors}`,
     ...(report.toolUsage.length > 0
       ? [`- 检索工具调用：${report.toolUsage.map((u) => `${u.tool} ${u.calls} 次`).join('｜')}`]
       : []),

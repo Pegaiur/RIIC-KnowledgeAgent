@@ -55,6 +55,32 @@ describe('report：聚合与渲染', () => {
     expect(report.truncatedCalls).toBe(1)
   })
 
+  it('按工具批次聚合准入、执行、拒绝和结果字符数，并标记不完整 usage', () => {
+    const report = aggregate([
+      rec({
+        usageCompleteness: 'partial',
+        input: null,
+        costIn: null,
+        toolBatch: {
+          requested: 3,
+          granted: 2,
+          executed: 2,
+          denied: 1,
+          errors: 0,
+          budgetBefore: 2,
+          budgetAfter: 0,
+          resultChars: 120,
+        },
+      }),
+    ])
+
+    expect(report.incompleteUsageCalls).toBe(1)
+    expect(report.unknownUsageCalls).toBe(0)
+    expect(report.costComplete).toBe(false)
+    expect(report.toolStats).toEqual({ batches: 1, requested: 3, granted: 2, executed: 2, denied: 1, errors: 0, resultChars: 120 })
+    expect(renderMarkdown(report)).toContain('费用状态：不完整')
+  })
+
   it('双工具模式统计工具调用次数（按调用计数）', () => {
     const records = [
       rec({ round: 1, tools: ['rag_search'] }),

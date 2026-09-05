@@ -2,7 +2,8 @@
  * Agent 单题执行记录：只承载人工复盘所需的公开调用事实。
  * 不记录 hidden reasoning、请求 headers 或完整运行配置。
  */
-import type { BenchQuery, LlmUsage, TerminationReason, ToolCall } from './types.js'
+import type { BenchQuery, LlmUsage, TerminationReason, ToolCall, ToolBatchStats } from './types.js'
+import type { ToolBudgetState, ToolResultStatus } from './tool-executor.js'
 
 export interface TraceLlmEvent {
   type: 'llm_call'
@@ -13,6 +14,7 @@ export interface TraceLlmEvent {
   truncated?: boolean
   content?: string | null
   toolCalls?: ToolCall[]
+  toolBatch?: ToolBatchStats
   error?: string
 }
 
@@ -26,6 +28,9 @@ export interface TraceToolEvent {
   hitIds?: string[]
   injectedIds?: string[]
   elapsedMs: number
+  status: ToolResultStatus
+  executed: boolean
+  budgetRemaining: number
   writtenContent?: string
   reason?: string
   error?: string
@@ -35,6 +40,7 @@ export interface TraceControlEvent {
   type: 'control'
   round: number
   kind: 'no_tool_answer_feedback'
+  origin: 'host_fallback'
   content: string
 }
 
@@ -55,6 +61,21 @@ export interface QueryTrace {
   terminationReason?: TerminationReason
   events: TraceEvent[]
   failure?: TraceFailure
+  summary?: TraceSummary
+}
+
+export interface TraceSummary {
+  modelSteps: number
+  toolBatches: number
+  toolCallsRequested: number
+  toolCallsGranted: number
+  toolCallsExecuted: number
+  toolCallsDenied: number
+  toolErrors: number
+  toolResultChars: number
+  feedbackUsed: boolean
+  terminationReason: TerminationReason
+  budget: ToolBudgetState
 }
 
 export function createQueryTrace(query: BenchQuery): QueryTrace {

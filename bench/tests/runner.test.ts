@@ -20,6 +20,20 @@ describe('runBenchmark：trace 逐题落盘', () => {
         { thinking: 'off', dry: false, outDir, config },
       )
 
+      const meta = JSON.parse(readFileSync(output.metaPath, 'utf-8')) as Record<string, unknown>
+      expect(meta).toMatchObject({
+        schemaVersion: 2,
+        toolChoice: 'auto',
+        parallelToolCalls: true,
+        toolBudget: 5,
+        sessionTimeoutMs: 300000,
+        feedbackOnNoToolAnswer: true,
+        modelSteps: 2,
+        toolBatches: 0,
+        toolCallsRequested: 0,
+        failed: 2,
+      })
+
       const traces = readFileSync(output.tracePath, 'utf-8')
         .trim()
         .split('\n')

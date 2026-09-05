@@ -29,6 +29,18 @@ export type TerminationReason =
   | 'truncated'
   | 'protocol_error'
 
+/** 单个模型响应对应的工具批次统计；used 口径是获准尝试数。 */
+export interface ToolBatchStats {
+  requested: number
+  granted: number
+  executed: number
+  denied: number
+  errors: number
+  budgetBefore: number
+  budgetAfter: number
+  resultChars: number
+}
+
 /** 单次 LLM 调用的 token 用量（TokenHub OpenAI 兼容口径） */
 export interface LlmUsage {
   /** prompt_tokens（含缓存命中部分） */
@@ -79,6 +91,8 @@ export interface CostRecord {
   truncated: boolean
   /** 本轮实际调用的检索工具名（双工具模式下统计；无工具调用则省略） */
   tools?: ToolId[]
+  /** 本轮工具批次统计；无工具调用的模型步骤省略。 */
+  toolBatch?: ToolBatchStats
 }
 
 /** 基准问题 */

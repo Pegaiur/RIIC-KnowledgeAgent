@@ -61,6 +61,24 @@ describe('Agent auto 主循环', () => {
 
     expect(agentResult.finalAnswer).toBe('最终答案')
     expect(agentResult.budget).toMatchObject({ limit: 2, used: 2, requested: 3, denied: 1, executed: 2, remaining: 0 })
+    expect(agentResult.records[0]?.toolBatch).toMatchObject({
+      requested: 3,
+      granted: 2,
+      executed: 2,
+      denied: 1,
+      errors: 0,
+      budgetBefore: 2,
+      budgetAfter: 0,
+    })
+    expect(trace.summary).toMatchObject({
+      modelSteps: 2,
+      toolBatches: 1,
+      toolCallsRequested: 3,
+      toolCallsExecuted: 2,
+      toolCallsDenied: 1,
+      feedbackUsed: false,
+      budget: { used: 2, remaining: 0 },
+    })
     expect(agentResult.toolTrace[0]).toEqual(['rag_search', 'grep_search', 'rag_search'])
     const toolMessages = (mockCall.mock.calls[1]?.[0] as Array<{ role: string; tool_call_id?: string; content: string }>).filter((message) => message.role === 'tool')
     expect(toolMessages.map((message) => message.tool_call_id)).toEqual(['a', 'b', 'c'])
@@ -93,13 +111,14 @@ describe('Agent auto 主循环', () => {
   it('未调用工具直接作答最多触发一次宿主回馈，再次直接作答标记未完成', async () => {
     const config = loadConfig()
     config.feedbackOnNoToolAnswer = true
+    const trace = createQueryTrace({ id: 'AUTO-FEEDBACK', category: 'fact', question: '需要查证' })
     mockCall
       .mockResolvedValueOnce(result({ content: '未经查证的答案' }))
       .mockResolvedValueOnce(result({ content: '仍未查证的答案' }))
 
     const agentResult = await runQuery(
       { id: 'AUTO-FEEDBACK', category: 'fact', question: '需要查证' },
-      { config, thinking: 'off', dry: false },
+      { config, thinking: 'off', dry: false, trace },
       chunks,
       buildIndex(chunks),
     )
@@ -111,6 +130,8 @@ describe('Agent auto 主循环', () => {
     expect(messages.filter((message) => message.role === 'user')).toHaveLength(2)
     expect(messages[2]?.content).toContain('请先调用本次可用的知识库工具查证')
     expect(agentResult.feedbackUsed).toBe(true)
+    expect(agentResult.records).toHaveLength(2)
+    expect(trace.summary).toMatchObject({ terminationReason: 'no_tool_after_feedback', feedbackUsed: true, toolBatches: 0 })
   })
 
   it('预算归零后仍继续提供 knowledge/auto，模型可基于拒绝结果作答', async () => {
