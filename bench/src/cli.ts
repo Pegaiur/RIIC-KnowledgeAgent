@@ -2,7 +2,7 @@
  * CLI 入口
  *
  * 用法：
- *   node dist/cli.js run   [--thinking off|low|high] [--limit N] [--dry] [--questions <path>] [--out <dir>]
+ *   node dist/cli.js run   [--thinking off|low|high] [--temperature N] [--limit N] [--dry] [--questions <path>] [--out <dir>]
  *   node dist/cli.js report <runDir> [--out <path>]
  *   node dist/cli.js hitrate [--topk 3,5,10] [--gold <path>] [--check-gold] [--out <path>]
  *   node dist/cli.js validate
@@ -39,6 +39,8 @@ interface ParsedArgs {
   retriever: RetrieverId | null
   /** 强制首检次数 */
   minRag: number | null
+  /** 采样温度；不传则沿用服务端默认值 */
+  temperature: number | null
   /** hitrate：topK 列表（逗号分隔，如 3,5,10） */
   topk: string | null
   /** hitrate：gold.json 路径 */
@@ -62,6 +64,7 @@ function parseArgs(argv: string[]): ParsedArgs {
     runDir: null,
     retriever: null,
     minRag: null,
+    temperature: null,
     topk: null,
     gold: null,
     checkGold: false,
@@ -79,6 +82,7 @@ function parseArgs(argv: string[]): ParsedArgs {
     else if (a === '--thinking') parsed.thinking = (argv[++i] as ThinkingMode) ?? 'off'
     else if (a === '--retriever') parsed.retriever = (argv[++i] as RetrieverId) ?? null
     else if (a === '--min-rag') parsed.minRag = Number(argv[++i]) || null
+    else if (a === '--temperature') parsed.temperature = Number(argv[++i])
     else if (a === '--limit') parsed.limit = Number(argv[++i]) || null
     else if (a === '--questions') parsed.questions = argv[++i] ?? null
     else if (a === '--out') parsed.out = argv[++i] ?? null
@@ -94,7 +98,7 @@ function printUsage(): void {
       'rag-test bench —— LLM 查询输出成本基准（Hy3 / Qwen3.7-Flash）',
       '',
       '用法：',
-      '  node dist/cli.js run [--provider hy3|qwen] [--thinking off|low|high] [--retriever bm25|grep|both|facts|hybrid] [--min-rag N] [--limit N] [--dry] [--questions <path>] [--out <dir>]',
+      '  node dist/cli.js run [--provider hy3|qwen] [--thinking off|low|high] [--temperature N] [--retriever bm25|grep|both|facts|hybrid] [--min-rag N] [--limit N] [--dry] [--questions <path>] [--out <dir>]',
       '  node dist/cli.js report <runDir> [--out <path>]',
       '  node dist/cli.js compare <runDir1> <runDir2> [--out <path>]',
       '  node dist/cli.js hitrate [--topk 3,5,10] [--gold <path>] [--check-gold] [--out <path>]',
@@ -148,6 +152,12 @@ async function main(): Promise<void> {
     const config = loadConfig(args.provider)
     if (args.retriever) config.retriever = args.retriever
     if (args.minRag !== null) config.minRagCalls = args.minRag
+    if (args.temperature !== null) {
+      if (!Number.isFinite(args.temperature) || args.temperature < 0) {
+        throw new Error(`temperature 必须是大于等于 0 的数字：${args.temperature}`)
+      }
+      config.temperature = args.temperature
+    }
     const isFacts = config.retriever === 'facts'
     const stats = isFacts ? { files: 0 } : corpusStats(config.corpusDir)
     if (!isFacts && stats.files === 0) {
@@ -159,7 +169,7 @@ async function main(): Promise<void> {
     const picked = args.limit ? questions.slice(0, args.limit) : questions
 
     process.stdout.write(
-      `Provider：${config.providerLabel}｜语料：${isFacts ? `记录卡 ×${getCardStore().cards.length}` : `${stats.files} 个文件`}｜问题：${picked.length}/${questions.length}｜档位：${args.thinking}｜检索器：${config.retriever}｜强制首检：${config.minRagCalls}｜dry：${args.dry}\n`,
+      `Provider：${config.providerLabel}｜语料：${isFacts ? `记录卡 ×${getCardStore().cards.length}` : `${stats.files} 个文件`}｜问题：${picked.length}/${questions.length}｜档位：${args.thinking}｜temperature：${config.temperature ?? '服务端默认'}｜检索器：${config.retriever}｜强制首检：${config.minRagCalls}｜dry：${args.dry}\n`,
     )
 
     const out = await runBenchmark(picked, {
@@ -173,6 +183,7 @@ async function main(): Promise<void> {
     process.stdout.write(`元信息：${out.metaPath}\n`)
     process.stdout.write(`回答：${out.answersPath}\n`)
     process.stdout.write(`注入记录：${out.injectedPath}\n`)
+    process.stdout.write(`执行记录：${out.tracePath}\n`)
 
     const report = aggregate(out.records)
     process.stdout.write(renderMarkdown(report))

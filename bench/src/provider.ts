@@ -44,6 +44,7 @@ export function buildChatBody(
     max_tokens: config.maxTokens,
     stream: false,
   }
+  if (config.temperature !== undefined) body.temperature = config.temperature
   if (tools && tools.length > 0) {
     body.tools = tools
     body.tool_choice = 'auto'

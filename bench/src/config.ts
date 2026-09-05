@@ -79,6 +79,8 @@ export interface ExperimentConfig {
   maxRounds: number
   /** 单次响应上限 */
   maxTokens: number
+  /** 采样温度；undefined 表示沿用服务端默认值，不在请求中发送 */
+  temperature?: number
   /** 检索器（bm25 | grep | both | facts | hybrid） */
   retriever: RetrieverId
   /** 语料目录（相对仓库根） */
@@ -95,6 +97,7 @@ export const EXPERIMENT: ExperimentConfig = {
   maxContextChars: 12000,
   maxRounds: 3,
   maxTokens: 4096,
+  temperature: undefined,
   retriever: 'bm25',
   // 非 facts 模式仍使用 knowledge 语料；facts 模式由 getCardStore() 的全量门禁与记录卡投影承载。
   corpusDir: 'knowledge',
@@ -119,6 +122,8 @@ export interface BenchConfig {
   prices: Prices
   /** 单次响应上限 */
   maxTokens: number
+  /** 采样温度；undefined 表示沿用服务端默认值，不在请求中发送 */
+  temperature?: number
   /** 语料目录（相对仓库根） */
   corpusDir: string
   /** agent 最大轮次：检索/工具轮预算；实际循环上限为 maxRounds+1（末位兜底强制作答轮，避免轮次耗尽无答案） */
@@ -151,6 +156,7 @@ export function loadConfig(providerInput?: ProviderId): BenchConfig {
     model: spec.model,
     prices: spec.prices,
     maxTokens: EXPERIMENT.maxTokens,
+    temperature: EXPERIMENT.temperature,
     corpusDir: EXPERIMENT.corpusDir,
     maxRounds: EXPERIMENT.maxRounds,
     topK: EXPERIMENT.topK,
