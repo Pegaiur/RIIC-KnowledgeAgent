@@ -2,7 +2,8 @@
  * Agent 单题执行记录：只承载人工复盘所需的公开调用事实。
  * 不记录 hidden reasoning、请求 headers 或完整运行配置。
  */
-import type { BenchQuery, LlmUsage, ToolCall } from './types.js'
+import type { BenchQuery, HttpAttempt, LlmUsage, TerminationReason, ToolCall, ToolBatchStats } from './types.js'
+import type { ToolBudgetState, ToolResultStatus } from './tool-executor.js'
 
 export interface TraceLlmEvent {
   type: 'llm_call'
@@ -10,9 +11,14 @@ export interface TraceLlmEvent {
   offeredTools: string[]
   elapsedMs: number
   usage?: LlmUsage
+  /** provider 最终响应中的 usage；usage 字段按台账汇总，用于和 records/report 对齐。 */
+  responseUsage?: LlmUsage
+  usageAggregation?: 'response' | 'http_attempts'
   truncated?: boolean
   content?: string | null
   toolCalls?: ToolCall[]
+  httpAttempts?: HttpAttempt[]
+  toolBatch?: ToolBatchStats
   error?: string
 }
 
@@ -26,6 +32,9 @@ export interface TraceToolEvent {
   hitIds?: string[]
   injectedIds?: string[]
   elapsedMs: number
+  status: ToolResultStatus
+  executed: boolean
+  budgetRemaining: number
   writtenContent?: string
   reason?: string
   error?: string
@@ -34,31 +43,48 @@ export interface TraceToolEvent {
 export interface TraceControlEvent {
   type: 'control'
   round: number
-  kind: 'min_retrieval'
+  kind: 'no_tool_answer_feedback'
+  origin: 'host_fallback'
   content: string
 }
 
 export type TraceEvent = TraceLlmEvent | TraceToolEvent | TraceControlEvent
 
 export interface TraceFailure {
-  stage: 'llm' | 'tool' | 'runner'
+  stage: 'llm' | 'tool' | 'runner' | 'timeout' | 'cancelled'
   message: string
   round?: number
   toolCallId?: string
 }
 
 export interface QueryTrace {
-  schemaVersion: 1
+  schemaVersion: 2
   queryId: string
   question: string
-  status: 'completed' | 'failed'
+  status: 'completed' | 'failed' | 'cancelled'
+  terminationReason?: TerminationReason
   events: TraceEvent[]
   failure?: TraceFailure
+  summary?: TraceSummary
+}
+
+export interface TraceSummary {
+  modelSteps: number
+  toolBatches: number
+  toolCallsRequested: number
+  toolCallsGranted: number
+  toolCallsExecuted: number
+  toolCallsDenied: number
+  toolErrors: number
+  toolResultChars: number
+  feedbackUsed: boolean
+  terminationReason: TerminationReason
+  budget: ToolBudgetState
 }
 
 export function createQueryTrace(query: BenchQuery): QueryTrace {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2 as const,
     queryId: query.id,
     question: query.question,
     status: 'completed',
@@ -68,7 +94,16 @@ export function createQueryTrace(query: BenchQuery): QueryTrace {
 
 /** 只保留第一次失败位置，避免 runner 的兜底错误覆盖 Agent 内部定位。 */
 export function markTraceFailed(trace: QueryTrace, failure: TraceFailure): void {
-  trace.status = 'failed'
+  trace.status = failure.stage === 'timeout' || failure.stage === 'cancelled' ? 'cancelled' : 'failed'
+  trace.terminationReason = failure.stage === 'timeout'
+    ? 'timeout'
+    : failure.stage === 'cancelled'
+      ? 'cancelled'
+      : failure.stage === 'llm'
+        ? 'llm_error'
+        : failure.stage === 'tool'
+          ? 'tool_error'
+          : 'protocol_error'
   if (!trace.failure) trace.failure = failure
 }
 

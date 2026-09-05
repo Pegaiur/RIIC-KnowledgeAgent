@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { QWEN_PRICES, computeCosts, PRICE_CACHE_PER_M, PRICE_IN_PER_M, PRICE_OUT_PER_M } from '../src/pricing.js'
+import { aggregateUsages, QWEN_PRICES, computeCosts, PRICE_CACHE_PER_M, PRICE_IN_PER_M, PRICE_OUT_PER_M } from '../src/pricing.js'
 
 describe('pricing：Hy3 费用计算', () => {
   it('单价常量符合官方定价（输入 1 / 输出 4 / 缓存 0.25 元每百万）', () => {
@@ -30,6 +30,37 @@ describe('pricing：Hy3 费用计算', () => {
     const c = computeCosts(1000, 0, 5000)
     // clamp 后 cachedIn=1000 → 1000 × 0.25 / 1M
     expect(c.costIn).toBe(0.00025)
+  })
+
+  it('usage 分项未知时保留已知费用并不伪造总费用', () => {
+    expect(computeCosts(null, 1_000_000, 0)).toEqual({ costIn: null, costOut: 4, costTotal: null })
+    expect(computeCosts(1_000, 0, null)).toEqual({ costIn: null, costOut: 0, costTotal: null })
+  })
+
+  it('多次 HTTP 尝试按分项聚合，明确零值有效', () => {
+    expect(aggregateUsages([
+      { input: 123, output: 45, cached: 0, reasoning: 0, completeness: 'complete' },
+      { input: 100, output: 10, cached: 0, reasoning: 0, completeness: 'complete' },
+    ])).toEqual({ input: 223, output: 55, cached: 0, reasoning: 0, knownInput: 223, knownOutput: 55, completeness: 'complete' })
+  })
+
+  it('未知与已知尝试按顺序均保留已知 token 小计，exact 总量保持未知', () => {
+    const unknown = { input: null, output: null, cached: null, reasoning: null, completeness: 'unknown' as const }
+    const known = { input: 100, output: 10, cached: 0, reasoning: 0, completeness: 'complete' as const }
+    expect(aggregateUsages([unknown, known])).toMatchObject({
+      input: null,
+      output: null,
+      knownInput: 100,
+      knownOutput: 10,
+      completeness: 'partial',
+    })
+    expect(aggregateUsages([known, unknown])).toMatchObject({
+      input: null,
+      output: null,
+      knownInput: 100,
+      knownOutput: 10,
+      completeness: 'partial',
+    })
   })
 })
 

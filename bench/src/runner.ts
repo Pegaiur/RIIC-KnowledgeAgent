@@ -8,8 +8,9 @@ import { loadConfig, type BenchConfig } from './config.js'
 import { loadCorpus } from './corpus.js'
 import { buildIndex } from './retriever.js'
 import { loadKnowledgeAgentInstructions, runQuery, type AgentOptions } from './agent.js'
-import type { BenchQuery, CostRecord, ThinkingMode } from './types.js'
+import type { BenchQuery, CostRecord, TerminationReason, ThinkingMode } from './types.js'
 import { createQueryTrace, markTraceFailed, serializeTrace } from './trace.js'
+import { aggregate } from './report.js'
 
 export interface RunOutput {
   records: CostRecord[]
@@ -35,6 +36,11 @@ export interface AnswerRecord {
   toolRounds: number
   /** 每轮实际调用的检索工具序列（双工具模式统计；无工具调用为 []） */
   toolTrace: string[]
+  status: 'completed' | 'failed' | 'cancelled'
+  terminationReason: TerminationReason
+  feedbackUsed: boolean
+  budgetUsed: number
+  budgetRemaining: number
   answer: string | null
 }
 
@@ -68,6 +74,16 @@ export async function runBenchmark(
   /** 每题实际注入上下文的 chunk id（R1 注入覆盖率判定用） */
   const injectedMap: Record<string, string[]> = {}
   let failed = 0
+  let modelSteps = 0
+  let toolBatches = 0
+  let toolCallsRequested = 0
+  let toolCallsGranted = 0
+  let toolCallsExecuted = 0
+  let toolCallsDenied = 0
+  let toolErrors = 0
+  let toolResultChars = 0
+  let feedbackUsed = 0
+  const terminationReasons: Partial<Record<TerminationReason, number>> = {}
 
   for (const q of questions) {
     const trace = createQueryTrace(q)
@@ -75,8 +91,22 @@ export async function runBenchmark(
     try {
       const result = await runQuery(q, agentOpts, chunks, index)
       for (const r of result.records) lines.push(JSON.stringify(r))
+      modelSteps += result.modelSteps
+      toolBatches += result.toolRounds
+      toolCallsRequested += result.budget.requested
+      toolCallsExecuted += result.budget.executed
+      toolCallsDenied += result.budget.denied
+      feedbackUsed += result.feedbackUsed ? 1 : 0
+      terminationReasons[result.terminationReason] = (terminationReasons[result.terminationReason] ?? 0) + 1
+      for (const r of result.records) {
+        if (r.toolBatch) {
+          toolCallsGranted += r.toolBatch.granted
+          toolErrors += r.toolBatch.errors
+          toolResultChars += r.toolBatch.resultChars
+        }
+      }
       injectedMap[q.id] = result.injectedIds
-      if (result.finalAnswer != null) {
+      if (result.status === 'completed' && result.finalAnswer != null) {
         answers.push({
           queryId: q.id,
           category: q.category,
@@ -84,10 +114,34 @@ export async function runBenchmark(
           rounds: result.rounds,
           toolRounds: result.toolRounds,
           toolTrace: result.toolTrace.flat(),
+          status: result.status,
+          terminationReason: result.terminationReason,
+          feedbackUsed: result.feedbackUsed,
+          budgetUsed: result.budget.used,
+          budgetRemaining: result.budget.remaining,
           answer: result.finalAnswer,
         })
+        process.stderr.write(`问题 ${q.id} 完成：${result.rounds} 轮\n`)
+      } else {
+        failed++
+        const message = result.failure?.message ?? `查询未完成：${result.terminationReason}`
+        answers.push({
+          queryId: q.id,
+          category: q.category,
+          question: q.question,
+          rounds: result.rounds,
+          toolRounds: result.toolRounds,
+          toolTrace: result.toolTrace.flat(),
+          status: result.status,
+          terminationReason: result.terminationReason,
+          feedbackUsed: result.feedbackUsed,
+          budgetUsed: result.budget.used,
+          budgetRemaining: result.budget.remaining,
+          answer: `（查询未完成：${message}）`,
+        })
+        if (result.failure) markTraceFailed(trace, result.failure)
+        process.stderr.write(`问题 ${q.id} 未完成：${message}\n`)
       }
-      process.stderr.write(`问题 ${q.id} 完成：${result.rounds} 轮\n`)
     } catch (err) {
       // 单题失败不中断整批：记录失败原因，继续下一题
       failed++
@@ -101,6 +155,11 @@ export async function runBenchmark(
         rounds: 0,
         toolRounds: 0,
         toolTrace: [],
+        status: 'failed',
+        terminationReason: 'llm_error',
+        feedbackUsed: false,
+        budgetUsed: 0,
+        budgetRemaining: config.toolBudget,
         answer: `（查询失败：${msg}）`,
       })
       markTraceFailed(trace, {
@@ -118,10 +177,14 @@ export async function runBenchmark(
   writeFileSync(answersPath, renderAnswers(answers) + '\n', 'utf-8')
   const injectedPath = join(runDir, 'injected.json')
   writeFileSync(injectedPath, JSON.stringify(injectedMap, null, 2) + '\n', 'utf-8')
+  const runRecords = lines.map((line) => JSON.parse(line) as CostRecord)
+  const runReport = aggregate(runRecords)
   writeFileSync(
     metaPath,
     JSON.stringify(
       {
+        schemaVersion: 2,
+        traceSchemaVersion: 2,
         ts: new Date().toISOString(),
         thinking: opts.thinking,
         dry: opts.dry,
@@ -130,7 +193,11 @@ export async function runBenchmark(
         temperature: config.temperature ?? null,
         baseUrl: config.baseUrl,
         retriever: config.retriever,
-        minRagCalls: config.minRagCalls,
+        toolBudget: config.toolBudget,
+        sessionTimeoutMs: config.sessionTimeoutMs,
+        feedbackOnNoToolAnswer: config.feedbackOnNoToolAnswer,
+        toolChoice: 'auto',
+        parallelToolCalls: config.provider === 'qwen',
         agentInstructionsSha256,
         tokenizer: config.tokenizer,
         entityBoost: config.entityBoost,
@@ -140,7 +207,29 @@ export async function runBenchmark(
         chunks: chunks.length,
         questions: questions.length,
         records: lines.length,
+        inputTokens: runReport.totalInput,
+        outputTokens: runReport.totalOutput,
+        inputTokensExact: runReport.totalInputExact,
+        outputTokensExact: runReport.totalOutputExact,
+        totalCostIn: runReport.totalCostIn,
+        totalCostOut: runReport.totalCostOut,
+        totalCost: runReport.totalCost,
+        costComplete: runReport.costComplete,
+        incompleteUsageCalls: runReport.incompleteUsageCalls,
+        unknownUsageCalls: runReport.unknownUsageCalls,
         failed,
+        modelSteps,
+        toolBatches,
+        toolCallsRequested,
+        toolCallsGranted,
+        toolCallsExecuted,
+        toolCallsDenied,
+        toolErrors,
+        toolResultChars,
+        httpAttempts: runReport.totalHttpAttempts,
+        retryAttempts: runReport.retryAttempts,
+        feedbackUsed,
+        terminationReasons,
         elapsedMs: Date.now() - started,
       },
       null,
@@ -150,7 +239,7 @@ export async function runBenchmark(
   )
 
   return {
-    records: lines.map((l) => JSON.parse(l) as CostRecord),
+    records: runRecords,
     jsonlPath,
     metaPath,
     answersPath,
@@ -164,7 +253,7 @@ export async function runBenchmark(
 function renderAnswers(answers: AnswerRecord[]): string {
   const blocks = answers.map((a) => {
     const toolLine = a.toolTrace.length > 0 ? `｜工具序列：${a.toolTrace.join('→')}` : '｜工具序列：无'
-    return `## ${a.queryId}（${a.category}）\n\n- 问题：${a.question}\n- 轮数：${a.rounds}｜检索次数：${a.toolRounds}${toolLine}\n\n${a.answer ?? '（无最终回答）'}`
+    return `## ${a.queryId}（${a.category}）\n\n- 问题：${a.question}\n- 状态：${a.status}｜终止：${a.terminationReason}\n- 模型步骤：${a.rounds}｜工具批次：${a.toolRounds}｜预算：${a.budgetUsed}/${a.budgetUsed + a.budgetRemaining}${toolLine}\n\n${a.answer ?? '（无最终回答）'}`
   })
   return ['# 查询回答记录', '', '> 供人工抽查答案质量，不参与成本评估。', '', ...blocks].join('\n')
 }

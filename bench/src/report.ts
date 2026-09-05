@@ -1,18 +1,22 @@
 /**
  * 报告聚合：JSONL 记录 → Markdown 报告 + CSV
  */
-import { isRetrievalTool, isFactTool, type CostRecord } from './types.js'
+import { isRetrievalTool, isFactTool, type CostRecord, type LlmUsage } from './types.js'
+import { aggregateUsages } from './pricing.js'
 
 export interface QueryAgg {
   queryId: string
   category: string
   rounds: number
   outputTokens: number
+  outputTokensExact: number | null
   reasoningTokens: number
   inputTokens: number
+  inputTokensExact: number | null
   costOut: number
   costIn: number
   costTotal: number
+  costComplete: boolean
   truncated: number
 }
 
@@ -22,8 +26,10 @@ export interface ThinkingAgg {
   calls: number
   avgRounds: number
   outputTokens: number
+  outputTokensExact: number | null
   reasoningTokens: number
   inputTokens: number
+  inputTokensExact: number | null
   costOut: number
   costIn: number
   costTotal: number
@@ -34,15 +40,24 @@ export interface BenchReport {
   totalQueries: number
   totalInput: number
   totalOutput: number
+  totalInputExact: number | null
+  totalOutputExact: number | null
   totalCostIn: number
   totalCostOut: number
   totalCost: number
   truncatedCalls: number
+  /** usage 不完整的模型调用数；totalCost 仅为已知费用小计。 */
+  incompleteUsageCalls: number
+  unknownUsageCalls: number
+  costComplete: boolean
+  totalHttpAttempts: number
+  retryAttempts: number
   byQuery: QueryAgg[]
   byThinking: ThinkingAgg[]
   byProvider: ProviderAgg[]
   /** 检索工具调用统计（双工具模式；单工具模式返回空数组） */
   toolUsage: ToolUsageAgg[]
+  toolStats: ToolStatsAgg
 }
 
 /** 按 provider 聚合（跨模型对比用） */
@@ -52,8 +67,10 @@ export interface ProviderAgg {
   calls: number
   avgRounds: number
   outputTokens: number
+  outputTokensExact: number | null
   reasoningTokens: number
   inputTokens: number
+  inputTokensExact: number | null
   costOut: number
   costIn: number
   costTotal: number
@@ -65,12 +82,124 @@ export interface ToolUsageAgg {
   calls: number
 }
 
-const sum = (vals: number[]) => vals.reduce((a, c) => a + c, 0)
+export interface ToolStatsAgg {
+  batches: number
+  requested: number
+  granted: number
+  executed: number
+  denied: number
+  errors: number
+  resultChars: number
+}
+
+const sum = (vals: Array<number | null | undefined>): number => vals.reduce<number>((a, c) => a + (c ?? 0), 0)
+const sumExact = (vals: Array<number | null | undefined>): number | null =>
+  vals.length === 0 ? 0 : vals.some((value) => value === null || value === undefined)
+    ? null
+    : vals.reduce<number>((total, value) => total + (value as number), 0)
+interface AccountingValues {
+  input: number | null
+  output: number | null
+  knownInput: number | null
+  knownOutput: number | null
+  reasoning: number | null
+  costIn: number | null
+  costOut: number | null
+  costTotal: number | null
+}
+
+const knownCost = (record: CostRecord): number => {
+  const values = accountingValues(record)
+  return values.costTotal ?? roundCost((values.costIn ?? 0) + (values.costOut ?? 0))
+}
+
+function roundCost(value: number): number {
+  return Math.round(value * 1_000_000) / 1_000_000
+}
+
+/**
+ * 以 HTTP 尝试为费用台账的优先来源；无标记的旧记录仍回退其原有字段。
+ * 这样重试响应不会把最终响应的 usage 与尝试台账重复相加。
+ */
+function accountingValues(record: CostRecord): AccountingValues {
+  const attempts = record.httpAttempts ?? []
+  const hasAttemptUsage = attempts.some((attempt) => {
+    const usage = attempt.usage as Partial<LlmUsage> | undefined
+    return usage != null && (usage.input !== undefined || usage.output !== undefined)
+  })
+  const shouldUseAttempts = attempts.length > 0 && (record.usageAggregation === 'http_attempts' || hasAttemptUsage)
+  if (!shouldUseAttempts) {
+    return persistedValues(record)
+  }
+
+  // 旧记录的重试失败项可能只留有 unknown usage，不能用它覆盖记录中仍有效的响应分项。
+  const hasKnownAttempt = attempts.some((attempt) => {
+    const usage = attempt.usage
+    return usage != null && (usage.input !== null || usage.output !== null)
+  })
+  if (record.usageAggregation !== 'http_attempts' && !hasKnownAttempt) {
+    return persistedValues(record)
+  }
+
+  const usage = aggregateUsages(attempts.map((attempt) => attempt.usage ?? unknownAttemptUsage()))
+  return {
+    input: usage.input,
+    output: usage.output,
+    knownInput: usage.knownInput ?? null,
+    knownOutput: usage.knownOutput ?? null,
+    reasoning: usage.reasoning,
+    // 费用是记录写盘时按当时配置计算的事实，报告不得按当前内置价格重算历史数据。
+    costIn: record.costIn,
+    costOut: record.costOut,
+    costTotal: record.costTotal,
+  }
+}
+
+function persistedValues(record: CostRecord): AccountingValues {
+  return {
+    input: record.input,
+    output: record.output,
+    knownInput: record.knownInput ?? record.input,
+    knownOutput: record.knownOutput ?? record.output,
+    reasoning: record.reasoning,
+    costIn: record.costIn,
+    costOut: record.costOut,
+    costTotal: record.costTotal,
+  }
+}
+
+function unknownAttemptUsage(): LlmUsage {
+  return { input: null, output: null, cached: null, reasoning: null, completeness: 'unknown' }
+}
+
+const attemptIncomplete = (record: CostRecord): boolean =>
+  (record.httpAttempts ?? []).some((attempt) => !attempt.usage || attempt.usage.completeness !== 'complete')
+const recordIncomplete = (record: CostRecord): boolean =>
+  record.usageCompleteness !== 'complete' || attemptIncomplete(record)
+const recordUnknown = (record: CostRecord): boolean =>
+  !record.usageCompleteness
+  || record.usageCompleteness === 'unknown'
+  || (record.httpAttempts ?? []).some((attempt) => !attempt.usage || !attempt.usage.completeness || attempt.usage.completeness === 'unknown')
 const mean = (vals: number[]) => (vals.length ? sum(vals) / vals.length : 0)
 const p95 = (vals: number[]) => {
   if (!vals.length) return 0
   const sorted = [...vals].sort((a, b) => a - b)
   return sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95))]
+}
+
+function tokenValues(records: CostRecord[]): {
+  inputTokens: number
+  outputTokens: number
+  inputTokensExact: number | null
+  outputTokensExact: number | null
+} {
+  const values = records.map(accountingValues)
+  return {
+    inputTokens: sum(values.map((value) => value.knownInput)),
+    outputTokens: sum(values.map((value) => value.knownOutput)),
+    inputTokensExact: sumExact(values.map((value) => value.input)),
+    outputTokensExact: sumExact(values.map((value) => value.output)),
+  }
 }
 
 /**
@@ -91,12 +220,12 @@ export function aggregate(records: CostRecord[]): BenchReport {
       queryId,
       category: first.category,
       rounds: list.length,
-      outputTokens: sum(list.map((r) => r.output)),
-      reasoningTokens: sum(list.map((r) => r.reasoning ?? 0)),
-      inputTokens: sum(list.map((r) => r.input)),
-      costOut: sum(list.map((r) => r.costOut)),
-      costIn: sum(list.map((r) => r.costIn)),
-      costTotal: sum(list.map((r) => r.costTotal)),
+      ...tokenValues(list),
+      reasoningTokens: sum(list.map((r) => accountingValues(r).reasoning)),
+      costOut: sum(list.map((r) => accountingValues(r).costOut)),
+      costIn: sum(list.map((r) => accountingValues(r).costIn)),
+      costTotal: sum(list.map(knownCost)),
+      costComplete: list.length > 0 && list.every((r) => !recordIncomplete(r) && accountingValues(r).costTotal !== null),
       truncated: list.filter((r) => r.truncated).length,
     }
   })
@@ -118,12 +247,11 @@ export function aggregate(records: CostRecord[]): BenchReport {
       queries: qids.size,
       calls: list.length,
       avgRounds: mean(perQueryRounds),
-      outputTokens: sum(list.map((r) => r.output)),
-      reasoningTokens: sum(list.map((r) => r.reasoning ?? 0)),
-      inputTokens: sum(list.map((r) => r.input)),
-      costOut: sum(list.map((r) => r.costOut)),
-      costIn: sum(list.map((r) => r.costIn)),
-      costTotal: sum(list.map((r) => r.costTotal)),
+      ...tokenValues(list),
+      reasoningTokens: sum(list.map((r) => accountingValues(r).reasoning)),
+      costOut: sum(list.map((r) => accountingValues(r).costOut)),
+      costIn: sum(list.map((r) => accountingValues(r).costIn)),
+      costTotal: sum(list.map(knownCost)),
     }
   })
 
@@ -146,28 +274,36 @@ export function aggregate(records: CostRecord[]): BenchReport {
       queries: qids.size,
       calls: list.length,
       avgRounds: mean(perQueryRounds),
-      outputTokens: sum(list.map((r) => r.output)),
-      reasoningTokens: sum(list.map((r) => r.reasoning ?? 0)),
-      inputTokens: sum(list.map((r) => r.input)),
-      costOut: sum(list.map((r) => r.costOut)),
-      costIn: sum(list.map((r) => r.costIn)),
-      costTotal: sum(list.map((r) => r.costTotal)),
+      ...tokenValues(list),
+      reasoningTokens: sum(list.map((r) => accountingValues(r).reasoning)),
+      costOut: sum(list.map((r) => accountingValues(r).costOut)),
+      costIn: sum(list.map((r) => accountingValues(r).costIn)),
+      costTotal: sum(list.map(knownCost)),
     }
   })
 
+  const totals = tokenValues(records)
   return {
     totalCalls: records.length,
     totalQueries: byQuery.size,
-    totalInput: sum(records.map((r) => r.input)),
-    totalOutput: sum(records.map((r) => r.output)),
-    totalCostIn: sum(records.map((r) => r.costIn)),
-    totalCostOut: sum(records.map((r) => r.costOut)),
-    totalCost: sum(records.map((r) => r.costTotal)),
+    totalInput: totals.inputTokens,
+    totalOutput: totals.outputTokens,
+    totalInputExact: totals.inputTokensExact,
+    totalOutputExact: totals.outputTokensExact,
+    totalCostIn: sum(records.map((r) => accountingValues(r).costIn)),
+    totalCostOut: sum(records.map((r) => accountingValues(r).costOut)),
+    totalCost: sum(records.map(knownCost)),
     truncatedCalls: records.filter((r) => r.truncated).length,
+    incompleteUsageCalls: records.filter(recordIncomplete).length,
+    unknownUsageCalls: records.filter(recordUnknown).length,
+    costComplete: records.length > 0 && records.every((r) => !recordIncomplete(r) && accountingValues(r).costTotal !== null),
+    totalHttpAttempts: records.reduce((total, record) => total + (record.httpAttempts?.length ?? 0), 0),
+    retryAttempts: records.reduce((total, record) => total + (record.httpAttempts?.filter((attempt) => attempt.outcome === 'retry').length ?? 0), 0),
     byQuery: queryAggs,
     byThinking: thinkingAggs,
     byProvider: providerAggs,
     toolUsage: aggregateToolUsage(records),
+    toolStats: aggregateToolStats(records),
   }
 }
 
@@ -184,8 +320,22 @@ function aggregateToolUsage(records: CostRecord[]): ToolUsageAgg[] {
     .sort((a, b) => b.calls - a.calls || a.tool.localeCompare(b.tool))
 }
 
+function aggregateToolStats(records: CostRecord[]): ToolStatsAgg {
+  const batches = records.map((record) => record.toolBatch).filter((batch): batch is NonNullable<CostRecord['toolBatch']> => Boolean(batch))
+  return {
+    batches: batches.length,
+    requested: sum(batches.map((batch) => batch.requested)),
+    granted: sum(batches.map((batch) => batch.granted)),
+    executed: sum(batches.map((batch) => batch.executed)),
+    denied: sum(batches.map((batch) => batch.denied)),
+    errors: sum(batches.map((batch) => batch.errors)),
+    resultChars: sum(batches.map((batch) => batch.resultChars)),
+  }
+}
+
 const f2 = (v: number) => v.toFixed(2)
 const f4 = (v: number) => v.toFixed(4)
+const exact = (v: number | null) => v === null ? '未知' : v.toLocaleString()
 
 /** 渲染 Markdown 报告 */
 export function renderMarkdown(report: BenchReport): string {
@@ -195,9 +345,12 @@ export function renderMarkdown(report: BenchReport): string {
     '# LLM 查询输出成本基准报告',
     '',
     `- 查询数：${report.totalQueries}｜LLM 调用数：${report.totalCalls}｜截断调用：${report.truncatedCalls}`,
-    `- 总输入 tokens：${report.totalInput.toLocaleString()}｜总输出 tokens：${report.totalOutput.toLocaleString()}`,
-    `- 总成本：¥${f4(report.totalCost)}（输入 ¥${f4(report.totalCostIn)} + 输出 ¥${f4(report.totalCostOut)}）`,
+    `- 总输入 tokens：${report.totalInput.toLocaleString()}（已知小计；精确总量：${exact(report.totalInputExact)}）｜总输出 tokens：${report.totalOutput.toLocaleString()}（已知小计；精确总量：${exact(report.totalOutputExact)}）`,
+    `- 总成本（已知）：¥${f4(report.totalCost)}（输入 ¥${f4(report.totalCostIn)} + 输出 ¥${f4(report.totalCostOut)}）`,
+    `- 费用状态：${report.costComplete ? '完整' : '不完整'}｜不完整 usage 调用：${report.incompleteUsageCalls}｜用量未知调用：${report.unknownUsageCalls}`,
+    `- HTTP 尝试：${report.totalHttpAttempts}｜重试：${report.retryAttempts}`,
     `- 每查询输出 tokens：均值 ${avgOut}｜P95 ${p95Out.toLocaleString()}`,
+    `- 工具批次：${report.toolStats.batches}｜提出 ${report.toolStats.requested}｜准入 ${report.toolStats.granted}｜执行 ${report.toolStats.executed}｜拒绝 ${report.toolStats.denied}｜错误 ${report.toolStats.errors}`,
     ...(report.toolUsage.length > 0
       ? [`- 检索工具调用：${report.toolUsage.map((u) => `${u.tool} ${u.calls} 次`).join('｜')}`]
       : []),
@@ -213,11 +366,11 @@ export function renderMarkdown(report: BenchReport): string {
     '',
     '## 按查询',
     '',
-    '| 查询 ID | 类目 | 轮数 | 输出 tokens | 思考 tokens | 输出费用(元) | 总费用(元) | 截断 |',
-    '|---------|------|------|-------------|-------------|--------------|------------|------|',
+    '| 查询 ID | 类目 | 轮数 | 输出 tokens | 思考 tokens | 输出费用(元) | 总费用(元) | 费用完整 | 截断 |',
+    '|---------|------|------|-------------|-------------|--------------|------------|----------|------|',
     ...report.byQuery.map(
       (q) =>
-        `| ${q.queryId} | ${q.category} | ${q.rounds} | ${q.outputTokens} | ${q.reasoningTokens} | ${f4(q.costOut)} | ${f4(q.costTotal)} | ${q.truncated} |`,
+        `| ${q.queryId} | ${q.category} | ${q.rounds} | ${q.outputTokens} | ${q.reasoningTokens} | ${f4(q.costOut)} | ${f4(q.costTotal)} | ${q.costComplete} | ${q.truncated} |`,
     ),
     '',
   ]
@@ -226,10 +379,10 @@ export function renderMarkdown(report: BenchReport): string {
 
 /** 渲染 CSV（每查询一行） */
 export function renderCsv(report: BenchReport): string {
-  const header = 'queryId,category,rounds,outputTokens,reasoningTokens,inputTokens,costOut,costIn,costTotal,truncated'
+  const header = 'queryId,category,rounds,outputTokens,outputTokensExact,reasoningTokens,inputTokens,inputTokensExact,costOut,costIn,costTotal,costComplete,truncated'
   const rows = report.byQuery.map(
     (q) =>
-      `${q.queryId},${q.category},${q.rounds},${q.outputTokens},${q.reasoningTokens},${q.inputTokens},${q.costOut},${q.costIn},${q.costTotal},${q.truncated}`,
+      `${q.queryId},${q.category},${q.rounds},${q.outputTokens},${q.outputTokensExact ?? ''},${q.reasoningTokens},${q.inputTokens},${q.inputTokensExact ?? ''},${q.costOut},${q.costIn},${q.costTotal},${q.costComplete},${q.truncated}`,
   )
   return [header, ...rows].join('\n')
 }

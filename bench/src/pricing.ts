@@ -7,6 +7,8 @@
  * 思考 token 与工具调用参数均计入输出 token。
  */
 
+import type { LlmUsage } from './types.js'
+
 export interface Prices {
   /** 输入价（元/M），未命中缓存部分 */
   inPerM: number
@@ -25,22 +27,110 @@ export const PRICE_OUT_PER_M = HY3_PRICES.outPerM
 export const PRICE_CACHE_PER_M = HY3_PRICES.cachePerM
 
 export interface CostBreakdown {
-  costIn: number
-  costOut: number
-  costTotal: number
+  costIn: number | null
+  costOut: number | null
+  costTotal: number | null
+}
+
+/** 将多次 HTTP 尝试的 usage 相加；任一分项未知时，该分项保持未知。 */
+export function aggregateUsages(usages: readonly LlmUsage[]): LlmUsage {
+  if (usages.length === 0) {
+    return { input: null, output: null, cached: null, reasoning: null, knownInput: null, knownOutput: null, completeness: 'unknown' }
+  }
+
+  const input = sumKnown(usages.map((usage) => usage.input))
+  const output = sumKnown(usages.map((usage) => usage.output))
+  const knownInput = sumObserved(usages.map((usage) => usage.knownInput ?? usage.input))
+  const knownOutput = sumObserved(usages.map((usage) => usage.knownOutput ?? usage.output))
+  const cached = sumKnown(usages.map((usage) => usage.cached))
+  const reasoning = sumKnown(usages.map((usage) => usage.reasoning))
+  const allComplete = usages.every((usage) => usage.completeness === 'complete' || (
+    usage.completeness === undefined
+    && usage.input !== null
+    && usage.output !== null
+    && usage.cached !== null
+    && usage.reasoning !== null
+  ))
+  // cached/reasoning 的缺省值可能是 0；输入/输出小计允许在 exact 总量未知时保留。
+  const hasKnown = knownInput !== null || knownOutput !== null
+  const completeness = allComplete
+    ? 'complete'
+    : hasKnown
+      ? 'partial'
+      : 'unknown'
+
+  return { input, output, cached, reasoning, knownInput, knownOutput, completeness }
+}
+
+/**
+ * 聚合尝试费用：已知尝试计入已知小计，任一尝试费用不完整时总费用保持 null。
+ * costIn/costOut 为已知分项小计，不把未知尝试补成零后误报为完整总费用。
+ */
+export function aggregateAttemptCosts(
+  usages: readonly LlmUsage[],
+  prices: Prices = HY3_PRICES,
+): CostBreakdown {
+  if (usages.length === 0) return { costIn: null, costOut: null, costTotal: null }
+  let costIn = 0
+  let costOut = 0
+  let knownIn = false
+  let knownOut = false
+  let complete = true
+  for (const usage of usages) {
+    const costs = computeCosts(usage.input, usage.output, usage.cached, prices)
+    if (costs.costIn === null) complete = false
+    else {
+      knownIn = true
+      costIn += costs.costIn
+    }
+    if (costs.costOut === null) complete = false
+    else {
+      knownOut = true
+      costOut += costs.costOut
+    }
+    if (costs.costTotal === null || usage.completeness === 'unknown' || usage.completeness === 'partial') complete = false
+  }
+  const knownCostIn = knownIn ? round6(costIn) : null
+  const knownCostOut = knownOut ? round6(costOut) : null
+  return {
+    costIn: knownCostIn,
+    costOut: knownCostOut,
+    costTotal: complete && knownCostIn !== null && knownCostOut !== null
+      ? round6(knownCostIn + knownCostOut)
+      : null,
+  }
+}
+
+function sumKnown(values: readonly (number | null | undefined)[]): number | null {
+  if (values.some((value) => value === null || value === undefined)) return null
+  return values.reduce<number>((sum, value) => sum + (value as number), 0)
+}
+
+function sumObserved(values: readonly (number | null | undefined)[]): number | null {
+  const observed = values.filter((value): value is number => value !== null && value !== undefined)
+  return observed.length > 0 ? observed.reduce((sum, value) => sum + value, 0) : null
 }
 
 /** 按 usage 计算费用（四舍五入到 6 位小数，单位元） */
-export function computeCosts(input: number, output: number, cached: number, prices: Prices = HY3_PRICES): CostBreakdown {
+export function computeCosts(
+  input: number | null,
+  output: number | null,
+  cached: number | null,
+  prices: Prices = HY3_PRICES,
+): CostBreakdown {
   // 防御：缓存命中数不超过输入总数（异常数据时按输入上限 clamp）
-  const cachedIn = Math.min(cached, input)
-  const uncachedIn = input - cachedIn
-  const costIn = (uncachedIn * prices.inPerM + cachedIn * prices.cachePerM) / 1_000_000
-  const costOut = (output * prices.outPerM) / 1_000_000
+  const costIn = input === null || cached === null
+    ? null
+    : (() => {
+        const cachedIn = Math.min(cached, input)
+        const uncachedIn = input - cachedIn
+        return round6((uncachedIn * prices.inPerM + cachedIn * prices.cachePerM) / 1_000_000)
+      })()
+  const costOut = output === null ? null : round6((output * prices.outPerM) / 1_000_000)
   return {
-    costIn: round6(costIn),
-    costOut: round6(costOut),
-    costTotal: round6(costIn + costOut),
+    costIn,
+    costOut,
+    costTotal: costIn === null || costOut === null ? null : round6(costIn + costOut),
   }
 }
 

@@ -14,16 +14,58 @@ export type ToolId = 'rag_search' | 'grep_search' | 'lookup' | 'query_operators'
 /** 检索分词器标识（bigram 零依赖默认；jieba 见 ADR-001） */
 export type TokenizerId = 'bigram' | 'jieba'
 
+/** usage 完整性；partial 保留已知分项，unknown 不得当作零费用。 */
+export type UsageCompleteness = 'complete' | 'partial' | 'unknown'
+
+/** 单题终止原因；供 Agent、trace 和报告共用口径。 */
+export type TerminationReason =
+  | 'answer'
+  | 'no_tool_after_feedback'
+  | 'llm_error'
+  | 'tool_error'
+  | 'timeout'
+  | 'cancelled'
+  | 'empty_response'
+  | 'truncated'
+  | 'protocol_error'
+
+/** 单个模型响应对应的工具批次统计；used 口径是获准尝试数。 */
+export interface ToolBatchStats {
+  requested: number
+  granted: number
+  executed: number
+  denied: number
+  errors: number
+  budgetBefore: number
+  budgetAfter: number
+  resultChars: number
+}
+
 /** 单次 LLM 调用的 token 用量（TokenHub OpenAI 兼容口径） */
 export interface LlmUsage {
   /** prompt_tokens（含缓存命中部分） */
-  input: number
+  input: number | null
   /** completion_tokens（含思考 token 与工具调用参数） */
-  output: number
-  /** prompt_tokens_details.cached_tokens，无则为 0 */
-  cached: number
-  /** completion_tokens_details.reasoning_tokens（思考 token），无则为 0 */
-  reasoning: number
+  output: number | null
+  /** prompt_tokens_details.cached_tokens；接口允许省略时为 0，显式无效时为 null */
+  cached: number | null
+  /** completion_tokens_details.reasoning_tokens；接口允许省略时为 0，显式无效时为 null */
+  reasoning: number | null
+  /** 已观察到的输入 token 小计；exact input 未知时仍可保留非空尝试的小计。 */
+  knownInput?: number | null
+  /** 已观察到的输出 token 小计；exact output 未知时仍可保留非空尝试的小计。 */
+  knownOutput?: number | null
+  /** 旧测试/旧运行构造的 usage 可缺省，provider 解析结果始终提供。 */
+  completeness?: UsageCompleteness
+}
+
+/** 单次 HTTP 尝试；重试不能被压扁成一次无状态的模型调用。 */
+export interface HttpAttempt {
+  attempt: number
+  status: number | null
+  outcome: 'accepted' | 'retry' | 'failed' | 'aborted' | 'in_flight'
+  usage: LlmUsage
+  error?: string
 }
 
 /** 单次 LLM 调用的成本记录（写入 JSONL 的一行） */
@@ -43,23 +85,35 @@ export interface CostRecord {
   /** 模型名 */
   model: string
   /** 输入 token 数 */
-  input: number
+  input: number | null
   /** 输出 token 数 */
-  output: number
+  output: number | null
+  /** 已观察到的输入 token 小计；exact input 未知时仍可保留非空尝试的小计。 */
+  knownInput?: number | null
+  /** 已观察到的输出 token 小计；exact output 未知时仍可保留非空尝试的小计。 */
+  knownOutput?: number | null
   /** 缓存命中输入 token 数 */
-  cached: number
+  cached: number | null
   /** 思考 token 数（reasoning_tokens），无则为 0 */
-  reasoning: number
+  reasoning: number | null
   /** 输入费用（元） */
-  costIn: number
+  costIn: number | null
   /** 输出费用（元） */
-  costOut: number
+  costOut: number | null
   /** 总费用（元） */
-  costTotal: number
+  costTotal: number | null
+  /** usage 完整性；旧记录缺失时保持不可用而不是回填 complete。 */
+  usageCompleteness?: UsageCompleteness
+  /** 新记录的计量字段来自所有已观察 HTTP 尝试；旧记录缺失时按旧格式兼容读取。 */
+  usageAggregation?: 'response' | 'http_attempts'
+  /** 本模型步骤的 HTTP 尝试台账；每次重试各占一项。 */
+  httpAttempts?: HttpAttempt[]
   /** 是否因 max_tokens 截断 */
   truncated: boolean
   /** 本轮实际调用的检索工具名（双工具模式下统计；无工具调用则省略） */
   tools?: ToolId[]
+  /** 本轮工具批次统计；无工具调用的模型步骤省略。 */
+  toolBatch?: ToolBatchStats
 }
 
 /** 基准问题 */
@@ -87,6 +141,8 @@ export interface ProviderResult {
   usage: LlmUsage
   model: string
   truncated: boolean
+  /** provider 已观察到的 HTTP 尝试；正常请求通常只有一项。 */
+  httpAttempts?: HttpAttempt[]
 }
 
 /** 检索到的文档片段 */

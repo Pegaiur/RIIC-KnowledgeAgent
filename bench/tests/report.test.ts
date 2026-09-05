@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { aggregate, renderMarkdown } from '../src/report.js'
+import { aggregate, renderCsv, renderMarkdown } from '../src/report.js'
 import type { CostRecord } from '../src/types.js'
 
 function rec(partial: Partial<CostRecord>): CostRecord {
@@ -53,6 +53,141 @@ describe('report：聚合与渲染', () => {
   it('截断调用计数', () => {
     const report = aggregate([rec({ truncated: true }), rec({ truncated: false })])
     expect(report.truncatedCalls).toBe(1)
+  })
+
+  it('按工具批次聚合准入、执行、拒绝和结果字符数，并标记不完整 usage', () => {
+    const report = aggregate([
+      rec({
+        usageCompleteness: 'partial',
+        input: null,
+        costIn: null,
+        toolBatch: {
+          requested: 3,
+          granted: 2,
+          executed: 2,
+          denied: 1,
+          errors: 0,
+          budgetBefore: 2,
+          budgetAfter: 0,
+          resultChars: 120,
+        },
+      }),
+    ])
+
+    expect(report.incompleteUsageCalls).toBe(1)
+    expect(report.unknownUsageCalls).toBe(0)
+    expect(report.costComplete).toBe(false)
+    expect(report.toolStats).toEqual({ batches: 1, requested: 3, granted: 2, executed: 2, denied: 1, errors: 0, resultChars: 120 })
+    expect(renderMarkdown(report)).toContain('费用状态：不完整')
+  })
+
+  it('部分 usage 仍汇总已知费用，并把重试未知用量标为不完整', () => {
+    const report = aggregate([rec({
+      input: null,
+      output: 1000,
+      costIn: null,
+      costOut: 0.0008,
+      costTotal: null,
+      usageCompleteness: 'partial',
+      httpAttempts: [{
+        attempt: 1,
+        status: 503,
+        outcome: 'retry',
+        usage: { input: null, output: null, cached: 0, reasoning: 0, completeness: 'unknown' },
+      }],
+    })])
+
+    expect(report.totalCostOut).toBe(0.0008)
+    expect(report.totalCost).toBe(0.0008)
+    expect(report.byQuery[0]?.costTotal).toBe(0.0008)
+    expect(report.incompleteUsageCalls).toBe(1)
+    expect(report.unknownUsageCalls).toBe(1)
+    expect(report.costComplete).toBe(false)
+    expect(renderCsv(report)).toContain('costComplete')
+    expect(renderCsv(report)).toContain('false')
+  })
+
+  it('按 HTTP 尝试聚合完整 usage，避免只统计最终响应', () => {
+    const report = aggregate([rec({
+      provider: 'qwen',
+      model: 'qwen3.7-flash',
+      input: 100,
+      output: 10,
+      costIn: 0.000045,
+      costOut: 0.000044,
+      costTotal: 0.000089,
+      usageCompleteness: 'complete',
+      usageAggregation: 'http_attempts',
+      httpAttempts: [
+        { attempt: 1, status: 503, outcome: 'retry', usage: { input: 123, output: 45, cached: 0, reasoning: 0, completeness: 'complete' } },
+        { attempt: 2, status: 200, outcome: 'accepted', usage: { input: 100, output: 10, cached: 0, reasoning: 0, completeness: 'complete' } },
+      ],
+    })])
+
+    expect(report.totalInput).toBe(223)
+    expect(report.totalOutput).toBe(55)
+    expect(report.totalCostIn).toBe(0.000045)
+    expect(report.totalCostOut).toBe(0.000044)
+    expect(report.totalCost).toBe(0.000089)
+    expect(report.costComplete).toBe(true)
+  })
+
+  it('未知尝试不补零，但保留后续已知费用小计并标记不完整', () => {
+    const report = aggregate([rec({
+      provider: 'qwen',
+      model: 'qwen3.7-flash',
+      input: null,
+      output: null,
+      costIn: 0.00002,
+      costOut: 0.000008,
+      costTotal: null,
+      usageCompleteness: 'unknown',
+      usageAggregation: 'http_attempts',
+      httpAttempts: [
+        { attempt: 1, status: 503, outcome: 'retry', usage: { input: null, output: null, cached: 0, reasoning: 0, completeness: 'unknown' } },
+        { attempt: 2, status: 200, outcome: 'accepted', usage: { input: 100, output: 10, cached: 0, reasoning: 0, completeness: 'complete' } },
+      ],
+    })])
+
+    expect(report.totalCostIn).toBe(0.00002)
+    expect(report.totalCostOut).toBe(0.000008)
+    expect(report.totalCost).toBeCloseTo(0.000028, 10)
+    expect(report.totalInput).toBe(100)
+    expect(report.totalOutput).toBe(10)
+    expect(report.totalInputExact).toBeNull()
+    expect(report.totalOutputExact).toBeNull()
+    expect(report.costComplete).toBe(false)
+  })
+
+  it('报告信任记录中持久化的费用，不按当前 provider 内置价格漂移', () => {
+    const report = aggregate([rec({
+      provider: 'qwen',
+      model: 'qwen3.7-flash',
+      input: 100,
+      output: 10,
+      costIn: 0.0001,
+      costOut: 0.00004,
+      costTotal: 0.00014,
+      usageCompleteness: 'complete',
+    })])
+
+    expect(report.totalCostIn).toBe(0.0001)
+    expect(report.totalCostOut).toBe(0.00004)
+    expect(report.totalCost).toBe(0.00014)
+    expect(report.costComplete).toBe(true)
+  })
+
+  it('跨查询汇总保留已知小计、exact 未知和明确零值', () => {
+    const report = aggregate([
+      rec({ queryId: 'Q1', input: null, output: null, knownInput: 100, knownOutput: 10, costIn: 0.00002, costOut: 0.000008, costTotal: 0.000028, usageCompleteness: 'partial' }),
+      rec({ queryId: 'Q2', input: 0, output: 0, knownInput: 0, knownOutput: 0, cached: 0, costIn: 0, costOut: 0, costTotal: 0, usageCompleteness: 'complete' }),
+    ])
+
+    expect(report.totalInput).toBe(100)
+    expect(report.totalOutput).toBe(10)
+    expect(report.totalInputExact).toBeNull()
+    expect(report.totalOutputExact).toBeNull()
+    expect(report.byQuery.find((query) => query.queryId === 'Q2')).toMatchObject({ inputTokens: 0, outputTokens: 0, inputTokensExact: 0, outputTokensExact: 0 })
   })
 
   it('双工具模式统计工具调用次数（按调用计数）', () => {
