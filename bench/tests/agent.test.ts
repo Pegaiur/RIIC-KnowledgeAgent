@@ -67,6 +67,15 @@ describe('agent：统一 knowledge 工具 schema', () => {
     expect(prompt).toContain('knowledge operation：rag_search、lookup、query_operators')
   })
 
+  it('人工契约明确记录验收中的设施与组合术语边界', () => {
+    const prompt = buildSystemPrompt('bm25')
+    expect(prompt).toContain('4:00 是允许补充的每日发放时点')
+    expect(prompt).toContain('琴柳当前是控制中枢/宿舍侧干员')
+    expect(prompt).toContain('裂响当前是制造站经验散件')
+    expect(prompt).toContain('称为“龙舌兰组”')
+    expect(prompt).toContain('特殊订单边界')
+  })
+
   it('人工规则只从调用方提供的 AGENTS 内容注入一次', () => {
     const prompt = buildSystemPrompt('facts', '唯一规则正文')
     expect(prompt.match(/唯一规则正文/g)).toHaveLength(1)
