@@ -14,6 +14,7 @@ import { callLLM, type ChatMessage, type ProviderOptions } from './provider.js'
 import { computeCosts } from './pricing.js'
 import { isRetrievalTool, isFactTool, type BenchQuery, type CostRecord, type ThinkingMode, type ToolId } from './types.js'
 import { getCardStore, serializeCards, type OperatorFilters } from './facts/store.js'
+import type { QueryTrace, TraceLlmEvent, TraceToolEvent } from './trace.js'
 
 export interface AgentResult {
   records: CostRecord[]
@@ -30,6 +31,8 @@ export interface AgentOptions {
   config?: BenchConfig
   /** 单次基准运行固定使用的查询契约快照；未提供时按单次查询读取。 */
   agentInstructions?: string
+  /** 可选的单题执行记录；不传入时保持原有调用与结果协议。 */
+  trace?: QueryTrace
   thinking: ThinkingMode
   dry: boolean
 }
@@ -187,7 +190,38 @@ export async function runQuery(
     // 超轮次：最后一轮不再暴露检索工具（空工具集），强制模型直接基于已有片段作答，
     // 避免「轮次耗尽仍有 tool use → finalAnswer=null 不落盘」的缺失答案问题。
     const isAnswerFallback = round > config.maxRounds
-    const resp = await callLLM(messages, isAnswerFallback ? [] : retrieverTools(config.retriever), providerOpts)
+    const offeredTools = isAnswerFallback ? [] : retrieverTools(config.retriever)
+    const llmEvent: TraceLlmEvent | undefined = opts.trace
+      ? {
+          type: 'llm_call',
+          round,
+          offeredTools: offeredTools.map((tool) => (tool.function as { name: string }).name),
+          elapsedMs: 0,
+        }
+      : undefined
+    if (llmEvent) opts.trace?.events.push(llmEvent)
+    const llmStarted = Date.now()
+    let resp
+    try {
+      resp = await callLLM(messages, offeredTools, providerOpts)
+    } catch (error) {
+      if (llmEvent) {
+        llmEvent.elapsedMs = Date.now() - llmStarted
+        llmEvent.error = errorMessage(error)
+      }
+      if (opts.trace) {
+        opts.trace.status = 'failed'
+        opts.trace.failure ??= { stage: 'llm', message: errorMessage(error), round }
+      }
+      throw error
+    }
+    if (llmEvent) {
+      llmEvent.elapsedMs = Date.now() - llmStarted
+      llmEvent.usage = resp.usage
+      llmEvent.truncated = resp.truncated
+      llmEvent.content = resp.content
+      llmEvent.toolCalls = resp.toolCalls
+    }
     const costs = computeCosts(resp.usage.input, resp.usage.output, resp.usage.cached, config.prices)
     // 本轮实际调用的检索工具（双工具模式统计；供 records.tools 与 toolTrace 复用）
     const usedTools = resp.toolCalls.map((tc) => tc.name).filter((n): n is ToolId => isRetrievalTool(n) || isFactTool(n))
@@ -227,61 +261,118 @@ export async function runQuery(
       // 执行工具：rag_search（BM25）与 grep_search（字面命中）分别路由，逐个执行并回写结果
       for (const tc of resp.toolCalls) {
         let resultText: string
-        if (tc.name === 'rag_search' || tc.name === 'grep_search') {
-          if (retrievalCalls >= MAX_RAG_CALLS) {
-            resultText = `已达到知识库检索上限（${MAX_RAG_CALLS} 次），请直接基于已返回的片段作答，勿再检索。`
-          } else {
-            retrievalCalls++
-            const q = safeParseQuery(tc.arguments)
-            if (tc.name === 'grep_search') {
-              const hits = grepSearch(chunks, q ?? query.question, config.topK)
-              // grep 结果逐块组装、不整体截断 → 所有命中块均实际注入
-              for (const idx of hits) {
-                const id = chunks[idx].id
-                if (!injectedIds.includes(id)) injectedIds.push(id)
-              }
-              resultText = buildGrepResult(chunks, hits, q ?? query.question, config.maxContextChars)
+        const toolEvent: TraceToolEvent | undefined = opts.trace
+          ? { type: 'tool_call', round, callId: tc.id, tool: tc.name, rawArguments: tc.arguments, elapsedMs: 0 }
+          : undefined
+        if (toolEvent) opts.trace?.events.push(toolEvent)
+        const toolStarted = Date.now()
+        try {
+          if (tc.name === 'rag_search' || tc.name === 'grep_search') {
+            if (retrievalCalls >= MAX_RAG_CALLS) {
+              resultText = `已达到知识库检索上限（${MAX_RAG_CALLS} 次），请直接基于已返回的片段作答，勿再检索。`
+              if (toolEvent) toolEvent.reason = '已达到知识库检索上限，未执行检索'
             } else {
-              const hits = search(index, q ?? query.question, config.topK)
-              // rag 结果 join 后整体 slice(maxContextChars)：按块起始偏移是否进入预算判定实际注入
-              //（块被截断仍算部分注入；整体被切掉的块不计入）
-              let offset = 0
-              const parts = hits.map((idx) => {
-                const c = chunks[idx]
-                if (offset < config.maxContextChars && !injectedIds.includes(c.id)) injectedIds.push(c.id)
-                const block = `【${c.file} | ${c.heading} | L${c.startLine}-${c.endLine}】\n${c.text}`
-                offset += block.length + 2 // '\n\n' 分隔符
-                return block
-              })
-              resultText = parts.join('\n\n').slice(0, config.maxContextChars)
-            }
-          }
-        } else if (tc.name === 'lookup' || tc.name === 'query_operators') {
-          if (retrievalCalls >= MAX_RAG_CALLS) {
-            resultText = `已达到知识库检索上限（${MAX_RAG_CALLS} 次），请直接基于已返回的内容作答，勿再检索。`
-          } else {
-            retrievalCalls++
-            if (tc.name === 'query_operators') {
-              const filters = safeParseFilters(tc.arguments)
-              if (!filters) {
-                resultText = '查询参数无效：请至少提供非空的设施、阵营、职业或关键词。'
+              retrievalCalls++
+              const parsed = parseQuery(tc.arguments)
+              const actualQuery = parsed.value ?? query.question
+              if (toolEvent) {
+                toolEvent.actualParams = { query: actualQuery }
+                toolEvent.hitIds = []
+                toolEvent.injectedIds = []
+                if (parsed.reason) toolEvent.reason = parsed.reason
+              }
+              if (tc.name === 'grep_search') {
+                const hits = grepSearch(chunks, actualQuery, config.topK)
+                const hitIds = hits.map((idx) => chunks[idx].id)
+                // grep 结果逐块组装、不整体截断 → 所有命中块均实际注入
+                for (const id of hitIds) {
+                  if (toolEvent) (toolEvent.injectedIds ??= []).push(id)
+                  if (!injectedIds.includes(id)) injectedIds.push(id)
+                }
+                if (toolEvent) {
+                  toolEvent.hitIds = hitIds
+                  toolEvent.injectedIds = hitIds
+                }
+                resultText = buildGrepResult(chunks, hits, actualQuery, config.maxContextChars)
               } else {
-                const store = getCardStore()
-                resultText = serializeCards(store.queryOperators(filters), filters)
+                const hits = search(index, actualQuery, config.topK)
+                const hitIds = hits.map((idx) => chunks[idx].id)
+                if (toolEvent) toolEvent.hitIds = hitIds
+                // rag 结果 join 后整体 slice(maxContextChars)：按块起始偏移判定实际注入
+                //（块被截断仍算部分注入；整体被切掉的块不计入）
+                let offset = 0
+                const parts = hits.map((idx) => {
+                  const c = chunks[idx]
+                  if (offset < config.maxContextChars) {
+                    if (toolEvent) (toolEvent.injectedIds ??= []).push(c.id)
+                    if (!injectedIds.includes(c.id)) injectedIds.push(c.id)
+                  }
+                  const block = `【${c.file} | ${c.heading} | L${c.startLine}-${c.endLine}】\n${c.text}`
+                  offset += block.length + 2 // '\n\n' 分隔符
+                  return block
+                })
+                resultText = parts.join('\n\n').slice(0, config.maxContextChars)
               }
-            } else {
-              const store = getCardStore()
-              resultText = serializeCards(store.lookup(safeParseTerm(tc.arguments)))
             }
+          } else if (tc.name === 'lookup' || tc.name === 'query_operators') {
+            if (retrievalCalls >= MAX_RAG_CALLS) {
+              resultText = `已达到知识库检索上限（${MAX_RAG_CALLS} 次），请直接基于已返回的内容作答，勿再检索。`
+              if (toolEvent) toolEvent.reason = '已达到知识库检索上限，未执行查询'
+            } else {
+              retrievalCalls++
+              if (tc.name === 'query_operators') {
+                const parsed = parseFilters(tc.arguments)
+                if (!parsed.value) {
+                  resultText = '查询参数无效：请至少提供非空的设施、阵营、职业或关键词。'
+                  if (toolEvent) toolEvent.reason = parsed.reason
+                } else {
+                  const store = getCardStore()
+                  const hits = store.queryOperators(parsed.value)
+                  if (toolEvent) {
+                    toolEvent.actualParams = parsed.value
+                    toolEvent.hitIds = hits.map((card) => card.canonical)
+                    toolEvent.injectedIds = hits.map((card) => card.canonical)
+                  }
+                  resultText = serializeCards(hits, parsed.value)
+                }
+              } else {
+                const parsed = parseTerm(tc.arguments)
+                const store = getCardStore()
+                const hits = store.lookup(parsed.value)
+                if (toolEvent) {
+                  toolEvent.actualParams = { term: parsed.value }
+                  toolEvent.hitIds = hits.map((card) => card.canonical)
+                  toolEvent.injectedIds = hits.map((card) => card.canonical)
+                  if (parsed.reason) toolEvent.reason = parsed.reason
+                }
+                resultText = serializeCards(hits)
+              }
+            }
+          } else {
+            resultText = `未知工具：${tc.name}`
+            if (toolEvent) toolEvent.reason = '未知工具，未执行调用'
           }
-        } else {
-          resultText = `未知工具：${tc.name}`
+          const writtenContent = resultText || '（无匹配片段）'
+          messages.push({
+            role: 'tool',
+            tool_call_id: tc.id,
+            content: writtenContent,
+          })
+          if (toolEvent) {
+            toolEvent.elapsedMs = Date.now() - toolStarted
+            toolEvent.writtenContent = writtenContent
+          }
+        } catch (error) {
+          if (toolEvent) {
+            toolEvent.elapsedMs = Date.now() - toolStarted
+            toolEvent.error = errorMessage(error)
+          }
+          if (opts.trace) {
+            opts.trace.status = 'failed'
+            opts.trace.failure ??= { stage: 'tool', message: errorMessage(error), round, toolCallId: tc.id }
+          }
+          throw error
         }
-        messages.push({
-          role: 'tool',
-          tool_call_id: tc.id,
-          content: resultText || '（无匹配片段）',
-        })
       }
       continue
     }
@@ -291,10 +382,12 @@ export async function runQuery(
     // 超轮次兜底轮不在此引导，保证最终答案产出。
     const minRag = Math.min(config.minRagCalls, MAX_RAG_CALLS)
     if (!isAnswerFallback && retrievalCalls < minRag) {
+      const content = `请先调用知识库检索工具后再作答（当前已检索 ${retrievalCalls} 次，需至少检索 ${minRag} 次）。`
       messages.push({
         role: 'user',
-        content: `请先调用知识库检索工具后再作答（当前已检索 ${retrievalCalls} 次，需至少检索 ${minRag} 次）。`,
+        content,
       })
+      opts.trace?.events.push({ type: 'control', round, kind: 'min_retrieval', content })
       continue
     }
 
@@ -306,30 +399,32 @@ export async function runQuery(
   return { records, finalAnswer, rounds, toolRounds, toolTrace, injectedIds }
 }
 
-function safeParseQuery(args: string): string | null {
+function parseQuery(args: string): { value: string | null; reason?: string } {
   try {
     const obj = JSON.parse(args) as Record<string, unknown>
-    return typeof obj.query === 'string' && obj.query.length > 0 ? obj.query : null
+    if (typeof obj.query === 'string' && obj.query.length > 0) return { value: obj.query }
+    return { value: null, reason: 'query 参数无效，已回退为题目原文' }
   } catch {
-    return null
+    return { value: null, reason: 'query 参数不是有效 JSON，已回退为题目原文' }
   }
 }
 
-/** 解析 facts lookup 的 term 参数 */
-function safeParseTerm(args: string): string {
+function parseTerm(args: string): { value: string; reason?: string } {
   try {
     const obj = JSON.parse(args) as Record<string, unknown>
-    return typeof obj.term === 'string' && obj.term.length > 0 ? obj.term : ''
+    if (typeof obj.term === 'string' && obj.term.length > 0) return { value: obj.term }
+    return { value: '', reason: 'term 参数无效，实际以空 term 查询' }
   } catch {
-    return ''
+    return { value: '', reason: 'term 参数不是有效 JSON，实际以空 term 查询' }
   }
 }
 
-/** 解析 facts query_operators 的过滤参数（仅接收权威类型字段，其余忽略） */
-function safeParseFilters(args: string): OperatorFilters | null {
+function parseFilters(args: string): { value: OperatorFilters | null; reason: string } {
   try {
     const obj = JSON.parse(args) as unknown
-    if (typeof obj !== 'object' || obj === null || Array.isArray(obj)) return null
+    if (typeof obj !== 'object' || obj === null || Array.isArray(obj)) {
+      return { value: null, reason: 'query_operators 参数结构无效，未调用 store' }
+    }
     const input = obj as Record<string, unknown>
     const filters: OperatorFilters = {}
     const room = typeof input.room === 'string' ? input.room.trim() : ''
@@ -347,8 +442,14 @@ function safeParseFilters(args: string): OperatorFilters | null {
         .filter(Boolean)
       if (excludeIds.length > 0) filters.excludeIds = excludeIds
     }
-    return room || faction || profession || termQuery ? filters : null
+    return room || faction || profession || termQuery
+      ? { value: filters, reason: '' }
+      : { value: null, reason: 'query_operators 缺少非空正向条件，未调用 store' }
   } catch {
-    return null
+    return { value: null, reason: 'query_operators 参数不是有效 JSON，未调用 store' }
   }
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
 }

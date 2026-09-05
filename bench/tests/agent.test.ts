@@ -14,6 +14,7 @@ import { buildIndex } from '../src/retriever.js'
 import { loadConfig } from '../src/config.js'
 import type { ProviderResult } from '../src/types.js'
 import type { DocChunk } from '../src/types.js'
+import { createQueryTrace } from '../src/trace.js'
 
 const { mockCall } = vi.hoisted(() => ({ mockCall: vi.fn() }))
 vi.mock('../src/provider.js', () => ({ callLLM: mockCall }))
@@ -247,5 +248,80 @@ describe('runQuery：注入片段记录（injectedIds）', () => {
       index,
     )
     expect(result.injectedIds).toEqual(['a#1', 'b#2'])
+  })
+})
+
+describe('runQuery：trace 事件记录', () => {
+  const chunks: DocChunk[] = []
+
+  function providerResult(partial: Partial<ProviderResult>): ProviderResult {
+    return {
+      content: null,
+      toolCalls: [],
+      usage: { input: 100, output: 50, cached: 0, reasoning: 0 },
+      model: 'qwen',
+      truncated: false,
+      ...partial,
+    }
+  }
+
+  beforeEach(() => mockCall.mockReset())
+
+  it('记录 LLM、工具和实际回写文本，并保留参数回退原因', async () => {
+    const config = loadConfig()
+    config.minRagCalls = 1
+    config.maxRounds = 1
+    const query = { id: 'TRACE-1', category: 'fact' as const, question: '原始问题' }
+    const trace = createQueryTrace(query)
+    const index = buildIndex(chunks)
+
+    mockCall
+      .mockResolvedValueOnce(providerResult({ toolCalls: [{ id: 'call_trace', name: 'rag_search', arguments: '{' }] }))
+      .mockResolvedValueOnce(providerResult({ content: '最终答案' }))
+
+    const result = await runQuery(
+      query,
+      { config, thinking: 'off', dry: false, trace },
+      chunks,
+      index,
+    )
+
+    expect(result.finalAnswer).toBe('最终答案')
+    expect(trace.events.map((event) => event.type)).toEqual(['llm_call', 'tool_call', 'llm_call'])
+    const llmEvent = trace.events[0]
+    expect(llmEvent).toMatchObject({ type: 'llm_call', round: 1, offeredTools: ['rag_search'], content: null })
+    const toolEvent = trace.events[1]
+    expect(toolEvent).toMatchObject({
+      type: 'tool_call',
+      round: 1,
+      callId: 'call_trace',
+      tool: 'rag_search',
+      rawArguments: '{',
+      actualParams: { query: '原始问题' },
+      hitIds: [],
+      injectedIds: [],
+      reason: 'query 参数不是有效 JSON，已回退为题目原文',
+      writtenContent: '（无匹配片段）',
+    })
+    expect(trace.events[2]).toMatchObject({ type: 'llm_call', round: 2, content: '最终答案' })
+  })
+
+  it('记录最少检索约束追加的 control 事件', async () => {
+    const config = loadConfig()
+    config.minRagCalls = 1
+    config.maxRounds = 2
+    const query = { id: 'TRACE-2', category: 'fact' as const, question: '需要先检索' }
+    const trace = createQueryTrace(query)
+    const index = buildIndex(chunks)
+
+    mockCall
+      .mockResolvedValueOnce(providerResult({ content: '被约束的提前回答' }))
+      .mockResolvedValueOnce(providerResult({ toolCalls: [{ id: 'control-call', name: 'rag_search', arguments: '{"query":"需要先检索"}' }] }))
+      .mockResolvedValueOnce(providerResult({ content: '最终答案' }))
+
+    await runQuery(query, { config, thinking: 'off', dry: false, trace }, chunks, index)
+
+    expect(trace.events.map((event) => event.type)).toEqual(['llm_call', 'control', 'llm_call', 'tool_call', 'llm_call'])
+    expect(trace.events[1]).toMatchObject({ type: 'control', round: 1, kind: 'min_retrieval' })
   })
 })

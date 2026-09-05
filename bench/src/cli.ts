@@ -173,6 +173,7 @@ async function main(): Promise<void> {
     process.stdout.write(`元信息：${out.metaPath}\n`)
     process.stdout.write(`回答：${out.answersPath}\n`)
     process.stdout.write(`注入记录：${out.injectedPath}\n`)
+    process.stdout.write(`执行记录：${out.tracePath}\n`)
 
     const report = aggregate(out.records)
     process.stdout.write(renderMarkdown(report))

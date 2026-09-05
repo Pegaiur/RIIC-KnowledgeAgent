@@ -2,13 +2,14 @@
  * 基准运行器：跑问题集 → 写 JSONL 成本记录
  */
 import { createHash } from 'node:crypto'
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { loadConfig, type BenchConfig } from './config.js'
 import { loadCorpus } from './corpus.js'
 import { buildIndex } from './retriever.js'
 import { loadKnowledgeAgentInstructions, runQuery, type AgentOptions } from './agent.js'
 import type { BenchQuery, CostRecord, ThinkingMode } from './types.js'
+import { createQueryTrace, markTraceFailed, serializeTrace } from './trace.js'
 
 export interface RunOutput {
   records: CostRecord[]
@@ -20,6 +21,8 @@ export interface RunOutput {
   answersPath: string
   /** 注入片段记录路径（queryId → 实际注入 chunk id 列表，R1 注入覆盖率用） */
   injectedPath: string
+  /** 单题执行记录路径（每题一行，可人工复盘） */
+  tracePath: string
   elapsedMs: number
 }
 
@@ -55,8 +58,10 @@ export async function runBenchmark(
 
   const jsonlPath = join(runDir, 'records.jsonl')
   const metaPath = join(runDir, 'meta.json')
+  const tracePath = join(runDir, 'trace.jsonl')
+  writeFileSync(tracePath, '', 'utf-8')
 
-  const agentOpts: AgentOptions = { config, agentInstructions, thinking: opts.thinking, dry: opts.dry }
+  const agentOptsBase: Omit<AgentOptions, 'trace'> = { config, agentInstructions, thinking: opts.thinking, dry: opts.dry }
   const lines: string[] = []
   const answers: AnswerRecord[] = []
   /** 每题实际注入上下文的 chunk id（R1 注入覆盖率判定用） */
@@ -64,6 +69,8 @@ export async function runBenchmark(
   let failed = 0
 
   for (const q of questions) {
+    const trace = createQueryTrace(q)
+    const agentOpts: AgentOptions = { ...agentOptsBase, trace }
     try {
       const result = await runQuery(q, agentOpts, chunks, index)
       for (const r of result.records) lines.push(JSON.stringify(r))
@@ -95,7 +102,14 @@ export async function runBenchmark(
         toolTrace: [],
         answer: `（查询失败：${msg}）`,
       })
+      markTraceFailed(trace, {
+        stage: trace.failure?.stage ?? 'runner',
+        message: msg,
+        round: trace.failure?.round,
+        toolCallId: trace.failure?.toolCallId,
+      })
     }
+    appendFileSync(tracePath, `${serializeTrace(trace, [config.apiKey])}\n`, 'utf-8')
   }
 
   writeFileSync(jsonlPath, lines.join('\n') + '\n', 'utf-8')
@@ -139,6 +153,7 @@ export async function runBenchmark(
     metaPath,
     answersPath,
     injectedPath,
+    tracePath,
     elapsedMs: Date.now() - started,
   }
 }

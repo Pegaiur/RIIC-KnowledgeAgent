@@ -7,6 +7,7 @@ import { FACTS_FIXTURES } from '../src/facts/fixtures.js'
 import type { ProviderResult } from '../src/types.js'
 import type { DocChunk } from '../src/types.js'
 import type { RecordCard } from '../src/facts/card.js'
+import { createQueryTrace } from '../src/trace.js'
 
 const { mockCall } = vi.hoisted(() => ({ mockCall: vi.fn() }))
 vi.mock('../src/provider.js', () => ({ callLLM: mockCall }))
@@ -257,6 +258,31 @@ describe('runQuery（facts 模式）', () => {
     expect(result.finalAnswer).toBe('刻俄柏 制造站仓库上限+8')
     expect(result.toolTrace[0]).toEqual(['lookup'])
     expect(result.records[0].tools).toEqual(['lookup'])
+  })
+
+  it('trace 记录 facts 的实际参数与 canonical 命中/注入 ID', async () => {
+    const config = loadConfig()
+    config.retriever = 'facts'
+    config.maxRounds = 1
+    const index = buildIndex(chunks)
+    const query = { id: 'TRACE-FACTS', category: 'fact' as const, question: '刻俄柏有什么技能？' }
+    const trace = createQueryTrace(query)
+
+    mockCall
+      .mockResolvedValueOnce(providerResult({ toolCalls: [{ ...toolCall('lookup', '{"term":"刻俄柏"}') } as any] }))
+      .mockResolvedValueOnce(providerResult({ content: '最终答案' }))
+
+    await runQuery(query, { config, thinking: 'off', dry: false, trace }, chunks, index)
+
+    expect(trace.events[1]).toMatchObject({
+      type: 'tool_call',
+      tool: 'lookup',
+      rawArguments: '{"term":"刻俄柏"}',
+      actualParams: { term: '刻俄柏' },
+      hitIds: ['刻俄柏'],
+      injectedIds: ['刻俄柏'],
+    })
+    expect((trace.events[1] as { writtenContent: string }).writtenContent).toContain('【刻俄柏】')
   })
 
   it('facts 模式同时支持 query_operators 派发', async () => {
