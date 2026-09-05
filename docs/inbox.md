@@ -30,6 +30,3 @@
 <!-- 完成后标记 [x]，发版时清理已完成条目；定期（如每季度）治理重估：确认暂缓原因仍成立、路由目标未悬空 -->
 
 - [x] **Agent 单题执行记录** — 保存逐轮 LLM 响应、工具原始与实际参数、命中及注入结果和失败位置，支持人工复盘；首版聚焦行为中立的 `trace.jsonl`，工具重构与自动诊断报告后移 — 2026-09-04 — → `docs/plan-agent-trace-observability.md`
-- [ ] **Agent 高 ROI 调优评估** — 两轮 trace 评估及六轮温度对照已完成，暂不切换默认温度；方案 1 已转独立实施计划，facts 路由和答案证据约束继续由草案评估 — 2026-09-05 — → `docs/draft-agent-tuning-roi.md`
-- [ ] **Agent 请求阶段工具约束** — 先在查询额度耗尽后撤掉工具，再单独验证 Qwen 非思考模式的强制首检；保留执行侧预算检查，按两个增量核查调用与答案质量 — 2026-09-05 — → `docs/plan-agent-tool-request-policy.md`
-- [ ] **Agent 单请求执行与成本模型评估** — 区分客户端多轮、服务端托管循环与检索前置的单次生成；核查 Qwen Responses/MCP、缓存计费及既有逐轮开销后选择迁移方向 — 2026-09-05 — → `docs/draft-agent-single-request.md`
