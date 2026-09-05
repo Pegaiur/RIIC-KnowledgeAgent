@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { aggregate, renderMarkdown } from '../src/report.js'
+import { aggregate, renderCsv, renderMarkdown } from '../src/report.js'
 import type { CostRecord } from '../src/types.js'
 
 function rec(partial: Partial<CostRecord>): CostRecord {
@@ -79,6 +79,32 @@ describe('report：聚合与渲染', () => {
     expect(report.costComplete).toBe(false)
     expect(report.toolStats).toEqual({ batches: 1, requested: 3, granted: 2, executed: 2, denied: 1, errors: 0, resultChars: 120 })
     expect(renderMarkdown(report)).toContain('费用状态：不完整')
+  })
+
+  it('部分 usage 仍汇总已知费用，并把重试未知用量标为不完整', () => {
+    const report = aggregate([rec({
+      input: null,
+      output: 1000,
+      costIn: null,
+      costOut: 0.0008,
+      costTotal: null,
+      usageCompleteness: 'partial',
+      httpAttempts: [{
+        attempt: 1,
+        status: 503,
+        outcome: 'retry',
+        usage: { input: null, output: null, cached: 0, reasoning: 0, completeness: 'unknown' },
+      }],
+    })])
+
+    expect(report.totalCostOut).toBe(0.0008)
+    expect(report.totalCost).toBe(0.0008)
+    expect(report.byQuery[0]?.costTotal).toBe(0.0008)
+    expect(report.incompleteUsageCalls).toBe(1)
+    expect(report.unknownUsageCalls).toBe(1)
+    expect(report.costComplete).toBe(false)
+    expect(renderCsv(report)).toContain('costComplete')
+    expect(renderCsv(report)).toContain('false')
   })
 
   it('双工具模式统计工具调用次数（按调用计数）', () => {

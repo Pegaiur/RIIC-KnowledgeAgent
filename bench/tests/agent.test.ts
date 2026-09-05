@@ -343,6 +343,46 @@ describe('runQuery：trace 事件记录', () => {
     expect(trace.events.map((event) => event.type)).toEqual(['llm_call', 'control', 'llm_call'])
   })
 
+  it('provider 协议失败已观察 usage 时也写入失败记录和 HTTP 台账', async () => {
+    const config = loadConfig()
+    const query = { id: 'FAIL-USAGE-1', category: 'fact' as const, question: '协议失败保留用量' }
+    const trace = createQueryTrace(query)
+    const failure = Object.assign(new Error('响应无 choices'), {
+      providerFailure: true,
+      usage: { input: 123, output: 45, cached: 0, reasoning: 0, completeness: 'complete' as const },
+      model: 'qwen',
+      httpAttempts: [{
+        attempt: 1,
+        status: 200,
+        outcome: 'accepted' as const,
+        usage: { input: 123, output: 45, cached: 0, reasoning: 0, completeness: 'complete' as const },
+      }],
+    })
+    mockCall.mockRejectedValueOnce(failure)
+
+    const result = await runQuery(query, { config, thinking: 'off', dry: false, trace }, chunks, buildIndex(chunks))
+
+    expect(result.status).toBe('failed')
+    expect(result.records).toHaveLength(1)
+    expect(result.records[0]).toMatchObject({ input: 123, output: 45, httpAttempts: [{ attempt: 1, status: 200 }] })
+    expect(trace.events[0]).toMatchObject({ usage: { input: 123, output: 45 }, httpAttempts: [{ attempt: 1 }] })
+  })
+
+  it('工具批次统计不依赖 trace，参数错误也计入 errors', async () => {
+    const config = loadConfig()
+    config.feedbackOnNoToolAnswer = false
+    const query = { id: 'METRIC-NO-TRACE', category: 'fact' as const, question: '统计不依赖 trace' }
+    mockCall
+      .mockResolvedValueOnce(providerResult({ toolCalls: [{ id: 'invalid', name: 'knowledge', arguments: '{"operation":"rag_search","params":{}}' }] }))
+      .mockResolvedValueOnce(providerResult({ content: '最终答案' }))
+
+    const result = await runQuery(query, { config, thinking: 'off', dry: false }, chunks, buildIndex(chunks))
+    const batch = result.records[0]?.toolBatch
+
+    expect(batch?.errors).toBe(1)
+    expect(batch?.resultChars).toBeGreaterThan(0)
+  })
+
   it('单题总超时返回 cancelled，不启动新的模型步骤', async () => {
     const config = loadConfig()
     config.toolBudget = 5

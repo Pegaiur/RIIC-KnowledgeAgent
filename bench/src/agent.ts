@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { loadConfig, validateBenchConfig, type BenchConfig, type RetrieverId } from './config.js'
 import type { IndexEntry } from './retriever.js'
-import type { DocChunk, BenchQuery, CostRecord, TerminationReason, ThinkingMode, ToolBatchStats, ToolId } from './types.js'
+import type { DocChunk, BenchQuery, CostRecord, HttpAttempt, LlmUsage, TerminationReason, ThinkingMode, ToolBatchStats, ToolId } from './types.js'
 import { callLLM, type ChatMessage, type ProviderOptions } from './provider.js'
 import { computeCosts } from './pricing.js'
 import { isRetrievalTool, isFactTool } from './types.js'
@@ -144,9 +144,26 @@ export async function runQuery(
       try {
         resp = await awaitWithAbort(callLLM(messages, offeredTools, providerOpts), sessionController.signal)
       } catch (error) {
+        const providerFailure = readProviderFailure(error)
         if (llmEvent) {
           llmEvent.elapsedMs = Date.now() - llmStarted
           llmEvent.error = errorMessage(error)
+          if (providerFailure) {
+            llmEvent.usage = providerFailure.usage
+            llmEvent.httpAttempts = providerFailure.httpAttempts
+          }
+        }
+        if (providerFailure && providerFailure.httpAttempts.length > 0) {
+          records.push(createCostRecord(
+            query,
+            rounds,
+            opts,
+            config,
+            providerFailure.usage,
+            providerFailure.model,
+            false,
+            providerFailure.httpAttempts,
+          ))
         }
         const reason = timedOut ? 'timeout' : 'llm_error'
         throw new AgentExecutionError(errorMessage(error), reason, timedOut ? 'timeout' : 'llm')
@@ -154,6 +171,7 @@ export async function runQuery(
       if (llmEvent) {
         llmEvent.elapsedMs = Date.now() - llmStarted
         llmEvent.usage = resp.usage
+        llmEvent.httpAttempts = resp.httpAttempts
         llmEvent.truncated = resp.truncated
         llmEvent.content = resp.content
         llmEvent.toolCalls = resp.toolCalls
@@ -181,6 +199,7 @@ export async function runQuery(
         usageCompleteness: resp.usage.completeness,
         truncated: resp.truncated,
         tools: requestedTools.length > 0 ? requestedTools : undefined,
+        httpAttempts: resp.httpAttempts,
       }
       records.push(record)
 
@@ -220,7 +239,7 @@ export async function runQuery(
           granted: batch.results.filter((item) => item.status !== 'budget_exhausted').length,
           executed: batch.results.filter((item) => item.executed).length,
           denied: batch.results.filter((item) => item.status === 'budget_exhausted').length,
-          errors: batch.results.filter((item) => item.status === 'error').length,
+          errors: batch.results.filter((item) => isToolErrorStatus(item.status)).length,
           budgetBefore: budgetBefore.remaining,
           budgetAfter: batch.snapshot.remaining,
           resultChars: 0,
@@ -246,14 +265,14 @@ export async function runQuery(
               }
             : undefined
           const writtenContent = serializeToolResult(item)
+          toolBatch.resultChars += writtenContent.length
           if (toolEvent) {
             toolEvent.actualParams = item.actualParams
             toolEvent.hitIds = item.hitIds
             toolEvent.injectedIds = item.injectedIds
             toolEvent.writtenContent = writtenContent
             toolEvent.reason = item.message
-            toolBatch.resultChars += writtenContent.length
-            if (item.status === 'error') toolEvent.error = item.message
+            if (isToolErrorStatus(item.status)) toolEvent.error = item.message
             opts.trace?.events.push(toolEvent)
           }
           pendingMessages.push({ role: 'tool', tool_call_id: item.callId, content: writtenContent })
@@ -335,6 +354,61 @@ export async function runQuery(
     budget,
     feedbackUsed,
   }
+}
+
+interface ProviderFailureLike {
+  usage: LlmUsage
+  model: string
+  httpAttempts: HttpAttempt[]
+}
+
+function readProviderFailure(error: unknown): ProviderFailureLike | undefined {
+  if (typeof error !== 'object' || error === null) return undefined
+  const value = error as Partial<ProviderFailureLike> & { providerFailure?: unknown }
+  if (value.providerFailure !== true || !value.usage || typeof value.model !== 'string' || !Array.isArray(value.httpAttempts)) {
+    return undefined
+  }
+  return {
+    usage: value.usage,
+    model: value.model,
+    httpAttempts: value.httpAttempts,
+  }
+}
+
+function createCostRecord(
+  query: BenchQuery,
+  round: number,
+  opts: AgentOptions,
+  config: BenchConfig,
+  usage: LlmUsage,
+  model: string,
+  truncated: boolean,
+  httpAttempts?: HttpAttempt[],
+): CostRecord {
+  const costs = computeCosts(usage.input, usage.output, usage.cached, config.prices)
+  return {
+    ts: new Date().toISOString(),
+    queryId: query.id,
+    category: query.category,
+    round,
+    thinking: opts.thinking,
+    provider: config.provider,
+    model,
+    input: usage.input,
+    output: usage.output,
+    cached: usage.cached,
+    reasoning: usage.reasoning,
+    costIn: costs.costIn,
+    costOut: costs.costOut,
+    costTotal: costs.costTotal,
+    usageCompleteness: usage.completeness,
+    truncated,
+    httpAttempts,
+  }
+}
+
+function isToolErrorStatus(status: ToolExecutionResult['status']): boolean {
+  return status === 'invalid_params' || status === 'unknown_operation' || status === 'error'
 }
 
 function operationFromCall(call: { name: string; arguments: string }): string | undefined {

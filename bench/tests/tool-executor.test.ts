@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { loadConfig } from '../src/config.js'
 import { buildIndex } from '../src/retriever.js'
 import type { DocChunk, ToolCall } from '../src/types.js'
-import { createKnowledgeToolExecutor, knowledgeTool } from '../src/tool-executor.js'
+import { createKnowledgeToolExecutor, knowledgeTool, serializeToolResult } from '../src/tool-executor.js'
 
 const chunks: DocChunk[] = [
   {
@@ -33,12 +33,28 @@ describe('knowledge schema', () => {
   ] as const)('%s 只暴露当前模式允许的 operation', (retriever, operations) => {
     const fn = knowledgeTool(retriever).function as {
       name: string
-      parameters: { required: string[]; properties: { operation: { enum: string[] } } }
+      parameters: { required: string[]; properties: { operation: { enum: string[] }; params: { oneOf: Array<{ properties?: Record<string, unknown>; required?: string[] }> } } }
     }
 
     expect(fn.name).toBe('knowledge')
     expect(fn.parameters.required).toEqual(['operation', 'params'])
     expect(fn.parameters.properties.operation.enum).toEqual(operations)
+    expect(fn.parameters.properties.params.oneOf.length).toBeGreaterThanOrEqual(operations.length)
+  })
+
+  it('分类查询 schema 显式暴露过滤字段与正向条件约束', () => {
+    const fn = knowledgeTool('facts').function as {
+      parameters: { properties: { params: { oneOf: Array<{ properties: Record<string, unknown>; description: string }> } } }
+    }
+    const queryOperators = fn.parameters.properties.params.oneOf.find((branch) => branch.description.includes('query_operators'))
+    expect(queryOperators?.properties).toEqual(expect.objectContaining({
+      room: expect.any(Object),
+      faction: expect.any(Object),
+      profession: expect.any(Object),
+      termQuery: expect.any(Object),
+      excludeIds: expect.any(Object),
+    }))
+    expect(queryOperators?.description).toContain('至少一个正向分类条件')
   })
 })
 
@@ -77,6 +93,8 @@ describe('knowledge executor：按批次预占工具预算', () => {
     expect(result.results.slice(5).map((item) => item.status)).toEqual(['budget_exhausted', 'budget_exhausted'])
     expect(result.snapshot.used).toBe(5)
     expect(result.snapshot.executed).toBe(5)
+    expect(result.results[4]?.message).toContain('依据已有证据作答')
+    expect(JSON.parse(serializeToolResult(result.results[4]!))).toMatchObject({ message: expect.stringContaining('依据已有证据作答') })
   })
 
   it('未知 operation 和无效参数占用积分但不执行底层检索', async () => {

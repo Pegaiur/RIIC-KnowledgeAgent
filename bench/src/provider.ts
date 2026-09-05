@@ -10,7 +10,7 @@
  *   / completion_tokens_details.reasoning_tokens
  */
 import type { BenchConfig } from './config.js'
-import type { LlmUsage, ProviderResult, ThinkingMode, ToolCall, UsageCompleteness } from './types.js'
+import type { HttpAttempt, LlmUsage, ProviderResult, ThinkingMode, ToolCall, UsageCompleteness } from './types.js'
 import { acquireRateLimitToken } from './rate-limiter.js'
 
 export interface ProviderOptions {
@@ -79,22 +79,28 @@ export async function callLLM(
 
   const body = buildChatBody(messages, tools, opts)
 
-  const res = await fetchWithRetry(`${baseUrl}${chatPath}`, {
+  const fetched = await fetchWithRetry(`${baseUrl}${chatPath}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify(body),
-  }, opts.config.providerLabel, opts.signal)
+  }, opts.config.providerLabel, model, opts.signal)
 
-  const data = (await res.json()) as Record<string, any>
+  const data = fetched.data
+  const usage = parseUsage(data.usage)
+  const responseModel = data.model ?? model
   const choice = data.choices?.[0]
   if (!choice) {
-    throw new Error(`${opts.config.providerLabel} 响应无 choices：${JSON.stringify(data).slice(0, 400)}`)
+    throw new ProviderCallError(
+      `${opts.config.providerLabel} 响应无 choices：${JSON.stringify(data).slice(0, 400)}`,
+      usage,
+      responseModel,
+      fetched.attempts,
+    )
   }
   const msg = choice.message ?? {}
-  const usage = parseUsage(data.usage)
 
   const toolCalls: ToolCall[] = Array.isArray(msg.tool_calls)
     ? msg.tool_calls.map((tc: any) => ({
@@ -109,8 +115,9 @@ export async function callLLM(
     reasoning: typeof msg.reasoning_content === 'string' ? msg.reasoning_content : null,
     toolCalls,
     usage,
-    model: data.model ?? model,
+    model: responseModel,
     truncated: choice.finish_reason === 'length',
+    httpAttempts: fetched.attempts,
   }
 }
 
@@ -120,43 +127,99 @@ const BACKOFF_BASE_MS = 1000
 /** 可重试的状态码（限流 / 服务器瞬时故障）；其余 4xx/5xx 视为不可重试 */
 const RETRYABLE_STATUS = new Set([408, 425, 429, 500, 502, 503, 504])
 
-/** 网络调用：令牌桶限流 + 指数退避重试 + 尊重 Retry-After */
-async function fetchWithRetry(url: string, init: RequestInit, label: string, signal?: AbortSignal): Promise<Response> {
+interface FetchedResponse {
+  data: Record<string, any>
+  attempts: HttpAttempt[]
+}
+
+/** 网络调用：令牌桶限流 + 指数退避重试 + 尊重 Retry-After；正文消费结束前不清理请求信号。 */
+async function fetchWithRetry(
+  url: string,
+  init: RequestInit,
+  label: string,
+  model: string,
+  signal?: AbortSignal,
+): Promise<FetchedResponse> {
   let lastErr: unknown
+  let lastUsage: LlmUsage = unknownUsage()
+  const attempts: HttpAttempt[] = []
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     // 限流：每次请求前先取令牌；dry 模式不会走到这里
     await acquireRateLimitToken(signal)
 
-    let res: Response
     const request = requestSignal(signal)
     try {
-      res = await fetch(url, { ...init, signal: request.signal })
+      const res = await fetch(url, { ...init, signal: request.signal })
+      // Response 返回只代表响应头到达；保持 request signal 到正文消费完成。
+      const text = await res.text()
+      const data = parseJsonObject(text)
+      const usage = parseUsage(data.usage)
+      lastUsage = usage
+      if (res.ok) {
+        attempts.push({ attempt, status: res.status, outcome: 'accepted', usage })
+        request.cleanup()
+        return { data, attempts }
+      }
+
+      const retryable = RETRYABLE_STATUS.has(res.status)
+      const message = `LLM API 返回 ${res.status}（${retryable ? '可重试' : '不可重试'}）：${text.slice(0, retryable ? 200 : 400)}`
+      attempts.push({ attempt, status: res.status, outcome: retryable ? 'retry' : 'failed', usage, error: message })
+      lastErr = new Error(message)
+      request.cleanup()
+      if (retryable) {
+        if (attempt === MAX_ATTEMPTS) break
+        const retryAfterMs = parseRetryAfter(res)
+        await sleep(retryAfterMs ?? BACKOFF_BASE_MS * 2 ** (attempt - 1), signal)
+        continue
+      }
+      throw new ProviderCallError(message, usage, model, attempts)
     } catch (err) {
-      if (signal?.aborted) throw abortError(signal)
-      // 网络错误 / 超时：可重试
-      lastErr = err instanceof Error && err.name === 'TimeoutError' ? new Error(`${label} 请求超时`) : err
+      request.cleanup()
+      if (err instanceof ProviderCallError) throw err
+      const aborted = request.signal.aborted || signal?.aborted
+      const error = aborted
+        ? abortError(signal ?? request.signal)
+        : err instanceof Error && err.name === 'TimeoutError'
+          ? new Error(`${label} 请求超时`)
+          : err
+      attempts.push({
+        attempt,
+        status: null,
+        outcome: aborted ? 'aborted' : 'failed',
+        usage: unknownUsage(),
+        error: error instanceof Error ? error.message : String(error),
+      })
+      if (signal?.aborted) throw new ProviderCallError(errorMessage(error), unknownUsage(), model, attempts)
+      lastErr = error
       if (attempt === MAX_ATTEMPTS) break
       await sleep(BACKOFF_BASE_MS * 2 ** (attempt - 1), signal)
-      continue
-    } finally {
-      request.cleanup()
     }
-
-    if (res.ok) return res
-    const text = await res.text().catch(() => '')
-    if (RETRYABLE_STATUS.has(res.status)) {
-      lastErr = new Error(`LLM API 返回 ${res.status}（可重试）：${text.slice(0, 200)}`)
-      if (attempt === MAX_ATTEMPTS) break
-      const retryAfterMs = parseRetryAfter(res)
-      await sleep(retryAfterMs ?? BACKOFF_BASE_MS * 2 ** (attempt - 1), signal)
-      continue
-    }
-    // 永久错误（参数 / 鉴权 / 不存在等）：不重试，直接失败
-    throw new Error(`LLM API 返回 ${res.status}（不可重试）：${text.slice(0, 400)}`)
   }
-  throw new Error(
+  throw new ProviderCallError(
     `LLM 调用失败（重试 ${MAX_ATTEMPTS} 次后仍失败）：${lastErr instanceof Error ? lastErr.message : String(lastErr)}`,
+    lastUsage,
+    model,
+    attempts,
   )
+}
+
+function parseJsonObject(text: string): Record<string, any> {
+  try {
+    const value = JSON.parse(text) as unknown
+    return typeof value === 'object' && value !== null && !Array.isArray(value)
+      ? value as Record<string, any>
+      : {}
+  } catch {
+    return {}
+  }
+}
+
+function unknownUsage(): LlmUsage {
+  return { input: null, output: null, cached: 0, reasoning: 0, completeness: 'unknown' }
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
 }
 
 /** 解析 Retry-After（秒数或 HTTP 日期）为毫秒；无法解析返回 null */
@@ -183,6 +246,21 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
     }
     signal?.addEventListener('abort', onAbort, { once: true })
   })
+}
+
+/** provider 已经发起请求但无法交付可用模型结果时的公开失败台账。 */
+export class ProviderCallError extends Error {
+  readonly providerFailure = true
+
+  constructor(
+    message: string,
+    readonly usage: LlmUsage,
+    readonly model: string,
+    readonly httpAttempts: HttpAttempt[],
+  ) {
+    super(message)
+    this.name = 'ProviderCallError'
+  }
 }
 
 function requestSignal(sessionSignal?: AbortSignal): { signal: AbortSignal; cleanup: () => void } {

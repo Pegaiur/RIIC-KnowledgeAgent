@@ -13,6 +13,7 @@ export interface QueryAgg {
   costOut: number
   costIn: number
   costTotal: number
+  costComplete: boolean
   truncated: number
 }
 
@@ -42,6 +43,8 @@ export interface BenchReport {
   incompleteUsageCalls: number
   unknownUsageCalls: number
   costComplete: boolean
+  totalHttpAttempts: number
+  retryAttempts: number
   byQuery: QueryAgg[]
   byThinking: ThinkingAgg[]
   byProvider: ProviderAgg[]
@@ -81,6 +84,15 @@ export interface ToolStatsAgg {
 }
 
 const sum = (vals: Array<number | null | undefined>): number => vals.reduce<number>((a, c) => a + (c ?? 0), 0)
+const knownCost = (record: CostRecord): number => (record.costIn ?? 0) + (record.costOut ?? 0)
+const attemptIncomplete = (record: CostRecord): boolean =>
+  (record.httpAttempts ?? []).some((attempt) => attempt.usage.completeness !== 'complete')
+const recordIncomplete = (record: CostRecord): boolean =>
+  record.usageCompleteness !== 'complete' || attemptIncomplete(record)
+const recordUnknown = (record: CostRecord): boolean =>
+  !record.usageCompleteness
+  || record.usageCompleteness === 'unknown'
+  || (record.httpAttempts ?? []).some((attempt) => !attempt.usage.completeness || attempt.usage.completeness === 'unknown')
 const mean = (vals: number[]) => (vals.length ? sum(vals) / vals.length : 0)
 const p95 = (vals: number[]) => {
   if (!vals.length) return 0
@@ -111,7 +123,8 @@ export function aggregate(records: CostRecord[]): BenchReport {
       inputTokens: sum(list.map((r) => r.input)),
       costOut: sum(list.map((r) => r.costOut)),
       costIn: sum(list.map((r) => r.costIn)),
-      costTotal: sum(list.map((r) => r.costTotal)),
+      costTotal: sum(list.map(knownCost)),
+      costComplete: list.length > 0 && list.every((r) => !recordIncomplete(r) && r.costTotal !== null),
       truncated: list.filter((r) => r.truncated).length,
     }
   })
@@ -138,7 +151,7 @@ export function aggregate(records: CostRecord[]): BenchReport {
       inputTokens: sum(list.map((r) => r.input)),
       costOut: sum(list.map((r) => r.costOut)),
       costIn: sum(list.map((r) => r.costIn)),
-      costTotal: sum(list.map((r) => r.costTotal)),
+      costTotal: sum(list.map(knownCost)),
     }
   })
 
@@ -166,7 +179,7 @@ export function aggregate(records: CostRecord[]): BenchReport {
       inputTokens: sum(list.map((r) => r.input)),
       costOut: sum(list.map((r) => r.costOut)),
       costIn: sum(list.map((r) => r.costIn)),
-      costTotal: sum(list.map((r) => r.costTotal)),
+      costTotal: sum(list.map(knownCost)),
     }
   })
 
@@ -177,11 +190,13 @@ export function aggregate(records: CostRecord[]): BenchReport {
     totalOutput: sum(records.map((r) => r.output)),
     totalCostIn: sum(records.map((r) => r.costIn)),
     totalCostOut: sum(records.map((r) => r.costOut)),
-    totalCost: sum(records.map((r) => r.costTotal)),
+    totalCost: sum(records.map(knownCost)),
     truncatedCalls: records.filter((r) => r.truncated).length,
-    incompleteUsageCalls: records.filter((r) => r.usageCompleteness !== 'complete').length,
-    unknownUsageCalls: records.filter((r) => !r.usageCompleteness || r.usageCompleteness === 'unknown').length,
-    costComplete: records.every((r) => r.usageCompleteness === 'complete' && r.costTotal !== null),
+    incompleteUsageCalls: records.filter(recordIncomplete).length,
+    unknownUsageCalls: records.filter(recordUnknown).length,
+    costComplete: records.length > 0 && records.every((r) => !recordIncomplete(r) && r.costTotal !== null),
+    totalHttpAttempts: records.reduce((total, record) => total + (record.httpAttempts?.length ?? 0), 0),
+    retryAttempts: records.reduce((total, record) => total + (record.httpAttempts?.filter((attempt) => attempt.outcome === 'retry').length ?? 0), 0),
     byQuery: queryAggs,
     byThinking: thinkingAggs,
     byProvider: providerAggs,
@@ -230,6 +245,7 @@ export function renderMarkdown(report: BenchReport): string {
     `- 总输入 tokens：${report.totalInput.toLocaleString()}｜总输出 tokens：${report.totalOutput.toLocaleString()}`,
     `- 总成本（已知）：¥${f4(report.totalCost)}（输入 ¥${f4(report.totalCostIn)} + 输出 ¥${f4(report.totalCostOut)}）`,
     `- 费用状态：${report.costComplete ? '完整' : '不完整'}｜不完整 usage 调用：${report.incompleteUsageCalls}｜用量未知调用：${report.unknownUsageCalls}`,
+    `- HTTP 尝试：${report.totalHttpAttempts}｜重试：${report.retryAttempts}`,
     `- 每查询输出 tokens：均值 ${avgOut}｜P95 ${p95Out.toLocaleString()}`,
     `- 工具批次：${report.toolStats.batches}｜提出 ${report.toolStats.requested}｜准入 ${report.toolStats.granted}｜执行 ${report.toolStats.executed}｜拒绝 ${report.toolStats.denied}｜错误 ${report.toolStats.errors}`,
     ...(report.toolUsage.length > 0
@@ -247,11 +263,11 @@ export function renderMarkdown(report: BenchReport): string {
     '',
     '## 按查询',
     '',
-    '| 查询 ID | 类目 | 轮数 | 输出 tokens | 思考 tokens | 输出费用(元) | 总费用(元) | 截断 |',
-    '|---------|------|------|-------------|-------------|--------------|------------|------|',
+    '| 查询 ID | 类目 | 轮数 | 输出 tokens | 思考 tokens | 输出费用(元) | 总费用(元) | 费用完整 | 截断 |',
+    '|---------|------|------|-------------|-------------|--------------|------------|----------|------|',
     ...report.byQuery.map(
       (q) =>
-        `| ${q.queryId} | ${q.category} | ${q.rounds} | ${q.outputTokens} | ${q.reasoningTokens} | ${f4(q.costOut)} | ${f4(q.costTotal)} | ${q.truncated} |`,
+        `| ${q.queryId} | ${q.category} | ${q.rounds} | ${q.outputTokens} | ${q.reasoningTokens} | ${f4(q.costOut)} | ${f4(q.costTotal)} | ${q.costComplete} | ${q.truncated} |`,
     ),
     '',
   ]
@@ -260,10 +276,10 @@ export function renderMarkdown(report: BenchReport): string {
 
 /** 渲染 CSV（每查询一行） */
 export function renderCsv(report: BenchReport): string {
-  const header = 'queryId,category,rounds,outputTokens,reasoningTokens,inputTokens,costOut,costIn,costTotal,truncated'
+  const header = 'queryId,category,rounds,outputTokens,reasoningTokens,inputTokens,costOut,costIn,costTotal,costComplete,truncated'
   const rows = report.byQuery.map(
     (q) =>
-      `${q.queryId},${q.category},${q.rounds},${q.outputTokens},${q.reasoningTokens},${q.inputTokens},${q.costOut},${q.costIn},${q.costTotal},${q.truncated}`,
+      `${q.queryId},${q.category},${q.rounds},${q.outputTokens},${q.reasoningTokens},${q.inputTokens},${q.costOut},${q.costIn},${q.costTotal},${q.costComplete},${q.truncated}`,
   )
   return [header, ...rows].join('\n')
 }

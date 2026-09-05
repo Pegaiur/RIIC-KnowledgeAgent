@@ -81,6 +81,8 @@ export async function runBenchmark(
   let toolCallsDenied = 0
   let toolErrors = 0
   let toolResultChars = 0
+  let httpAttempts = 0
+  let retryAttempts = 0
   let feedbackUsed = 0
   const terminationReasons: Partial<Record<TerminationReason, number>> = {}
 
@@ -98,6 +100,8 @@ export async function runBenchmark(
       feedbackUsed += result.feedbackUsed ? 1 : 0
       terminationReasons[result.terminationReason] = (terminationReasons[result.terminationReason] ?? 0) + 1
       for (const r of result.records) {
+        httpAttempts += r.httpAttempts?.length ?? 0
+        retryAttempts += r.httpAttempts?.filter((attempt) => attempt.outcome === 'retry').length ?? 0
         if (r.toolBatch) {
           toolCallsGranted += r.toolBatch.granted
           toolErrors += r.toolBatch.errors
@@ -213,6 +217,8 @@ export async function runBenchmark(
         toolCallsDenied,
         toolErrors,
         toolResultChars,
+        httpAttempts,
+        retryAttempts,
         feedbackUsed,
         terminationReasons,
         elapsedMs: Date.now() - started,

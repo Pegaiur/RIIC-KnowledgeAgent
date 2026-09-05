@@ -2,7 +2,7 @@
  * Agent 单题执行记录：只承载人工复盘所需的公开调用事实。
  * 不记录 hidden reasoning、请求 headers 或完整运行配置。
  */
-import type { BenchQuery, LlmUsage, TerminationReason, ToolCall, ToolBatchStats } from './types.js'
+import type { BenchQuery, HttpAttempt, LlmUsage, TerminationReason, ToolCall, ToolBatchStats } from './types.js'
 import type { ToolBudgetState, ToolResultStatus } from './tool-executor.js'
 
 export interface TraceLlmEvent {
@@ -14,6 +14,7 @@ export interface TraceLlmEvent {
   truncated?: boolean
   content?: string | null
   toolCalls?: ToolCall[]
+  httpAttempts?: HttpAttempt[]
   toolBatch?: ToolBatchStats
   error?: string
 }

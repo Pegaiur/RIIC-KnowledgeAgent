@@ -55,6 +55,15 @@ export interface LlmUsage {
   completeness?: UsageCompleteness
 }
 
+/** 单次 HTTP 尝试；重试不能被压扁成一次无状态的模型调用。 */
+export interface HttpAttempt {
+  attempt: number
+  status: number | null
+  outcome: 'accepted' | 'retry' | 'failed' | 'aborted'
+  usage: LlmUsage
+  error?: string
+}
+
 /** 单次 LLM 调用的成本记录（写入 JSONL 的一行） */
 export interface CostRecord {
   /** 基准时间戳（ISO 8601） */
@@ -87,6 +96,8 @@ export interface CostRecord {
   costTotal: number | null
   /** usage 完整性；旧记录缺失时保持不可用而不是回填 complete。 */
   usageCompleteness?: UsageCompleteness
+  /** 本模型步骤的 HTTP 尝试台账；每次重试各占一项。 */
+  httpAttempts?: HttpAttempt[]
   /** 是否因 max_tokens 截断 */
   truncated: boolean
   /** 本轮实际调用的检索工具名（双工具模式下统计；无工具调用则省略） */
@@ -120,6 +131,8 @@ export interface ProviderResult {
   usage: LlmUsage
   model: string
   truncated: boolean
+  /** provider 已观察到的 HTTP 尝试；正常请求通常只有一项。 */
+  httpAttempts?: HttpAttempt[]
 }
 
 /** 检索到的文档片段 */

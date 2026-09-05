@@ -61,6 +61,8 @@ export interface KnowledgeToolExecutor {
   snapshot(): ToolBudgetState
 }
 
+const BUDGET_ANSWER_HINT = '工具预算已用尽，请依据已有证据作答；未覆盖部分明确说明。'
+
 function allowedOperations(retriever: RetrieverId): KnowledgeOperation[] {
   if (retriever === 'hybrid') return ['rag_search', 'lookup', 'query_operators']
   if (retriever === 'facts') return ['lookup', 'query_operators']
@@ -71,19 +73,52 @@ function allowedOperations(retriever: RetrieverId): KnowledgeOperation[] {
 /** 生成唯一的 knowledge schema；模式白名单同时用于本地校验。 */
 export function knowledgeTool(retriever: RetrieverId = 'bm25'): Record<string, unknown> {
   const operations = allowedOperations(retriever)
+  const paramsSchemas = operations.map((operation) => {
+    if (operation === 'rag_search' || operation === 'grep_search') {
+      return {
+        type: 'object',
+        description: `${operation}：使用非空自然语言查询检索语料。`,
+        properties: { query: { type: 'string', minLength: 1, description: '非空检索词或问题' } },
+        required: ['query'],
+        additionalProperties: false,
+      }
+    }
+    if (operation === 'lookup') {
+      return {
+        type: 'object',
+        description: 'lookup：按干员、技能或事实卡名称精确查找。',
+        properties: { term: { type: 'string', minLength: 1, description: '非空干员、技能或事实卡名称' } },
+        required: ['term'],
+        additionalProperties: false,
+      }
+    }
+    return {
+      type: 'object',
+      description: 'query_operators：按至少一个正向分类条件找人，可附带排除 ID。',
+      properties: {
+        room: { type: 'string', minLength: 1, description: '设施/房间分类，例如制造站、贸易站' },
+        faction: { type: 'string', minLength: 1, description: '阵营分类' },
+        profession: { type: 'string', minLength: 1, description: '职业分类' },
+        termQuery: { type: 'string', minLength: 1, description: '名称或技能关键词' },
+        excludeIds: { type: 'array', items: { type: 'string', minLength: 1 }, description: '需要排除的事实卡 canonical ID' },
+      },
+      additionalProperties: false,
+      minProperties: 1,
+    }
+  })
   return {
     type: 'function',
     function: {
       name: 'knowledge',
-      description: '查询明日方舟基建知识库或事实记录卡；一次调用只执行一个 operation。',
+      description: '查询明日方舟基建知识库或事实记录卡；一次调用只执行一个 operation，params 必须匹配该 operation 的参数分支。',
       parameters: {
         type: 'object',
         properties: {
           operation: { type: 'string', enum: operations },
           params: {
             type: 'object',
-            description: 'operation 对应的参数对象；rag_search/grep_search 使用 query，lookup 使用 term，query_operators 使用过滤条件。',
-            additionalProperties: true,
+            description: 'operation 对应的参数对象；按 operation 选择下方唯一匹配的参数分支。query_operators 至少填写一个正向分类字段。',
+            oneOf: paramsSchemas,
           },
         },
         required: ['operation', 'params'],
@@ -180,11 +215,12 @@ async function executeOne(
       operation,
       status,
       executed: true,
-      data: output.data || '（无匹配结果）',
-      budgetRemaining: state.remaining,
-      actualParams: parsed.value,
-      hitIds: output.hitIds,
-      injectedIds: output.injectedIds,
+          data: output.data || '（无匹配结果）',
+          budgetRemaining: state.remaining,
+          actualParams: parsed.value,
+          hitIds: output.hitIds,
+          injectedIds: output.injectedIds,
+          message: state.remaining === 0 ? BUDGET_ANSWER_HINT : undefined,
     }
   } catch (error) {
     return result(
@@ -336,6 +372,6 @@ export function serializeToolResult(item: ToolExecutionResult): string {
     executed: item.executed,
     data: item.data,
     budget_remaining: item.budgetRemaining,
-    ...(item.message && item.status !== 'success' && item.status !== 'empty' ? { message: item.message } : {}),
+    ...(item.message ? { message: item.message } : {}),
   })
 }
