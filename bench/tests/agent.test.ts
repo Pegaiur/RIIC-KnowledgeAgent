@@ -74,6 +74,7 @@ describe('agent：统一 knowledge 工具 schema', () => {
     expect(prompt).toContain('裂响当前是制造站经验散件')
     expect(prompt).toContain('称为“龙舌兰组”')
     expect(prompt).toContain('特殊订单边界')
+    expect(prompt).toContain('每一笔订单分别判断')
   })
 
   it('人工规则只从调用方提供的 AGENTS 内容注入一次', () => {
