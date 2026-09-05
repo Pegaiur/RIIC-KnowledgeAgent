@@ -54,6 +54,7 @@ export function buildChatBody(
   if (config.provider === 'qwen') {
     // Qwen3.7：enable_thinking 控制思考；off 必须显式 false，low/high 开启（暂不细分）
     body.enable_thinking = thinking !== 'off'
+    if (tools && tools.length > 0) body.parallel_tool_calls = true
   } else if (thinking !== 'off') {
     // Hy3：reasoning_effort + thinking.enabled
     body.reasoning_effort = thinking
@@ -242,7 +243,7 @@ function dryUsage(input: number, output: number): LlmUsage {
 }
 
 /**
- * dry 模式：首轮模拟工具调用（rag_search/grep_search，随检索器切换），次轮模拟最终回答。
+ * dry 模式：首轮模拟 knowledge 工具调用，次轮模拟最终回答。
  * 输出确定值便于回归（usage 随轮次递增，模拟真实多轮形态）。
  */
 function dryResult(messages: ChatMessage[], opts: ProviderOptions): ProviderResult {
@@ -253,7 +254,7 @@ function dryResult(messages: ChatMessage[], opts: ProviderOptions): ProviderResu
     if (round === 1) {
       return {
         content: null,
-        toolCalls: [{ id: 'call_dry_1', name: 'lookup', arguments: '{"term":"刻俄柏"}' }],
+        toolCalls: [{ id: 'call_dry_1', name: 'knowledge', arguments: '{"operation":"lookup","params":{"term":"刻俄柏"}}' }],
         usage: dryUsage(6000, 620),
         model,
         truncated,
@@ -262,7 +263,7 @@ function dryResult(messages: ChatMessage[], opts: ProviderOptions): ProviderResu
     if (round === 2) {
       return {
         content: null,
-        toolCalls: [{ id: 'call_dry_2', name: 'query_operators', arguments: '{"room":"制造站"}' }],
+        toolCalls: [{ id: 'call_dry_2', name: 'knowledge', arguments: '{"operation":"query_operators","params":{"room":"制造站"}}' }],
         usage: dryUsage(6000 + round * 1800, 700),
         model,
         truncated,
@@ -280,7 +281,7 @@ function dryResult(messages: ChatMessage[], opts: ProviderOptions): ProviderResu
     if (round === 1) {
       return {
         content: null,
-        toolCalls: [{ id: 'call_dry_1', name: 'rag_search', arguments: '{"query":"发电站 充能机制"}' }],
+        toolCalls: [{ id: 'call_dry_1', name: 'knowledge', arguments: '{"operation":"rag_search","params":{"query":"发电站 充能机制"}}' }],
         usage: dryUsage(6000, 620),
         model,
         truncated,
@@ -289,7 +290,7 @@ function dryResult(messages: ChatMessage[], opts: ProviderOptions): ProviderResu
     if (round === 2) {
       return {
         content: null,
-        toolCalls: [{ id: 'call_dry_2', name: 'lookup', arguments: '{"term":"刻俄柏"}' }],
+        toolCalls: [{ id: 'call_dry_2', name: 'knowledge', arguments: '{"operation":"lookup","params":{"term":"刻俄柏"}}' }],
         usage: dryUsage(6000 + round * 1800, 700),
         model,
         truncated,

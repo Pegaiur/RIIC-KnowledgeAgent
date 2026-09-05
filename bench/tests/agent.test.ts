@@ -4,14 +4,12 @@ import { join } from 'node:path'
 import { describe, expect, it, beforeEach, vi } from 'vitest'
 import {
   buildSystemPrompt,
-  grepSearchTool,
   loadKnowledgeAgentInstructions,
-  MAX_RAG_CALLS,
-  ragSearchTool,
   runQuery,
 } from '../src/agent.js'
 import { buildIndex } from '../src/retriever.js'
 import { loadConfig } from '../src/config.js'
+import { knowledgeTool } from '../src/tool-executor.js'
 import type { ProviderResult } from '../src/types.js'
 import type { DocChunk } from '../src/types.js'
 import { createQueryTrace } from '../src/trace.js'
@@ -19,31 +17,22 @@ import { createQueryTrace } from '../src/trace.js'
 const { mockCall } = vi.hoisted(() => ({ mockCall: vi.fn() }))
 vi.mock('../src/provider.js', () => ({ callLLM: mockCall }))
 
-/** 取工具函数名（OpenAI function calling 的 function.name） */
-function toolName(tool: Record<string, unknown>): string {
-  const fn = tool.function as { name: string }
-  return fn.name
-}
-
-describe('agent：grep/rag 检索工具 schema 拆分', () => {
-  it('rag_search 与 grep_search 为两个独立 schema（函数名不同）', () => {
-    expect(toolName(ragSearchTool())).toBe('rag_search')
-    expect(toolName(grepSearchTool())).toBe('grep_search')
-  })
-
-  it('两个工具均暴露统一的 query 参数结构', () => {
-    for (const tool of [ragSearchTool(), grepSearchTool()]) {
-      const fn = tool.function as { parameters: { required: string[]; properties: Record<string, unknown> } }
-      expect(fn.parameters.required).toEqual(['query'])
-      expect(fn.parameters.properties.query).toBeDefined()
+describe('agent：统一 knowledge 工具 schema', () => {
+  it('只暴露 knowledge，并由 operation 枚举模式能力', () => {
+    const fn = knowledgeTool('hybrid').function as {
+      name: string
+      parameters: { required: string[]; properties: { operation: { enum: string[] }; params: unknown } }
     }
+    expect(fn.name).toBe('knowledge')
+    expect(fn.parameters.required).toEqual(['operation', 'params'])
+    expect(fn.parameters.properties.operation.enum).toEqual(['rag_search', 'lookup', 'query_operators'])
   })
 
   it('所有模式注入同一份决策契约，工具名随检索器切换', () => {
     expect(buildSystemPrompt('grep')).toContain('grep_search')
     expect(buildSystemPrompt('bm25')).toContain('rag_search')
     expect(buildSystemPrompt('grep')).toContain('明日方舟基建查询 Agent 决策契约')
-    expect(buildSystemPrompt('grep')).toContain(`工具调用上限：${MAX_RAG_CALLS} 次`)
+    expect(buildSystemPrompt('grep')).toContain('工具积分预算：5 点')
   })
 
   it.each([
@@ -52,17 +41,19 @@ describe('agent：grep/rag 检索工具 schema 拆分', () => {
     ['both', 'rag_search、grep_search'],
     ['facts', 'lookup、query_operators'],
     ['hybrid', 'rag_search、lookup、query_operators'],
-  ] as const)('%s 模式的能力块精确列出实际工具', (retriever, expectedTools) => {
+  ] as const)('%s 模式的能力块精确列出 operation', (retriever, expectedTools) => {
     const prompt = buildSystemPrompt(retriever, '唯一规则正文')
     const capabilityBlock = prompt.split('## 本次运行能力\n')[1]
-    expect(capabilityBlock).toContain(`- 可用工具：${expectedTools}\n`)
+    expect(capabilityBlock).toContain('- 可用工具：knowledge\n')
+    expect(capabilityBlock).toContain(`- knowledge operation：${expectedTools}\n`)
   })
 
   it('both 模式：运行时能力块列出实际暴露的两个工具', () => {
     const prompt = buildSystemPrompt('both')
     expect(prompt).toContain('rag_search')
     expect(prompt).toContain('grep_search')
-    expect(prompt).toContain('可用工具：rag_search、grep_search')
+    expect(prompt).toContain('可用工具：knowledge')
+    expect(prompt).toContain('knowledge operation：rag_search、grep_search')
   })
 
   it('hybrid 模式：系统提示同时描述 RAG 与 facts 三个工具', () => {
@@ -72,13 +63,15 @@ describe('agent：grep/rag 检索工具 schema 拆分', () => {
     expect(prompt).toContain('rag_search')
     expect(prompt).toContain('lookup')
     expect(prompt).toContain('query_operators')
-    expect(prompt).toContain('可用工具：rag_search、lookup、query_operators')
+    expect(prompt).toContain('可用工具：knowledge')
+    expect(prompt).toContain('knowledge operation：rag_search、lookup、query_operators')
   })
 
   it('人工规则只从调用方提供的 AGENTS 内容注入一次', () => {
     const prompt = buildSystemPrompt('facts', '唯一规则正文')
     expect(prompt.match(/唯一规则正文/g)).toHaveLength(1)
-    expect(prompt).toContain('可用工具：lookup、query_operators')
+    expect(prompt).toContain('可用工具：knowledge')
+    expect(prompt).toContain('knowledge operation：lookup、query_operators')
     expect(prompt).not.toContain('结构化排版')
   })
 
@@ -100,8 +93,14 @@ describe('runQuery：轮次耗尽兜底（末位强制作答轮）', () => {
   ]
 
   function toolCall(name: string, args = '{"query":"红松林 经验"}') {
-    // ToolCall 为扁平形状（provider 层已把 OpenAI 原始 function.name 摊平），mock 直接对齐
-    return { id: 'call_1', name, arguments: args }
+    let params: Record<string, unknown> = {}
+    try {
+      const parsed = JSON.parse(args) as unknown
+      if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) params = parsed as Record<string, unknown>
+    } catch {
+      // 保留空参数，让统一执行器返回结构化参数错误。
+    }
+    return { id: 'call_1', name: 'knowledge', arguments: JSON.stringify({ operation: name, params }) }
   }
 
   function providerResult(partial: Partial<ProviderResult>): ProviderResult {
@@ -119,7 +118,6 @@ describe('runQuery：轮次耗尽兜底（末位强制作答轮）', () => {
 
   it('优先使用单次基准运行传入的 AGENTS 快照', async () => {
     const config = loadConfig()
-    config.minRagCalls = 0
     const index = buildIndex(chunks)
     mockCall.mockResolvedValueOnce(providerResult({ content: '答案' }))
 
@@ -134,12 +132,12 @@ describe('runQuery：轮次耗尽兜底（末位强制作答轮）', () => {
     expect(messages[0]?.content).toContain('固定契约快照')
   })
 
-  it('maxRounds 轮内模型持续请求工具，末位兜底轮不再暴露工具并产出最终答案', async () => {
+  it('工具预算内模型持续请求工具，预算归零后仍暴露 knowledge 并产出最终答案', async () => {
     const config = loadConfig()
-    config.maxRounds = 3
+    config.toolBudget = 5
     const index = buildIndex(chunks)
 
-    // 前 3 轮均返回工具调用；第 4 轮（兜底，空工具集）返回最终回答
+    // 前 3 轮均返回工具调用；第 4 轮仍暴露 knowledge，返回最终回答
     mockCall
       .mockResolvedValueOnce(providerResult({ toolCalls: [{ ...toolCall('rag_search') } as any] }))
       .mockResolvedValueOnce(providerResult({ toolCalls: [{ ...toolCall('grep_search') } as any] }))
@@ -153,19 +151,16 @@ describe('runQuery：轮次耗尽兜底（末位强制作答轮）', () => {
       index,
     )
 
-    // 兜底轮收到空工具集（不再暴露 rag/grep），必然产出文本答案 → finalAnswer 必非 null
     expect(result.finalAnswer).toBe('灰毫 126% 最终答案')
-    expect(result.rounds).toBe(4) // 3 检索轮 + 1 兜底轮
-    // 兜底轮请求时 tools 应为空数组
+    expect(result.rounds).toBe(4)
     const fallbackArgs = mockCall.mock.calls[3]?.[1] ?? null
-    expect(fallbackArgs).toEqual([])
-    // 注入记录：rag 与 grep 各成功注入同一块（去重），第 3 次检索超上限不注入
+    expect(fallbackArgs).toMatchObject([{ function: { name: 'knowledge' } }])
     expect(result.injectedIds).toEqual(['2-体系/红松林经验.md#制造站'])
   })
 
   it('模型在某轮直接作答（无工具调用），不会多余跑兜底轮', async () => {
     const config = loadConfig()
-    config.maxRounds = 3
+    config.toolBudget = 5
     const index = buildIndex(chunks)
 
     mockCall
@@ -186,8 +181,14 @@ describe('runQuery：轮次耗尽兜底（末位强制作答轮）', () => {
 
 describe('runQuery：注入片段记录（injectedIds）', () => {
   function toolCall(name: string, args = '{"query":"甲乙"}') {
-    // ToolCall 为扁平形状（provider 层已把 OpenAI 原始 function.name 摊平），mock 直接对齐
-    return { id: 'call_1', name, arguments: args }
+    let params: Record<string, unknown> = {}
+    try {
+      const parsed = JSON.parse(args) as unknown
+      if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) params = parsed as Record<string, unknown>
+    } catch {
+      // 保留空参数，让统一执行器返回结构化参数错误。
+    }
+    return { id: 'call_1', name: 'knowledge', arguments: JSON.stringify({ operation: name, params }) }
   }
 
   function providerResult(partial: Partial<ProviderResult>): ProviderResult {
@@ -269,14 +270,13 @@ describe('runQuery：trace 事件记录', () => {
 
   it('记录 LLM、工具和实际回写文本，并保留参数回退原因', async () => {
     const config = loadConfig()
-    config.minRagCalls = 1
-    config.maxRounds = 1
+    config.toolBudget = 5
     const query = { id: 'TRACE-1', category: 'fact' as const, question: '原始问题' }
     const trace = createQueryTrace(query)
     const index = buildIndex(chunks)
 
     mockCall
-      .mockResolvedValueOnce(providerResult({ toolCalls: [{ id: 'call_trace', name: 'rag_search', arguments: '{' }] }))
+      .mockResolvedValueOnce(providerResult({ toolCalls: [{ id: 'call_trace', name: 'knowledge', arguments: '{"operation":"rag_search","params":{}}' }] }))
       .mockResolvedValueOnce(providerResult({ content: '最终答案' }))
 
     const result = await runQuery(
@@ -289,40 +289,37 @@ describe('runQuery：trace 事件记录', () => {
     expect(result.finalAnswer).toBe('最终答案')
     expect(trace.events.map((event) => event.type)).toEqual(['llm_call', 'tool_call', 'llm_call'])
     const llmEvent = trace.events[0]
-    expect(llmEvent).toMatchObject({ type: 'llm_call', round: 1, offeredTools: ['rag_search'], content: null })
+    expect(llmEvent).toMatchObject({ type: 'llm_call', round: 1, offeredTools: ['knowledge'], content: null })
     const toolEvent = trace.events[1]
     expect(toolEvent).toMatchObject({
       type: 'tool_call',
       round: 1,
       callId: 'call_trace',
       tool: 'rag_search',
-      rawArguments: '{',
-      actualParams: { query: '原始问题' },
-      hitIds: [],
-      injectedIds: [],
-      reason: 'query 参数不是有效 JSON，已回退为题目原文',
-      writtenContent: '（无匹配片段）',
+      rawArguments: '{"operation":"rag_search","params":{}}',
+      actualParams: undefined,
+      reason: 'rag_search 的 query 必须是非空字符串',
     })
+    expect(JSON.parse((toolEvent as { writtenContent: string }).writtenContent)).toMatchObject({ status: 'invalid_params', executed: false })
     expect(trace.events[2]).toMatchObject({ type: 'llm_call', round: 2, content: '最终答案' })
   })
 
   it('记录最少检索约束追加的 control 事件', async () => {
     const config = loadConfig()
-    config.minRagCalls = 1
-    config.maxRounds = 2
+    config.toolBudget = 5
     const query = { id: 'TRACE-2', category: 'fact' as const, question: '需要先检索' }
     const trace = createQueryTrace(query)
     const index = buildIndex(chunks)
 
     mockCall
       .mockResolvedValueOnce(providerResult({ content: '被约束的提前回答' }))
-      .mockResolvedValueOnce(providerResult({ toolCalls: [{ id: 'control-call', name: 'rag_search', arguments: '{"query":"需要先检索"}' }] }))
+      .mockResolvedValueOnce(providerResult({ toolCalls: [{ id: 'control-call', name: 'knowledge', arguments: '{"operation":"rag_search","params":{"query":"需要先检索"}}' }] }))
       .mockResolvedValueOnce(providerResult({ content: '最终答案' }))
 
     await runQuery(query, { config, thinking: 'off', dry: false, trace }, chunks, index)
 
     expect(trace.events.map((event) => event.type)).toEqual(['llm_call', 'control', 'llm_call', 'tool_call', 'llm_call'])
-    expect(trace.events[1]).toMatchObject({ type: 'control', round: 1, kind: 'min_retrieval' })
+    expect(trace.events[1]).toMatchObject({ type: 'control', round: 1, kind: 'no_tool_answer_feedback' })
   })
 
   it('provider 在已有模型响应后失败时返回失败结果并保留前面记录', async () => {

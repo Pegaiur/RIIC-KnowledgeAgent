@@ -1,7 +1,8 @@
 import { describe, expect, it, beforeEach, vi } from 'vitest'
 import { loadConfig } from '../src/config.js'
 import { buildIndex } from '../src/retriever.js'
-import { buildSystemPrompt, queryOperatorsTool, runQuery, lookupTool } from '../src/agent.js'
+import { buildSystemPrompt, runQuery } from '../src/agent.js'
+import { knowledgeTool } from '../src/tool-executor.js'
 import { buildCardStore, getCardStore, serializeCards } from '../src/facts/store.js'
 import { FACTS_FIXTURES } from '../src/facts/fixtures.js'
 import type { ProviderResult } from '../src/types.js'
@@ -133,28 +134,19 @@ describe('store：queryOperators 分类过滤', () => {
 })
 
 describe('agent：facts 工具 schema 与系统提示', () => {
-  it('lookup/query_operators 为两个独立 schema（函数名不同）', () => {
-    expect(toolName(lookupTool())).toBe('lookup')
-    expect(toolName(queryOperatorsTool())).toBe('query_operators')
+  it('facts 模式只暴露 knowledge schema', () => {
+    const fn = knowledgeTool('facts').function as { name: string; parameters: { required: string[]; properties: { operation: { enum: string[] } } } }
+    expect(fn.name).toBe('knowledge')
+    expect(fn.parameters.required).toEqual(['operation', 'params'])
+    expect(fn.parameters.properties.operation.enum).toEqual(['lookup', 'query_operators'])
   })
 
-  it('lookup 暴露 term 参数；query_operators 暴露过滤字段', () => {
-    const lf = lookupTool().function as { parameters: { required: string[]; properties: Record<string, unknown> } }
-    expect(lf.parameters.required).toEqual(['term'])
-    const qo = queryOperatorsTool().function as { description: string; parameters: { properties: Record<string, unknown> } }
-    for (const f of ['room', 'faction', 'profession', 'excludeIds', 'termQuery']) {
-      expect(qo.parameters.properties[f]).toBeDefined()
-    }
-    expect(qo.parameters.properties.rarity).toBeUndefined()
-    expect(qo.description).not.toContain('星级')
-  })
-
-  it('系统提示 facts 分支描述两工具与检索上限', () => {
+  it('系统提示 facts 分支描述 operation 与预算', () => {
     const prompt = buildSystemPrompt('facts')
     expect(prompt).toContain('lookup')
     expect(prompt).toContain('query_operators')
-    expect(prompt).toContain('知识库未查到')
-    expect(prompt).not.toContain('星级')
+    expect(prompt).toContain('可用工具：knowledge')
+    expect(prompt).toContain('工具积分预算：5 点')
   })
 })
 
@@ -162,10 +154,16 @@ describe('runQuery（facts 模式）', () => {
   const chunks: DocChunk[] = []
   const queryOperatorsSpy = vi.spyOn(getCardStore(), 'queryOperators')
   const lookupSpy = vi.spyOn(getCardStore(), 'lookup')
-  const INVALID_QUERY_RESULT = '查询参数无效：请至少提供非空的设施、阵营、职业或关键词。'
 
   function toolCall(name: string, args: string) {
-    return { id: 'call_1', name, arguments: args }
+    let params: Record<string, unknown> = {}
+    try {
+      const parsed = JSON.parse(args) as unknown
+      if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) params = parsed as Record<string, unknown>
+    } catch {
+      // 保留空参数，让统一执行器返回结构化参数错误。
+    }
+    return { id: 'call_1', name: 'knowledge', arguments: JSON.stringify({ operation: name, params }) }
   }
 
   function providerResult(partial: Partial<ProviderResult>): ProviderResult {
@@ -188,7 +186,6 @@ describe('runQuery（facts 模式）', () => {
   async function runQueryOperatorsCall(argumentsText: string) {
     const config = loadConfig()
     config.retriever = 'facts'
-    config.maxRounds = 1
     const index = buildIndex(chunks)
 
     mockCall
@@ -215,7 +212,9 @@ describe('runQuery（facts 模式）', () => {
   ])('%s 被拒绝，且不查询或序列化干员卡', async (_label, argumentsText) => {
     const { result, toolResult } = await runQueryOperatorsCall(argumentsText)
 
-    expect(toolResult).toBe(INVALID_QUERY_RESULT)
+    const structured = JSON.parse(toolResult ?? '{}') as { status: string; executed: boolean; data: string }
+    expect(structured).toMatchObject({ status: 'invalid_params', executed: false })
+    expect(structured.data).toContain('query_operators')
     expect(toolResult).not.toContain('【')
     expect(toolResult).not.toContain('刻俄柏')
     expect(queryOperatorsSpy).not.toHaveBeenCalled()
@@ -243,7 +242,6 @@ describe('runQuery（facts 模式）', () => {
   it('facts 模式暴露 lookup，派发并统计工具调用', async () => {
     const config = loadConfig()
     config.retriever = 'facts'
-    config.maxRounds = 3
     const index = buildIndex(chunks)
 
     mockCall
@@ -265,7 +263,6 @@ describe('runQuery（facts 模式）', () => {
   it('trace 记录 facts 的实际参数与 canonical 命中/注入 ID', async () => {
     const config = loadConfig()
     config.retriever = 'facts'
-    config.maxRounds = 1
     const index = buildIndex(chunks)
     const query = { id: 'TRACE-FACTS', category: 'fact' as const, question: '刻俄柏有什么技能？' }
     const trace = createQueryTrace(query)
@@ -279,7 +276,7 @@ describe('runQuery（facts 模式）', () => {
     expect(trace.events[1]).toMatchObject({
       type: 'tool_call',
       tool: 'lookup',
-      rawArguments: '{"term":"刻俄柏"}',
+      rawArguments: '{"operation":"lookup","params":{"term":"刻俄柏"}}',
       actualParams: { term: '刻俄柏' },
       hitIds: ['刻俄柏'],
       injectedIds: ['刻俄柏'],
@@ -340,7 +337,6 @@ describe('runQuery（facts 模式）', () => {
   it('facts 模式同时支持 query_operators 派发', async () => {
     const config = loadConfig()
     config.retriever = 'facts'
-    config.maxRounds = 3
     const index = buildIndex(chunks)
 
     mockCall
@@ -361,7 +357,6 @@ describe('runQuery（facts 模式）', () => {
   it('facts 工具超出检索预算时提示上限，不反复检索', async () => {
     const config = loadConfig()
     config.retriever = 'facts'
-    config.maxRounds = 2
     const index = buildIndex(chunks)
 
     mockCall
@@ -377,7 +372,7 @@ describe('runQuery（facts 模式）', () => {
     )
 
     expect(result.finalAnswer).toBe('最终答案')
-    // 第 2 次已达 MAX_RAG_CALLS=2 上限，第 3 轮（兜底）无工具调用直接作答
+    // 工具调用继续由模型控制；本题两轮工具调用后直接作答。
     expect(result.toolRounds).toBe(2)
     expect(result.records[1].tools).toEqual(['lookup'])
   })
@@ -385,7 +380,7 @@ describe('runQuery（facts 模式）', () => {
   it('facts 工具请求超过检索预算后注入「已达上限」提示文本，不反复检索', async () => {
     const config = loadConfig()
     config.retriever = 'facts'
-    config.maxRounds = 3
+    config.toolBudget = 2
     const index = buildIndex(chunks)
 
     mockCall
@@ -403,9 +398,9 @@ describe('runQuery（facts 模式）', () => {
 
     expect(result.finalAnswer).toBe('最终答案')
     expect(result.toolRounds).toBe(3)
-    // 第 4 轮（兜底）请求前的 messages 应含第 3 轮注入的「已达上限」提示
+    // 第 4 轮请求前的 messages 应含第 3 轮注入的预算耗尽提示。
     const msgs = mockCall.mock.calls[3]?.[0] as Array<{ role: string; content: string }>
-    expect(msgs.some((m) => m.role === 'tool' && m.content.includes('已达到知识库检索上限'))).toBe(true)
+    expect(msgs.some((m) => m.role === 'tool' && m.content.includes('budget_exhausted'))).toBe(true)
   })
 })
 
@@ -426,15 +421,14 @@ describe('runQuery（hybrid 模式）', () => {
   it('同一 Agent 暴露并派发 rag_search 与 lookup', async () => {
     const config = loadConfig()
     config.retriever = 'hybrid'
-    config.maxRounds = 2
     const index = buildIndex(chunks)
 
     mockCall
       .mockResolvedValueOnce({
         content: null,
         toolCalls: [
-          { id: 'call_rag', name: 'rag_search', arguments: '{"query":"制造站 效率计算"}' },
-          { id: 'call_facts', name: 'lookup', arguments: '{"term":"刻俄柏"}' },
+          { id: 'call_rag', name: 'knowledge', arguments: '{"operation":"rag_search","params":{"query":"制造站 效率计算"}}' },
+          { id: 'call_facts', name: 'knowledge', arguments: '{"operation":"lookup","params":{"term":"刻俄柏"}}' },
         ],
         usage: { input: 100, output: 50, cached: 0, reasoning: 0 },
         model: 'qwen',
@@ -456,7 +450,7 @@ describe('runQuery（hybrid 模式）', () => {
     )
 
     const exposed = (mockCall.mock.calls[0]?.[1] as Record<string, unknown>[]).map(toolName)
-    expect(exposed).toEqual(['rag_search', 'lookup', 'query_operators'])
+    expect(exposed).toEqual(['knowledge'])
     expect(result.toolTrace[0]).toEqual(['rag_search', 'lookup'])
     expect(result.injectedIds).toEqual(['base/机制-制造站.md#效率计算'])
     const secondMessages = mockCall.mock.calls[1]?.[0] as Array<{ role: string; tool_call_id?: string; content: string }>

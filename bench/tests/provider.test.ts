@@ -43,4 +43,9 @@ describe('provider：请求体参数映射', () => {
     expect(buildChatBody(messages, tools, opts('hy3', 'off')).model).toBe('hy3')
     expect(buildChatBody(messages, tools, opts('qwen', 'off')).model).toBe('qwen3.7-flash')
   })
+
+  it('Qwen 显式开启并行工具调用，Hy3 不套用未实测参数', () => {
+    expect(buildChatBody(messages, tools, opts('qwen', 'off')).parallel_tool_calls).toBe(true)
+    expect(buildChatBody(messages, tools, opts('hy3', 'off'))).not.toHaveProperty('parallel_tool_calls')
+  })
 })

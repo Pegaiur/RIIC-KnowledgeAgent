@@ -275,7 +275,8 @@ function parseFilters(input: Record<string, unknown>): { value?: Record<string, 
     const excludeIds = input.excludeIds.filter((value): value is string => typeof value === 'string').map((value) => value.trim()).filter(Boolean)
     if (excludeIds.length > 0) filters.excludeIds = excludeIds
   }
-  return Object.keys(filters).length > 0
+  const hasPositiveCondition = Boolean(filters.room || filters.faction || filters.profession || filters.termQuery)
+  return hasPositiveCondition
     ? { value: filters as Record<string, unknown>, reason: '' }
     : { reason: 'query_operators 至少需要一个非空正向条件' }
 }

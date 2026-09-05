@@ -29,10 +29,10 @@ describe('trace 记录模型', () => {
     trace.events.push({
       type: 'llm_call',
       round: 1,
-      offeredTools: ['rag_search'],
+      offeredTools: ['knowledge'],
       elapsedMs: 1,
       content: '错误 sensitive-key',
-      toolCalls: [{ id: 'call_1', name: 'rag_search', arguments: '{"query":"sensitive-key"}' }],
+      toolCalls: [{ id: 'call_1', name: 'knowledge', arguments: '{"operation":"rag_search","params":{"query":"sensitive-key"}}' }],
       error: '请求包含 sensitive-key',
     })
 

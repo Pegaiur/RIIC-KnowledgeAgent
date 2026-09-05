@@ -34,7 +34,7 @@ export interface TraceToolEvent {
 export interface TraceControlEvent {
   type: 'control'
   round: number
-  kind: 'min_retrieval'
+  kind: 'no_tool_answer_feedback'
   content: string
 }
 
