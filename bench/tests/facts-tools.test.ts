@@ -161,6 +161,7 @@ describe('agent：facts 工具 schema 与系统提示', () => {
 describe('runQuery（facts 模式）', () => {
   const chunks: DocChunk[] = []
   const queryOperatorsSpy = vi.spyOn(getCardStore(), 'queryOperators')
+  const lookupSpy = vi.spyOn(getCardStore(), 'lookup')
   const INVALID_QUERY_RESULT = '查询参数无效：请至少提供非空的设施、阵营、职业或关键词。'
 
   function toolCall(name: string, args: string) {
@@ -181,6 +182,7 @@ describe('runQuery（facts 模式）', () => {
   beforeEach(() => {
     mockCall.mockReset()
     queryOperatorsSpy.mockClear()
+    lookupSpy.mockClear()
   })
 
   async function runQueryOperatorsCall(argumentsText: string) {
@@ -283,6 +285,48 @@ describe('runQuery（facts 模式）', () => {
       injectedIds: ['刻俄柏'],
     })
     expect((trace.events[1] as { writtenContent: string }).writtenContent).toContain('【刻俄柏】')
+  })
+
+  it('lookup 抛错时 trace 仍保留实际 term 参数', async () => {
+    const config = loadConfig()
+    config.retriever = 'facts'
+    const index = buildIndex(chunks)
+    const query = { id: 'TRACE-LOOKUP-ERROR', category: 'fact' as const, question: 'lookup 异常' }
+    const trace = createQueryTrace(query)
+    lookupSpy.mockImplementationOnce(() => {
+      throw new Error('lookup store 测试异常')
+    })
+    mockCall.mockResolvedValueOnce(providerResult({ toolCalls: [{ ...toolCall('lookup', '{"term":"刻俄柏"}') } as any] }))
+
+    await expect(runQuery(query, { config, thinking: 'off', dry: false, trace }, chunks, index)).rejects.toThrow('lookup store 测试异常')
+
+    expect(trace.events[1]).toMatchObject({
+      type: 'tool_call',
+      tool: 'lookup',
+      actualParams: { term: '刻俄柏' },
+      error: 'lookup store 测试异常',
+    })
+  })
+
+  it('query_operators 抛错时 trace 仍保留实际过滤参数', async () => {
+    const config = loadConfig()
+    config.retriever = 'facts'
+    const index = buildIndex(chunks)
+    const query = { id: 'TRACE-OPERATORS-ERROR', category: 'fact' as const, question: 'query_operators 异常' }
+    const trace = createQueryTrace(query)
+    queryOperatorsSpy.mockImplementationOnce(() => {
+      throw new Error('query_operators store 测试异常')
+    })
+    mockCall.mockResolvedValueOnce(providerResult({ toolCalls: [{ ...toolCall('query_operators', '{"room":"制造站"}') } as any] }))
+
+    await expect(runQuery(query, { config, thinking: 'off', dry: false, trace }, chunks, index)).rejects.toThrow('query_operators store 测试异常')
+
+    expect(trace.events[1]).toMatchObject({
+      type: 'tool_call',
+      tool: 'query_operators',
+      actualParams: { room: '制造站' },
+      error: 'query_operators store 测试异常',
+    })
   })
 
   it('facts 模式同时支持 query_operators 派发', async () => {

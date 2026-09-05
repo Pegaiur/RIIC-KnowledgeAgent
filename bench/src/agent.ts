@@ -326,10 +326,10 @@ export async function runQuery(
                   resultText = '查询参数无效：请至少提供非空的设施、阵营、职业或关键词。'
                   if (toolEvent) toolEvent.reason = parsed.reason
                 } else {
+                  if (toolEvent) toolEvent.actualParams = parsed.value
                   const store = getCardStore()
                   const hits = store.queryOperators(parsed.value)
                   if (toolEvent) {
-                    toolEvent.actualParams = parsed.value
                     toolEvent.hitIds = hits.map((card) => card.canonical)
                     toolEvent.injectedIds = hits.map((card) => card.canonical)
                   }
@@ -337,13 +337,15 @@ export async function runQuery(
                 }
               } else {
                 const parsed = parseTerm(tc.arguments)
+                if (toolEvent) {
+                  toolEvent.actualParams = { term: parsed.value }
+                  if (parsed.reason) toolEvent.reason = parsed.reason
+                }
                 const store = getCardStore()
                 const hits = store.lookup(parsed.value)
                 if (toolEvent) {
-                  toolEvent.actualParams = { term: parsed.value }
                   toolEvent.hitIds = hits.map((card) => card.canonical)
                   toolEvent.injectedIds = hits.map((card) => card.canonical)
-                  if (parsed.reason) toolEvent.reason = parsed.reason
                 }
                 resultText = serializeCards(hits)
               }
