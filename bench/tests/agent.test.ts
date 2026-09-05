@@ -79,8 +79,10 @@ describe('agent：统一 knowledge 工具 schema', () => {
     expect(prompt).toContain('禁止输出 5%/10%/45%/90% 等固定效率')
     expect(prompt).toContain('维娜·维多利亚是可选增强')
     expect(prompt).toContain('禁止补塞雷娅、星熊等额外成员')
-    expect(prompt).toContain('S02 只有火龙 S 黑角与麒麟 R 夜刀进驻控制中枢时才读取控制中枢技能')
+    expect(prompt).toContain('F07 必须明确写出 `24/x`、`24/y`、`y/x` 的工休关系')
+    expect(prompt).toContain('S02 必须按火龙 S 黑角、麒麟 R 夜刀、泰拉大陆调查团三名成员逐条覆盖')
     expect(prompt).toContain('S07 焰尾与薇薇安娜属于中枢侧')
+    expect(prompt).toContain('制造站名单只按远牙、灰毫、野鬃等红松骑士团成员回答')
   })
 
   it('人工规则只从调用方提供的 AGENTS 内容注入一次', () => {
