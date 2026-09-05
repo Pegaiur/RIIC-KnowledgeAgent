@@ -90,6 +90,7 @@ describe('agent：统一 knowledge 工具 schema', () => {
     expect(prompt).toContain('S02 中泰拉大陆调查团只能出现在贸易站/制造站语境')
     expect(prompt).toContain('S07 中薇薇安娜只能出现在控制中枢语境')
     expect(prompt).toContain('S08 时推进之王属于格拉斯哥帮')
+    expect(prompt).toContain('不要把塞雷娅、星熊等非格拉斯哥帮干员举作该阵营成员')
     expect(prompt).toContain('不得输出 `162%` 或自行合成的固定总效率')
   })
 
