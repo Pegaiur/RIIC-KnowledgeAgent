@@ -30,6 +30,15 @@ describe('provider：请求体参数映射', () => {
     expect(buildChatBody(messages, tools, opts('qwen', 'low'))).not.toHaveProperty('reasoning_effort')
   })
 
+  it('显式 temperature 时写入请求体，未设置时保持服务端默认行为', () => {
+    const config = loadConfig('qwen')
+    const base = { config, thinking: 'off' as const, dry: true }
+    expect(buildChatBody(messages, tools, base)).not.toHaveProperty('temperature')
+
+    config.temperature = 0.2
+    expect(buildChatBody(messages, tools, base).temperature).toBe(0.2)
+  })
+
   it('model 按 provider 取值', () => {
     expect(buildChatBody(messages, tools, opts('hy3', 'off')).model).toBe('hy3')
     expect(buildChatBody(messages, tools, opts('qwen', 'off')).model).toBe('qwen3.7-flash')

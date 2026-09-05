@@ -51,7 +51,8 @@ export async function runBenchmark(
   const chunks = config.retriever === 'facts' ? [] : loadCorpus(config.corpusDir, config.maxContextChars)
   const index = buildIndex(chunks)
 
-  const runTag = `${new Date().toISOString().replace(/[:.]/g, '-')}-${config.provider}-${opts.thinking}`
+  const temperatureTag = config.temperature === undefined ? 'default' : `t${config.temperature}`
+  const runTag = `${new Date().toISOString().replace(/[:.]/g, '-')}-${config.provider}-${opts.thinking}-${temperatureTag}`
   const outDir = opts.outDir ?? join(process.cwd(), 'bench-runs')
   const runDir = join(outDir, runTag)
   mkdirSync(runDir, { recursive: true })
@@ -126,6 +127,7 @@ export async function runBenchmark(
         dry: opts.dry,
         provider: config.provider,
         model: config.model,
+        temperature: config.temperature ?? null,
         baseUrl: config.baseUrl,
         retriever: config.retriever,
         minRagCalls: config.minRagCalls,
