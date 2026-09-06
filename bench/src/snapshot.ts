@@ -50,6 +50,14 @@ const RECORD_KEYS = [
   'httpAttempts', 'truncated', 'tools', 'toolBatch',
 ]
 const TOOL_BATCH_KEYS = ['requested', 'granted', 'executed', 'denied', 'errors', 'budgetBefore', 'budgetAfter', 'resultChars']
+const META_SUMMARY_KEYS = new Set([
+  'records', 'inputTokens', 'outputTokens', 'inputTokensExact', 'outputTokensExact',
+  'totalCostIn', 'totalCostOut', 'totalCost', 'costComplete', 'incompleteUsageCalls',
+  'unknownUsageCalls', 'failed', 'modelSteps', 'toolBatches', 'toolCallsRequested',
+  'toolCallsGranted', 'toolCallsExecuted', 'toolCallsDenied', 'toolErrors',
+  'toolResultChars', 'httpAttempts', 'retryAttempts', 'feedbackUsed', 'terminationReasons',
+  'elapsedMs',
+])
 const TERMINATION_REASONS = new Set<TerminationReason>([
   'answer', 'no_tool_after_feedback', 'llm_error', 'tool_error', 'timeout',
   'cancelled', 'empty_response', 'truncated', 'protocol_error',
@@ -120,7 +128,7 @@ export function createSnapshot(input: Omit<BenchSnapshot, 'schemaVersion'>): Ben
     schemaVersion: SNAPSHOT_SCHEMA_VERSION,
     runId: input.runId,
     topic: input.topic,
-    meta: sanitizeObject(input.meta),
+    meta: sanitizeMeta(input.meta),
     queries: input.queries.map(normalizeQuery),
     records: input.records.map(pickRecord),
   }
@@ -191,7 +199,7 @@ export function validateSnapshot(value: unknown): BenchSnapshot {
     schemaVersion: SNAPSHOT_SCHEMA_VERSION,
     runId: value.runId,
     topic: value.topic,
-    meta: sanitizeObject(value.meta),
+    meta: sanitizeMeta(value.meta),
     queries,
     records,
   }
@@ -471,6 +479,11 @@ function sanitizeObject(value: Record<string, unknown>): Record<string, unknown>
     out[key] = sanitizeValue(item)
   }
   return out
+}
+
+/** 快照只保留运行来源与配置；总 token/费用等汇总统一由 records 重新计算。 */
+function sanitizeMeta(value: Record<string, unknown>): Record<string, unknown> {
+  return sanitizeObject(Object.fromEntries(Object.entries(value).filter(([key]) => !META_SUMMARY_KEYS.has(key))))
 }
 
 function sanitizeValue(value: unknown): unknown {

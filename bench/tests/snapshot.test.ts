@@ -49,7 +49,10 @@ describe('共享基准快照', () => {
       const snapshot = createSnapshot({
         runId: 'run-1',
         topic: 'rag-facts',
-        meta: { model: 'qwen3.7-flash', apiKey: 'sk-should-not-survive' },
+        meta: {
+          model: 'qwen3.7-flash', apiKey: 'sk-should-not-survive',
+          totalCost: 99, inputTokens: 123, terminationReasons: { answer: 1 },
+        },
         queries: [{
           id: 'Q1', category: 'fact', question: 'Authorization: Bearer sk-question-secret', answer: '答案 sk-answer-secret',
           status: 'completed', terminationReason: 'answer', rounds: 1, toolRounds: 0, toolTrace: [],
@@ -63,6 +66,9 @@ describe('共享基准快照', () => {
       expect(readFileSync(path, 'utf-8')).not.toContain('should-not-survive')
       expect(readFileSync(path, 'utf-8')).not.toContain('question-secret')
       expect(readFileSync(path, 'utf-8')).not.toContain('do-not-copy')
+      expect(readSnapshot(path).meta).not.toHaveProperty('totalCost')
+      expect(readSnapshot(path).meta).not.toHaveProperty('inputTokens')
+      expect(readSnapshot(path).meta).not.toHaveProperty('terminationReasons')
       expect(() => writeSnapshot(path, { ...snapshot, topic: 'conflict' })).toThrow('拒绝覆盖')
       expect(readSnapshot(path).records[0]?.httpAttempts?.[0]?.error).toBeUndefined()
       expect(readSnapshot(path).records[0]?.toolBatch).toEqual({
