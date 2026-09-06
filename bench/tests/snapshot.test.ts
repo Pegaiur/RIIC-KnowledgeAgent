@@ -41,6 +41,11 @@ describe('共享基准快照', () => {
   it('只保留白名单字段并对文本脱敏，重复写入幂等且冲突拒绝覆盖', () => {
     const dir = mkdtempSync(join(tmpdir(), 'rag-snapshot-'))
     try {
+      const recordWithExtraToolBatch = record() as CostRecord & { toolBatch?: Record<string, unknown> }
+      recordWithExtraToolBatch.toolBatch = {
+        requested: 1, granted: 1, executed: 1, denied: 0, errors: 0,
+        budgetBefore: 5, budgetAfter: 4, resultChars: 10, unexpected: 'drop-me',
+      }
       const snapshot = createSnapshot({
         runId: 'run-1',
         topic: 'rag-facts',
@@ -50,7 +55,7 @@ describe('共享基准快照', () => {
           status: 'completed', terminationReason: 'answer', rounds: 1, toolRounds: 0, toolTrace: [],
           feedbackUsed: false, budgetUsed: 0, budgetRemaining: 5, injectedIds: [],
         }],
-        records: [record()],
+        records: [recordWithExtraToolBatch],
       })
       const path = join(dir, 'run-1.json')
       writeSnapshot(path, snapshot)
@@ -60,6 +65,18 @@ describe('共享基准快照', () => {
       expect(readFileSync(path, 'utf-8')).not.toContain('do-not-copy')
       expect(() => writeSnapshot(path, { ...snapshot, topic: 'conflict' })).toThrow('拒绝覆盖')
       expect(readSnapshot(path).records[0]?.httpAttempts?.[0]?.error).toBeUndefined()
+      expect(readSnapshot(path).records[0]?.toolBatch).toEqual({
+        requested: 1, granted: 1, executed: 1, denied: 0, errors: 0,
+        budgetBefore: 5, budgetAfter: 4, resultChars: 10,
+      })
+      expect(() => createSnapshot({
+        ...snapshot,
+        records: [{ ...record(), toolBatch: { requested: 'bad' } as unknown as CostRecord['toolBatch'] }],
+      })).toThrow('toolBatch.requested 无效')
+      expect(() => createSnapshot({
+        ...snapshot,
+        records: [{ ...record(), toolBatch: { requested: 1 } as unknown as CostRecord['toolBatch'] }],
+      })).toThrow('toolBatch.granted 无效')
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
@@ -92,6 +109,41 @@ describe('共享基准快照', () => {
       expect(snapshot.queries[1]).toMatchObject({ id: 'Q2', status: 'unknown', answer: null })
       expect(aggregateSnapshot(snapshot)).toMatchObject({ totalQueries: 2, totalCalls: 1 })
       expect(aggregateSnapshot(snapshot).byQuery.find((query) => query.queryId === 'Q2')).toMatchObject({ rounds: 0, costComplete: false })
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('保留自定义题集定义，并兼容旧版回答格式', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'rag-legacy-export-'))
+    try {
+      writeFileSync(join(dir, 'meta.json'), JSON.stringify({
+        topic: 'custom',
+        questionsPath: 'outside/questions.json',
+        questionIds: ['F01'],
+        questionDefinitions: [{ id: 'F01', category: 'fact', question: '自定义题目' }],
+      }))
+      writeFileSync(join(dir, 'answers.md'), [
+        '# 查询回答记录', '',
+        '## F01（fact）', '',
+        '- 问题：自定义题目',
+        '- 轮数：2｜检索次数：1｜工具序列：rag_search', '',
+        '旧版回答第一段', '',
+        '旧版回答第二段',
+      ].join('\n'))
+
+      const snapshot = snapshotFromRunDir(dir, { root: dir })
+      expect(snapshot.queries).toHaveLength(1)
+      expect(snapshot.queries[0]).toMatchObject({
+        id: 'F01',
+        question: '自定义题目',
+        status: 'completed',
+        terminationReason: 'unknown',
+        rounds: 2,
+        toolRounds: 1,
+        toolTrace: ['rag_search'],
+        answer: '旧版回答第一段\n\n旧版回答第二段',
+      })
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }

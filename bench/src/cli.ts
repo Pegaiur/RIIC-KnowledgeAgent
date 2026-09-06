@@ -126,6 +126,7 @@ async function main(): Promise<void> {
       thinking: args.thinking,
       dry: args.dry,
       outDir: args.out ?? undefined,
+      questionsPath,
       config,
     })
     process.stdout.write(`完成：${out.records.length} 条记录，耗时 ${(out.elapsedMs / 1000).toFixed(1)}s\n`)

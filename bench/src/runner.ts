@@ -3,7 +3,7 @@
  */
 import { createHash } from 'node:crypto'
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, relative, resolve } from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { loadConfig, type BenchConfig } from './config.js'
 import { loadCorpus } from './corpus.js'
@@ -49,7 +49,7 @@ export interface AnswerRecord {
 
 export async function runBenchmark(
   questions: BenchQuery[],
-  opts: { thinking: ThinkingMode; dry: boolean; outDir?: string; config?: BenchConfig },
+  opts: { thinking: ThinkingMode; dry: boolean; outDir?: string; questionsPath?: string; config?: BenchConfig },
 ): Promise<RunOutput> {
   const config = opts.config ?? loadConfig()
   const started = Date.now()
@@ -210,7 +210,8 @@ export async function runBenchmark(
         chunks: chunks.length,
         questions: questions.length,
         questionIds: questions.map((question) => question.id),
-        questionsPath: 'bench/questions.json',
+        questionsPath: relativeQuestionPath(opts.questionsPath ?? join(process.cwd(), 'bench', 'questions.json')),
+        questionDefinitions: questions.map(({ id, category, question }) => ({ id, category, question })),
         topic: `rag-${config.retriever}`,
         prices: config.prices,
         source: collectSourceMetadata(),
@@ -285,4 +286,12 @@ function collectSourceMetadata(): Record<string, unknown> {
     // package.json 缺失时不阻塞运行。
   }
   return { nodeVersion: process.version, packageVersion, gitHead, gitDirty, metadataCapturedAt: new Date().toISOString() }
+}
+
+/** 只记录仓库内题集的相对路径；仓库外题集依靠元信息中的嵌入定义导出。 */
+function relativeQuestionPath(input: string): string | null {
+  const root = resolve(process.cwd())
+  const path = resolve(input)
+  const rel = relative(root, path).replace(/\\/g, '/')
+  return rel && rel !== '..' && !rel.startsWith('../') && !rel.startsWith('/') ? rel : null
 }

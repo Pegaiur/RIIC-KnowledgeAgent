@@ -49,6 +49,7 @@ const RECORD_KEYS = [
   'costIn', 'costOut', 'costTotal', 'usageCompleteness', 'usageAggregation',
   'httpAttempts', 'truncated', 'tools', 'toolBatch',
 ]
+const TOOL_BATCH_KEYS = ['requested', 'granted', 'executed', 'denied', 'errors', 'budgetBefore', 'budgetAfter', 'resultChars']
 const TERMINATION_REASONS = new Set<TerminationReason>([
   'answer', 'no_tool_after_feedback', 'llm_error', 'tool_error', 'timeout',
   'cancelled', 'empty_response', 'truncated', 'protocol_error',
@@ -258,7 +259,19 @@ function validateAndPickRecord(value: unknown, index: number): CostRecord {
       }
     }
   }
+  if (record.toolBatch !== undefined) validateToolBatch(record.toolBatch, index)
   return record
+}
+
+function validateToolBatch(value: unknown, index: number): void {
+  if (!isRecord(value)) throw new Error(`基准快照格式错误：records[${index}].toolBatch 必须是对象`)
+  for (const key of TOOL_BATCH_KEYS) {
+    if (!Object.prototype.hasOwnProperty.call(value, key)
+      || !Number.isInteger(value[key])
+      || (value[key] as number) < 0) {
+      throw new Error(`基准快照格式错误：records[${index}].toolBatch.${key} 无效`)
+    }
+  }
 }
 
 /** 只提取 CostRecord 白名单；HTTP 错误正文等诊断文本不进入快照。 */
@@ -272,7 +285,9 @@ function pickRecord(record: CostRecord): CostRecord {
     } else if (key === 'tools' && Array.isArray(value)) {
       out[key] = value.filter((item): item is string => typeof item === 'string')
     } else if (key === 'toolBatch' && isRecord(value)) {
-      out[key] = { ...value }
+      out[key] = Object.fromEntries(TOOL_BATCH_KEYS
+        .filter((field) => value[field] !== undefined)
+        .map((field) => [field, value[field]]))
     } else {
       out[key] = value
     }
@@ -340,6 +355,8 @@ function readInjected(path: string): Record<string, string[]> {
 }
 
 function loadQuestionsFromMeta(meta: Record<string, unknown>, root: string): BenchQuery[] {
+  const embedded = readEmbeddedQuestions(meta)
+  if (embedded.length > 0) return selectQuestions(meta, embedded)
   const rootAbs = resolve(root)
   const configuredPath = typeof meta.questionsPath === 'string' ? meta.questionsPath : null
   const candidate = configuredPath ? resolve(rootAbs, configuredPath) : join(rootAbs, 'bench', 'questions.json')
@@ -350,14 +367,26 @@ function loadQuestionsFromMeta(meta: Record<string, unknown>, root: string): Ben
     const value: unknown = JSON.parse(readFileSync(candidate, 'utf-8'))
     if (!Array.isArray(value)) return []
     const questions = value.filter((item): item is BenchQuery => isRecord(item) && typeof item.id === 'string' && typeof item.category === 'string' && typeof item.question === 'string')
-    if (Array.isArray(meta.questionIds)) {
-      const byId = new Map(questions.map((question) => [question.id, question]))
-      return meta.questionIds.filter((id): id is string => typeof id === 'string').map((id) => byId.get(id)).filter((question): question is BenchQuery => question !== undefined)
-    }
-    return typeof meta.questions === 'number' ? questions.slice(0, meta.questions) : questions
+    return selectQuestions(meta, questions)
   } catch {
     return []
   }
+}
+
+function readEmbeddedQuestions(meta: Record<string, unknown>): BenchQuery[] {
+  if (!Array.isArray(meta.questionDefinitions)) return []
+  return meta.questionDefinitions.filter((item): item is BenchQuery => isRecord(item)
+    && typeof item.id === 'string'
+    && (item.category === 'fact' || item.category === 'system' || item.category === 'gadget')
+    && typeof item.question === 'string')
+}
+
+function selectQuestions(meta: Record<string, unknown>, questions: BenchQuery[]): BenchQuery[] {
+  if (Array.isArray(meta.questionIds)) {
+    const byId = new Map(questions.map((question) => [question.id, question]))
+    return meta.questionIds.filter((id): id is string => typeof id === 'string').map((id) => byId.get(id)).filter((question): question is BenchQuery => question !== undefined)
+  }
+  return typeof meta.questions === 'number' ? questions.slice(0, meta.questions) : questions
 }
 
 interface ParsedAnswer {
@@ -395,25 +424,36 @@ function parseAnswers(raw: string | null): Map<string, ParsedAnswer> {
     const feedbackLine = block.find((line) => line.startsWith('- 宿主回馈：'))
     const feedbackIndex = block.findIndex((line) => line.startsWith('- 宿主回馈：'))
     const budgetIndex = block.findIndex((line) => line.startsWith('- 模型步骤：'))
-    let answerStart = feedbackIndex >= 0 ? feedbackIndex + 1 : budgetIndex >= 0 ? budgetIndex + 1 : 0
-    while (answerStart < block.length && block[answerStart].trim() === '') answerStart++
-    const body = answerStart >= 0 ? block.slice(answerStart).join('\n').trim() : ''
-    const status = statusMatch?.[1]
+    const legacyLine = block.find((line) => /^- 轮数：\d+｜检索次数：\d+(?:｜工具序列：.+)?$/.test(line)) ?? ''
+    const legacyMatch = /^- 轮数：(\d+)｜检索次数：(\d+)(?:｜工具序列：(.+))?$/.exec(legacyLine)
+    const legacyIndex = legacyLine ? block.indexOf(legacyLine) : -1
+    const answerStart = findAnswerStart(block, feedbackIndex, budgetIndex, legacyIndex)
+    const body = block.slice(answerStart).join('\n').trim()
+    const status = statusMatch?.[1] ?? (legacyMatch && body ? 'completed' : undefined)
     out.set(header.id, {
       category: header.category,
       question: redactText(question),
       answer: status === 'completed' ? redactText(body) : null,
       status: status === 'completed' || status === 'failed' || status === 'cancelled' ? status : 'unknown',
       terminationReason: parseTermination(statusMatch?.[2]),
-      rounds: Number(budgetMatch?.[1] ?? 0),
-      toolRounds: Number(budgetMatch?.[2] ?? 0),
+      rounds: Number(budgetMatch?.[1] ?? legacyMatch?.[1] ?? 0),
+      toolRounds: Number(budgetMatch?.[2] ?? legacyMatch?.[2] ?? 0),
       budgetUsed: Number(budgetMatch?.[3] ?? 0),
       budgetRemaining: Number(budgetMatch?.[4] ?? 0) - Number(budgetMatch?.[3] ?? 0),
-      toolTrace: budgetMatch?.[5] && budgetMatch[5] !== '无' ? budgetMatch[5].split('→').filter(Boolean) : [],
+      toolTrace: budgetMatch?.[5] && budgetMatch[5] !== '无'
+        ? budgetMatch[5].split('→').filter(Boolean)
+        : legacyMatch?.[3] && legacyMatch[3] !== '无' ? legacyMatch[3].split('→').filter(Boolean) : [],
       feedbackUsed: feedbackLine?.includes('是') ?? false,
     })
   }
   return out
+}
+
+function findAnswerStart(block: string[], feedbackIndex: number, budgetIndex: number, legacyIndex: number): number {
+  const metadataIndex = feedbackIndex >= 0 ? feedbackIndex : budgetIndex >= 0 ? budgetIndex : legacyIndex
+  let answerStart = metadataIndex >= 0 ? metadataIndex + 1 : 0
+  while (answerStart < block.length && block[answerStart].trim() === '') answerStart++
+  return answerStart
 }
 
 function parseTermination(value: string | undefined): SnapshotQuery['terminationReason'] {
@@ -427,7 +467,7 @@ function readOptionalText(path: string): string | null {
 function sanitizeObject(value: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {}
   for (const [key, item] of Object.entries(value)) {
-    if (/api[_-]?key|secret|authorization|password/i.test(key)) continue
+    if (/api[_-]?key|secret|authorization|password|(?:access[_-]?|refresh[_-]?)?token$/i.test(key)) continue
     out[key] = sanitizeValue(item)
   }
   return out
