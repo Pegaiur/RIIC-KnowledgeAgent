@@ -37,6 +37,8 @@
 
 > 提交/发版等仓库工作流由 `skills/` 目录下的开放格式技能承载（`skills/<name>/SKILL.md`，不依赖宿主技能发现）；机械事实委托仓库脚本，技能只保留时机、判断与确认。
 
+脚本与临时产物的落位、tooling 用法和清理约定以 [`scripts/INDEX.md`](scripts/INDEX.md) 为准。默认搜索遵守 `.gitignore` 并限定相关模块；确需查看忽略区时只指定具体任务目录、运行目录或清单，不进行全仓 `--no-ignore`/`-uuu` 遍历。
+
 | 工作流 | 入口 |
 | ------- | ---- |
 | 提交 | `skills/commit-convention` |
@@ -63,7 +65,7 @@ rag-test/
 │   ├── tests/                      ← vitest 单元测试
 │   └── questions.json              ← 基准问题集（20 题，三分类）
 ├── bench-runs/                     ← 基准运行结果（JSONL，不入库；dev 中间结果在 dev-temp/runs）
-├── scripts/                        ← 过程管理脚本（模板套用，见 scripts/INDEX.md）
+├── scripts/                        ← 过程管理脚本与可复用任务（使用规范见 scripts/INDEX.md）
 ├── docs/                           ← 过程管理文档（inbox / plan / draft / spec / adr / archive）
 │   ├── inbox.md                    ← 需求唯一入口
 │   ├── plan-*.md / draft-*.md      ← 版本计划 / 未定稿提案

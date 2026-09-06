@@ -18,10 +18,10 @@ bench-runs/
 !bench/results/
 !bench/results/*.json
 
-# 开发脚本临时区（runs/work/cache，tooling tmp clean 管理）
+# 开发脚本临时区（runs/work，tooling tmp clean 管理；历史 cache 路径继续整体忽略）
 dev-temp/
 
-# 一次性脚本（tooling new 生成，不入库）
+# 历史一次性脚本（不再由 tooling 生成或升迁，保留忽略以免暴露旧本地文件）
 scripts/scratch/
 
 # 测试产物

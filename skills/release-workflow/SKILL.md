@@ -43,12 +43,9 @@ description: 发版与版本管理——在 feature 分支收束发布元数据�
 
 ### 3. 共享后清理证据原件
 
-合并后的共享提交已确认可复核、相关实验已停止后，才处理本机原始产物：
+清理只在分支合并或放弃时收尾：先按任务目录和实际用途核对本轮产物，决定正式资产、继续交接和可舍弃内容；不推测整个旧目录属于当前分支，也不要求其他任务同时结束。合并后的共享提交已可复核且相关实验已停止后，才处理本机原始产物；条件不满足则保留。
 
-1. 由操作者明确选择路径和去向，生成清单：`node scripts/tooling.mjs tmp manifest --out dev-temp/cleanup-<名称>.json --snapshot bench/results/<run-id>.json <target...>`；无须保留的条目改用 `--reason <中文理由>`。清单只记录仓库相对路径、预览时指纹和 snapshot/reason，不推断分支归属。
-2. 先执行 `node scripts/tooling.mjs tmp clean --manifest dev-temp/cleanup-<名称>.json` 预览文件数、体积、去向及跳过原因；在用户明确授权且确认无误后追加 `--apply`。清理器会复核指纹、路径白名单、Git 跟踪文件、`.keep`、junction/symlink、结束产物和 snapshot 提交状态。
-3. 合并、共享或停止条件不满足时保留原件；部分失败保留清单以便重试，清理失败不撤销合并。旧存量沿用同一清单格式，备份和未知来源不凭名称自动删除。
-4. 若共享快照在正常收尾时失去当前用途，随该收尾的普通 Git 提交移除；仍需查阅的历史结论先按生命周期规则补齐实际包含该 JSON 的完整提交号与路径，并用 `git show <commit>:<path>` 验证。快照淘汰不另设审批或等待周期。
+本技能只规定上述收尾时机；具体落位、清理操作、保护条件和快照去留以 [`scripts/INDEX.md`](../../scripts/INDEX.md) 与 [`docs/rules/document-lifecycle.md`](../../docs/rules/document-lifecycle.md) 为准。
 
 ## 授权边界
 

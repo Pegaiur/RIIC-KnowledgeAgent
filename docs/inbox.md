@@ -26,6 +26,8 @@
 
 ## 待办区
 
+- [ ] **开发临时产物及时收尾与搜索降噪** — 按如无必要勿增实体收敛：work 共置临时脚本与数据，保留 runs，退役无消费者的 cache/scratch 入口；分支触发收尾、纯预览不落盘，旧存量只评估去留 — 2026-09-06 — → [实施计划](plan-dev-temp-simplification.md)、[实施笔记](plan-dev-temp-simplification-notes.md)
+
 - [ ] **共享基准快照更新与淘汰生命周期** — 按严进宽出补齐入库筛选、基线替换、当前目录淘汰及历史证据定位；实施计划独立复审通过，已建实施笔记，待实施 — 2026-09-06 — → [实施计划](plan-benchmark-snapshot-lifecycle.md)、[实施笔记](plan-benchmark-snapshot-lifecycle-notes.md)
 
 - [x] **评测结果与 harness 修改边界** — 已明确答错不自动触发修复、harness 修改须有独立依据、禁止针对评测题追分 — 2026-09-06 — → `AGENTS.md` 常驻规则
