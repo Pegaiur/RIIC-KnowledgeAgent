@@ -7,7 +7,7 @@
 
 | 路径 | 职责 | 入版本控制 |
 |------|------|:---:|
-| `scripts/tooling.mjs` | 开发任务工具 CLI（list/run/new/promote/tmp） | ✅ |
+| `scripts/tooling.mjs` | 开发任务工具 CLI（list/run/new/promote/tmp/显式清理清单） | ✅ |
 | `scripts/verify.mjs` | 合并/发版门禁唯一入口（执行引擎，命令清单见 gates.mjs） | ✅ |
 | `scripts/gates.mjs` | 门禁命令清单（适配层：换技术栈唯一必改文件） | ✅ |
 | `scripts/doc-check.mjs` | 文档一致性校验（合并门禁组成部分） | ✅ |
@@ -67,7 +67,10 @@ node scripts/tooling.mjs list --lib               # 枚举 lib 基元（文件�
 node scripts/tooling.mjs run <task> -- <args>     # 独立 Node 子进程运行，args 原样透传
 node scripts/tooling.mjs new <domain/name>        # 生成 scratch（拒绝覆盖）
 node scripts/tooling.mjs promote <scratch> <ref>  # scratch → tasks（仅移动）
-node scripts/tooling.mjs tmp path|list|clean      # 临时区管理（clean 默认 dry-run，--apply 才删）
+node scripts/tooling.mjs tmp path|list|clean      # 临时区管理（clean 默认 dry-run；真实删除必须使用显式 manifest）
+node scripts/tooling.mjs tmp manifest --out dev-temp/cleanup-<名称>.json --snapshot bench/results/<run-id>.json <target...>
+node scripts/tooling.mjs tmp clean --manifest dev-temp/cleanup-<名称>.json  # 按显式清单预览
+node scripts/tooling.mjs tmp clean --manifest dev-temp/cleanup-<名称>.json --apply  # 复核后删除
 ```
 
 退出码约定：0 成功 / 1 一般错误 / 2 参数错误。

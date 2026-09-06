@@ -14,6 +14,10 @@ secret.yaml
 # 基准运行结果（JSONL 原始记录，不入库）
 bench-runs/
 
+# 共享基准快照（由 bench export 生成，需显式 git add 入库）
+!bench/results/
+!bench/results/*.json
+
 # 开发脚本临时区（runs/work/cache，tooling tmp clean 管理）
 dev-temp/
 
