@@ -62,6 +62,7 @@ const TERMINATION_REASONS = new Set<TerminationReason>([
   'answer', 'no_tool_after_feedback', 'llm_error', 'tool_error', 'timeout',
   'cancelled', 'empty_response', 'truncated', 'protocol_error',
 ])
+const HTTP_OUTCOMES = new Set<HttpAttempt['outcome']>(['accepted', 'retry', 'failed', 'aborted', 'in_flight'])
 
 /** 从运行目录生成共享快照；旧目录缺少回答文件时仍保留题目和计量记录。 */
 export function snapshotFromRunDir(runDirInput: string, options: SnapshotFromRunOptions = {}): BenchSnapshot {
@@ -130,7 +131,7 @@ export function createSnapshot(input: Omit<BenchSnapshot, 'schemaVersion'>): Ben
     topic: input.topic,
     meta: sanitizeMeta(input.meta),
     queries: input.queries.map(normalizeQuery),
-    records: input.records.map(pickRecord),
+    records: input.records.map((record, index) => validateAndPickRecord(record, index)),
   }
   return validateSnapshot(snapshot)
 }
@@ -247,6 +248,7 @@ function normalizeQuery(query: SnapshotQuery): SnapshotQuery {
 
 function validateAndPickRecord(value: unknown, index: number): CostRecord {
   if (!isRecord(value)) throw new Error(`基准快照格式错误：records[${index}] 必须是对象`)
+  if (value.httpAttempts !== undefined) validateHttpAttempts(value.httpAttempts, index)
   const record = pickRecord(value as CostRecord)
   if (!isNonEmptyString(record.queryId) || !isNonEmptyString(record.ts) || !isNonEmptyString(record.category) || !isNonEmptyString(record.thinking) || !isNonEmptyString(record.model)) {
     throw new Error(`基准快照格式错误：records[${index}] 缺少必要字段`)
@@ -259,16 +261,24 @@ function validateAndPickRecord(value: unknown, index: number): CostRecord {
       throw new Error(`基准快照格式错误：records[${index}].${key} 无效`)
     }
   }
-  if (record.httpAttempts !== undefined) {
-    if (!Array.isArray(record.httpAttempts)) throw new Error(`基准快照格式错误：records[${index}].httpAttempts 必须是数组`)
-    for (const [attemptIndex, attempt] of record.httpAttempts.entries()) {
-      if (!attempt || typeof attempt !== 'object' || !Number.isInteger(attempt.attempt) || typeof attempt.outcome !== 'string' || !attempt.usage) {
-        throw new Error(`基准快照格式错误：records[${index}].httpAttempts[${attemptIndex}] 无效`)
-      }
-    }
-  }
   if (record.toolBatch !== undefined) validateToolBatch(record.toolBatch, index)
   return record
+}
+
+function validateHttpAttempts(value: unknown, index: number): void {
+  if (!Array.isArray(value)) throw new Error(`基准快照格式错误：records[${index}].httpAttempts 必须是数组`)
+  for (const [attemptIndex, attempt] of value.entries()) {
+    if (!isRecord(attempt)
+      || !Number.isInteger(attempt.attempt)
+      || (attempt.attempt as number) < 1
+      || (attempt.status !== null && (!Number.isInteger(attempt.status) || (attempt.status as number) < 0))
+      || typeof attempt.outcome !== 'string'
+      || !HTTP_OUTCOMES.has(attempt.outcome as HttpAttempt['outcome'])
+      || !Object.prototype.hasOwnProperty.call(attempt, 'usage')) {
+      throw new Error(`基准快照格式错误：records[${index}].httpAttempts[${attemptIndex}] 无效`)
+    }
+    validateUsage(attempt.usage, index, attemptIndex)
+  }
 }
 
 function validateToolBatch(value: unknown, index: number): void {
@@ -279,6 +289,18 @@ function validateToolBatch(value: unknown, index: number): void {
       || (value[key] as number) < 0) {
       throw new Error(`基准快照格式错误：records[${index}].toolBatch.${key} 无效`)
     }
+  }
+}
+
+function validateUsage(value: unknown, recordIndex: number, attemptIndex: number): void {
+  if (!isRecord(value)) throw new Error(`基准快照格式错误：records[${recordIndex}].httpAttempts[${attemptIndex}].usage 必须是对象`)
+  for (const key of ['input', 'output', 'cached', 'reasoning', 'knownInput', 'knownOutput']) {
+    if (value[key] !== undefined && value[key] !== null && (typeof value[key] !== 'number' || !Number.isFinite(value[key]))) {
+      throw new Error(`基准快照格式错误：records[${recordIndex}].httpAttempts[${attemptIndex}].usage.${key} 无效`)
+    }
+  }
+  if (value.completeness !== undefined && value.completeness !== 'complete' && value.completeness !== 'partial' && value.completeness !== 'unknown') {
+    throw new Error(`基准快照格式错误：records[${recordIndex}].httpAttempts[${attemptIndex}].usage.completeness 无效`)
   }
 }
 

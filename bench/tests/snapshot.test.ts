@@ -83,6 +83,44 @@ describe('共享基准快照', () => {
         ...snapshot,
         records: [{ ...record(), toolBatch: { requested: 1 } as unknown as CostRecord['toolBatch'] }],
       })).toThrow('toolBatch.granted 无效')
+      expect(() => createSnapshot({
+        ...snapshot,
+        records: [{
+          ...record(),
+          httpAttempts: [{
+            ...record().httpAttempts?.[0],
+            usage: { input: 'bad' },
+          }],
+        } as unknown as CostRecord],
+      })).toThrow('usage.input 无效')
+      expect(() => createSnapshot({
+        ...snapshot,
+        records: [{
+          ...record(),
+          httpAttempts: [{ ...record().httpAttempts?.[0], usage: null }],
+        } as unknown as CostRecord],
+      })).toThrow('usage 必须是对象')
+      expect(() => createSnapshot({
+        ...snapshot,
+        records: [{
+          ...record(),
+          httpAttempts: [{ ...record().httpAttempts?.[0], usage: { input: null, output: null, cached: null, reasoning: null, completeness: 'invalid' } }],
+        } as unknown as CostRecord],
+      })).toThrow('usage.completeness 无效')
+      expect(() => createSnapshot({
+        ...snapshot,
+        records: [{
+          ...record(),
+          httpAttempts: [{ ...record().httpAttempts?.[0], outcome: 'bogus' }],
+        } as unknown as CostRecord],
+      })).toThrow('httpAttempts[0] 无效')
+      expect(() => createSnapshot({
+        ...snapshot,
+        records: [{
+          ...record(),
+          httpAttempts: [{ ...record().httpAttempts?.[0], status: '200' }],
+        } as unknown as CostRecord],
+      })).toThrow('httpAttempts[0] 无效')
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
