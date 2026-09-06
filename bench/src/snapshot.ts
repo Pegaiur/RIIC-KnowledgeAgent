@@ -42,6 +42,18 @@ export interface SnapshotFromRunOptions {
   topic?: string
 }
 
+interface QuestionRecoveryContext {
+  runDir: string
+  answers: Map<string, ParsedAnswer>
+  records: CostRecord[]
+}
+
+interface RecoveredQuestion {
+  id: string
+  category: string
+  question: string
+}
+
 const TOP_LEVEL_KEYS = ['schemaVersion', 'runId', 'topic', 'meta', 'queries', 'records']
 const RECORD_KEYS = [
   'ts', 'queryId', 'category', 'round', 'thinking', 'provider', 'model',
@@ -78,20 +90,25 @@ export function snapshotFromRunDir(runDirInput: string, options: SnapshotFromRun
   const records = readJsonLines(join(runDir, 'records.jsonl'))
   const injected = readInjected(join(runDir, 'injected.json'))
   const answers = parseAnswers(readOptionalText(join(runDir, 'answers.md')))
-  const questions = options.questions ?? loadQuestionsFromMeta(meta, options.root ?? process.cwd())
+  const questions = options.questions ?? loadQuestionsFromMeta(meta, options.root ?? process.cwd(), {
+    runDir,
+    answers,
+    records,
+  })
   const queryMap = new Map<string, SnapshotQuery>()
 
   for (const question of questions) {
     const answer = answers.get(question.id)
+    const queryRecords = records.filter((record) => record.queryId === question.id)
     queryMap.set(question.id, {
       id: question.id,
-      category: answer?.category ?? question.category,
+      category: answer?.category ?? (question.category === 'unknown' ? queryRecords[0]?.category ?? 'unknown' : question.category),
       question: answer?.question || question.question,
       answer: answer?.answer ?? null,
       status: answer?.status ?? 'unknown',
       terminationReason: answer?.terminationReason ?? 'unknown',
-      rounds: answer?.rounds ?? records.filter((record) => record.queryId === question.id).length,
-      toolRounds: answer?.toolRounds ?? records.filter((record) => record.queryId === question.id && record.toolBatch).length,
+      rounds: answer?.rounds ?? queryRecords.length,
+      toolRounds: answer?.toolRounds ?? queryRecords.filter((record) => record.toolBatch).length,
       toolTrace: answer?.toolTrace ?? [],
       feedbackUsed: answer?.feedbackUsed ?? false,
       budgetUsed: answer?.budgetUsed ?? 0,
@@ -412,23 +429,37 @@ function readInjected(path: string): Record<string, string[]> {
   return result
 }
 
-function loadQuestionsFromMeta(meta: Record<string, unknown>, root: string): BenchQuery[] {
+function loadQuestionsFromMeta(meta: Record<string, unknown>, root: string, context: QuestionRecoveryContext): RecoveredQuestion[] {
   const embedded = readEmbeddedQuestions(meta)
-  if (embedded.length > 0) return selectQuestions(meta, embedded)
+  const declaredIds = readStringArray(meta.questionIds)
+  const answerIds = [...context.answers.keys()]
+  const recordIds = unique(context.records.map((record) => record.queryId))
+  const historicalIds = unique([
+    ...declaredIds,
+    ...embedded.map((question) => question.id),
+    ...answerIds,
+    ...recordIds,
+  ])
+  if (embedded.length > 0) {
+    return withMissingHistoricalIds(selectQuestions(meta, embedded), historicalIds)
+  }
+
   const rootAbs = resolve(root)
   const configuredPath = typeof meta.questionsPath === 'string' ? meta.questionsPath : null
   const candidate = configuredPath ? resolve(rootAbs, configuredPath) : join(rootAbs, 'bench', 'questions.json')
-  if (!configuredPath) return []
+  if (!configuredPath) return historicalPlaceholders(historicalIds)
   const candidateRel = relative(rootAbs, candidate)
-  if (!candidateRel || candidateRel.startsWith('..') || isAbsolute(candidateRel)) return []
-  if (!existsSync(candidate)) return []
+  if (!candidateRel || candidateRel.startsWith('..') || isAbsolute(candidateRel)) return historicalPlaceholders(historicalIds)
+  if (!existsSync(candidate)) return historicalPlaceholders(historicalIds)
   try {
     const value: unknown = JSON.parse(readFileSync(candidate, 'utf-8'))
-    if (!Array.isArray(value)) return []
+    if (!Array.isArray(value)) return historicalPlaceholders(historicalIds)
     const questions = value.filter((item): item is BenchQuery => isRecord(item) && typeof item.id === 'string' && typeof item.category === 'string' && typeof item.question === 'string')
-    return selectQuestions(meta, questions, true)
+    // 运行目录内的题集副本是可确认的历史来源；仓库题集即使路径存在，也只能保留已确认历史题号。
+    if (isPathInside(context.runDir, candidate)) return withMissingHistoricalIds(selectQuestions(meta, questions, true), historicalIds)
+    return historicalPlaceholders(historicalIds)
   } catch {
-    return []
+    return historicalPlaceholders(historicalIds)
   }
 }
 
@@ -446,6 +477,28 @@ function selectQuestions(meta: Record<string, unknown>, questions: BenchQuery[],
     return meta.questionIds.filter((id): id is string => typeof id === 'string').map((id) => byId.get(id)).filter((question): question is BenchQuery => question !== undefined)
   }
   return limitByCount && typeof meta.questions === 'number' ? questions.slice(0, meta.questions) : questions
+}
+
+function withMissingHistoricalIds(questions: RecoveredQuestion[], historicalIds: string[]): RecoveredQuestion[] {
+  const present = new Set(questions.map((question) => question.id))
+  return [...questions, ...historicalPlaceholders(historicalIds.filter((id) => !present.has(id)))]
+}
+
+function historicalPlaceholders(ids: string[]): RecoveredQuestion[] {
+  return ids.map((id) => ({ id, category: 'unknown', question: '' }))
+}
+
+function readStringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string' && item.length > 0) : []
+}
+
+function unique(values: string[]): string[] {
+  return [...new Set(values)]
+}
+
+function isPathInside(parent: string, child: string): boolean {
+  const rel = relative(resolve(parent), resolve(child)).replace(/\\/g, '/')
+  return rel !== '' && rel !== '..' && !rel.startsWith('../') && !isAbsolute(rel)
 }
 
 interface ParsedAnswer {

@@ -234,4 +234,40 @@ describe('共享基准快照', () => {
       rmSync(dir, { recursive: true, force: true })
     }
   })
+
+  it('外部题集只按可信历史题号受限匹配，正文冲突优先保留答案原文', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'rag-drifted-questions-'))
+    try {
+      mkdirSync(join(dir, 'bench'), { recursive: true })
+      mkdirSync(join(dir, 'history'), { recursive: true })
+      writeFileSync(join(dir, 'bench', 'questions.json'), JSON.stringify([
+        { id: 'A', category: 'fact', question: '当前版本 A' },
+        { id: 'NEW', category: 'fact', question: '当前新增题目' },
+        { id: 'B', category: 'system', question: '当前版本 B' },
+      ]))
+      writeFileSync(join(dir, 'history', 'meta.json'), JSON.stringify({
+        questions: 2,
+        questionIds: ['B', 'A'],
+        questionsPath: 'bench/questions.json',
+      }))
+      writeFileSync(join(dir, 'history', 'records.jsonl'), `${JSON.stringify(record('B'))}\n`)
+      writeFileSync(join(dir, 'history', 'answers.md'), [
+        '# 查询回答记录', '',
+        '## A（fact）', '',
+        '- 问题：历史版本 A',
+        '- 状态：completed｜终止：answer',
+        '- 模型步骤：1｜工具批次：0｜预算：0/5｜工具序列：无',
+        '- 宿主回馈：否', '',
+        '历史答案 A',
+      ].join('\n'))
+
+      const snapshot = snapshotFromRunDir(join(dir, 'history'), { root: dir })
+      expect(snapshot.queries.map((query) => query.id)).toEqual(['B', 'A'])
+      expect(snapshot.queries.map((query) => query.id)).not.toContain('NEW')
+      expect(snapshot.queries[0]).toMatchObject({ id: 'B', category: 'fact', question: '' })
+      expect(snapshot.queries[1]).toMatchObject({ id: 'A', question: '历史版本 A', answer: '历史答案 A' })
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
 })

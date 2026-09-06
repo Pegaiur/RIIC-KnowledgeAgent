@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync, existsSync } from 'node:fs'
 import { execFileSync, spawnSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-import { cleanWithManifest, createCleanupManifest, writeCleanupManifest } from './tooling.mjs'
+import { join, parse } from 'node:path'
+import { cleanWithManifest, createCleanupManifest, writeCleanupManifest, validateCleanupManifest } from './tooling.mjs'
 
 function tempRoot() {
   const root = mkdtempSync(join(tmpdir(), 'rag-tooling-clean-'))
@@ -12,6 +12,21 @@ function tempRoot() {
 }
 
 describe('tooling 显式清理清单', () => {
+  it('拒绝非相邻重叠候选与跨盘清单路径', () => {
+    const root = tempRoot()
+    try {
+      const entries = ['dev-temp/a', 'dev-temp/a-foo', 'dev-temp/a/x'].map(path => ({ path, fingerprint: 'a'.repeat(64), reason: '验收' }))
+      expect(() => validateCleanupManifest(root, { schemaVersion: 1, entries })).toThrow('重叠')
+      expect(() => validateCleanupManifest(root, { schemaVersion: 1, entries: [...entries].reverse() })).toThrow('重叠')
+      if (process.platform === 'win32') {
+        const otherDrive = parse(root).root.toLowerCase().startsWith('c:') ? 'D:' : 'C:'
+        expect(() => cleanWithManifest(root, `${otherDrive}/outside-cleanup.json`)).toThrow('清理清单必须位于仓库内 dev-temp')
+      }
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
   it('默认预览不改目标，apply 删除目标并移除清单', () => {
     const root = tempRoot()
     try {
@@ -61,6 +76,24 @@ describe('tooling 显式清理清单', () => {
       const runManifest = join(root, 'dev-temp', 'run.json')
       writeCleanupManifest(root, runManifest, [{ path: 'dev-temp/runs/task/run-1', reason: '运行' }])
       expect(cleanWithManifest(root, runManifest).results[0].reason).toContain('结束产物')
+
+      const activeRun = join(root, 'dev-temp', 'runs', 'task', 'active')
+      mkdirSync(activeRun, { recursive: true })
+      writeFileSync(join(activeRun, 'out.txt'), 'active')
+      const caseRunManifest = join(root, process.platform === 'win32' ? 'DEV-TEMP' : 'dev-temp', 'case-run.json')
+      const caseRunPath = process.platform === 'win32' ? 'DEV-TEMP/RUNS/task/active' : 'dev-temp/runs/task/active'
+      writeCleanupManifest(root, caseRunManifest, [{ path: caseRunPath, reason: '运行路径大小写' }])
+      expect(cleanWithManifest(root, caseRunManifest).results[0].reason).toContain('结束产物')
+
+      const descendantKeepRoot = join(root, 'dev-temp', 'descendant-keep', 'outer', 'inner')
+      mkdirSync(descendantKeepRoot, { recursive: true })
+      writeFileSync(join(descendantKeepRoot, process.platform === 'win32' ? '.KEEP' : '.keep'), '')
+      writeFileSync(join(descendantKeepRoot, 'content.txt'), 'protected')
+      const descendantKeepManifest = join(root, 'dev-temp', 'descendant-keep.json')
+      writeCleanupManifest(root, descendantKeepManifest, [{ path: 'dev-temp/descendant-keep/outer', reason: '后代保护标记' }])
+      const descendantKeepResult = cleanWithManifest(root, descendantKeepManifest).results[0]
+      expect(descendantKeepResult.action).toBe('skip')
+      expect(descendantKeepResult.reason).toContain('.keep')
 
       const collectionManifest = join(root, 'dev-temp', 'runs-collection.json')
       writeCleanupManifest(root, collectionManifest, [{ path: 'dev-temp/runs', reason: '运行集合' }])

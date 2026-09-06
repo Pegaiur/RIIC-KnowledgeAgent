@@ -269,7 +269,7 @@ export function collectTmpCleanTargets(root) {
   if (!existsSync(tmpRoot)) return []
   return readdirSync(tmpRoot)
     .map(name => ({ rel: name, abs: resolve(tmpRoot, name) }))
-    .filter(t => isInside(tmpRoot, t.abs))
+    .filter(t => isComparableInside(tmpRoot, t.abs))
 }
 
 /**
@@ -321,7 +321,7 @@ export function collectTmpOldRunTargets(root, olderThanDays) {
       if (!entry.isDirectory()) continue
       const ts = parseRunIdTimestamp(entry.name)
       const abs = resolve(dir, entry.name)
-      if (!isInside(runsRoot, abs)) continue
+      if (!isComparableInside(runsRoot, abs)) continue
       if (ts !== null) {
         if (ts < cutoff) targets.push({ rel: rel ? `${rel}/${entry.name}` : entry.name, abs })
       } else {
@@ -440,10 +440,11 @@ export function validateCleanupManifest(root, value) {
     const destination = normalizeDestination(root, entry)
     return { path: target.rel, fingerprint: entry.fingerprint.toLowerCase(), ...destination }
   })
-  const sorted = [...entries].sort((a, b) => a.path.localeCompare(b.path))
-  for (let i = 1; i < sorted.length; i++) {
-    if (isRelativeInside(sorted[i - 1].path, sorted[i].path) || sorted[i - 1].path === sorted[i].path) {
-      throw new Error(`清理清单包含重叠或重复候选：${sorted[i - 1].path} / ${sorted[i].path}`)
+  for (let i = 0; i < entries.length; i++) {
+    for (let j = 0; j < i; j++) {
+      if (isRelativeInside(entries[j].path, entries[i].path) || isRelativeInside(entries[i].path, entries[j].path) || samePath(entries[j].path, entries[i].path)) {
+        throw new Error(`清理清单包含重叠或重复候选：${entries[j].path} / ${entries[i].path}`)
+      }
     }
   }
   return { schemaVersion: CLEANUP_MANIFEST_SCHEMA_VERSION, entries }
@@ -452,7 +453,7 @@ export function validateCleanupManifest(root, value) {
 function normalizeDestination(root, selection) {
   if (typeof selection.snapshot === 'string') {
     const snapshot = resolveRepoRelative(root, selection.snapshot, 'snapshot')
-    if (!snapshot.rel.startsWith('bench/results/')) throw new Error(`snapshot 必须位于 bench/results/：${snapshot.rel}`)
+    if (!isComparableInside(resolve(root, 'bench', 'results'), snapshot.abs)) throw new Error(`snapshot 必须位于 bench/results/：${snapshot.rel}`)
     return { snapshot: snapshot.rel }
   }
   if (typeof selection.reason === 'string' && selection.reason.trim()) return { reason: redactCleanupText(selection.reason.trim()) }
@@ -463,8 +464,8 @@ function resolveManifestPath(root, input) {
   if (typeof input !== 'string' || !input.trim()) throw new Error('清理清单路径无效')
   const rootAbs = resolve(root)
   const target = resolve(input)
-  const rel = relative(rootAbs, target).replace(/\\/g, '/')
-  if (!rel || rel === '..' || rel.startsWith('../') || rel.startsWith('/') || !rel.startsWith('dev-temp/')) {
+  const devTempRoot = resolve(rootAbs, 'dev-temp')
+  if (!isComparableInside(devTempRoot, target)) {
     throw new Error(`清理清单必须位于仓库内 dev-temp/：${input}`)
   }
   assertNoReparsePoints(rootAbs, target)
@@ -474,13 +475,15 @@ function resolveManifestPath(root, input) {
 function resolveCleanupTarget(root, input) {
   const target = resolveRepoRelative(root, input, '清理目标')
   const rel = target.rel
-  const allowedDevTemp = rel.startsWith('dev-temp/')
-  const benchParts = rel.split('/')
-  const allowedBenchRuns = benchParts[0] === 'bench-runs' && benchParts.length === 2
+  const devTempRoot = resolve(root, 'dev-temp')
+  const benchRunsRoot = resolve(root, 'bench-runs')
+  const allowedDevTemp = isComparableInside(devTempRoot, target.abs)
+  const benchRelative = relative(benchRunsRoot, target.abs).replace(/\\/g, '/')
+  const allowedBenchRuns = isComparableInside(benchRunsRoot, target.abs) && benchRelative.split('/').length === 1
   if (!allowedDevTemp && !allowedBenchRuns) {
     throw new Error(`清理目标不在固定白名单内：${rel}（仅支持 dev-temp/ 内明确路径或 bench-runs 下运行目录）`)
   }
-  if (rel === 'dev-temp' || rel === 'bench-runs') throw new Error(`拒绝清理根目录：${rel}`)
+  if (samePath(devTempRoot, target.abs) || samePath(benchRunsRoot, target.abs)) throw new Error(`拒绝清理根目录：${rel}`)
   if (allowedBenchRuns && existsSync(target.abs) && !lstatSync(target.abs).isDirectory()) throw new Error(`bench-runs 目标必须是运行目录：${rel}`)
   return target
 }
@@ -495,8 +498,7 @@ function resolveRepoRelative(root, input, label) {
 }
 
 function isRelativeInside(parent, child) {
-  const rel = relative(parent, child).replace(/\\/g, '/')
-  return rel !== '' && !rel.startsWith('../') && rel !== '..' && !rel.startsWith('/')
+  return isComparableInside(parent, child)
 }
 
 function redactCleanupText(value) {
@@ -527,7 +529,7 @@ function assertSafeTree(abs) {
 function assertNoReparsePoints(root, abs) {
   let current = abs
   const rootAbs = resolve(root)
-  while (current && isInside(rootAbs, current)) {
+  while (current && isComparableInside(rootAbs, current)) {
     if (existsSync(current) && lstatSync(current).isSymbolicLink()) {
       throw new Error(`路径包含符号链接或 junction，拒绝使用：${abs}`)
     }
@@ -569,18 +571,18 @@ function pathStats(abs) {
 }
 
 function hasKeepMarker(abs, root) {
-  if (basename(abs) === '.keep') return true
+  if (sameName(basename(abs), '.keep')) return true
   let current = lstatSync(abs).isDirectory() ? abs : dirname(abs)
   const repoRoot = resolve(root)
-  while (samePath(repoRoot, current) || isInside(repoRoot, current)) {
-    if (existsSync(join(current, '.keep'))) return true
+  while (samePath(repoRoot, current) || isComparableInside(repoRoot, current)) {
+    if (readdirSync(current).some((name) => sameName(name, '.keep'))) return true
     if (samePath(repoRoot, current)) break
     const parent = dirname(current)
     if (parent === current) break
     current = parent
   }
   const walk = (path) => {
-    if (basename(path) === '.keep') return true
+    if (sameName(basename(path), '.keep')) return true
     const stat = lstatSync(path)
     if (!stat.isDirectory()) return false
     return readdirSync(path).some((name) => walk(join(path, name)))
@@ -622,15 +624,18 @@ function snapshotReady(root, rel) {
   return null
 }
 
-function runCompleted(abs, root, rel) {
-  if (rel.startsWith('bench-runs/')) return existsSync(join(abs, 'meta.json'))
-  if (rel !== 'dev-temp/runs' && !rel.startsWith('dev-temp/runs/')) return true
+function runCompleted(abs, root) {
+  const benchRunsRoot = resolve(root, 'bench-runs')
+  if (samePath(benchRunsRoot, abs) || isComparableInside(benchRunsRoot, abs)) {
+    return existsSync(join(abs, 'meta.json'))
+  }
   const runsRoot = resolve(root, 'dev-temp', 'runs')
+  if (!samePath(runsRoot, abs) && !isComparableInside(runsRoot, abs)) return true
   const relativeToRuns = relative(runsRoot, abs).replace(/\\/g, '/')
   // runs/task 是集合目录，无法从其自身证明每个 run 都已结束；必须选择具体 run 目录。
   if (!relativeToRuns || relativeToRuns.split('/').length < 2) return false
   let current = lstatSync(abs).isDirectory() ? abs : dirname(abs)
-  while (samePath(runsRoot, current) || isInside(runsRoot, current)) {
+  while (samePath(runsRoot, current) || isComparableInside(runsRoot, current)) {
     if (existsSync(join(current, 'result.json'))) return true
     if (samePath(runsRoot, current)) break
     const parent = dirname(current)
@@ -644,14 +649,18 @@ function samePath(left, right) {
   return normalizeComparablePath(left) === normalizeComparablePath(right)
 }
 
+function sameName(left, right) {
+  return process.platform === 'win32' ? left.toLowerCase() === right.toLowerCase() : left === right
+}
+
 function normalizeComparablePath(path) {
   const normalized = resolve(path).replace(/\\/g, '/')
   return process.platform === 'win32' ? normalized.toLowerCase() : normalized
 }
 
 function isComparableInside(parent, child) {
-  const rel = relative(parent, child).replace(/\\/g, '/')
-  return rel !== '' && rel !== '..' && !rel.startsWith('../') && !rel.startsWith('/')
+  const rel = relative(normalizeComparablePath(parent), normalizeComparablePath(child)).replace(/\\/g, '/')
+  return rel !== '' && rel !== '..' && !rel.startsWith('../') && !isAbsolute(rel)
 }
 
 function evaluateCleanupEntry(root, manifestPath, entry) {
@@ -663,7 +672,7 @@ function evaluateCleanupEntry(root, manifestPath, entry) {
     assertSafeTree(target.abs)
     if (isTracked(root, target.rel)) return { ...base, reason: 'Git 跟踪文件受保护', blocking: true }
     if (hasKeepMarker(target.abs, root)) return { ...base, reason: '候选或其祖先/后代存在 .keep，受保护', blocking: true }
-    if (!runCompleted(target.abs, root, target.rel)) return { ...base, reason: '未找到结束产物 result.json，无法确认运行已停止', blocking: true }
+    if (!runCompleted(target.abs, root)) return { ...base, reason: '未找到结束产物 result.json，无法确认运行已停止', blocking: true }
     if (entry.snapshot) {
       const snapshotProblem = snapshotReady(root, entry.snapshot)
       if (snapshotProblem) return { ...base, reason: snapshotProblem, blocking: true }
