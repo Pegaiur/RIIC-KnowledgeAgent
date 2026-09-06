@@ -4,11 +4,12 @@
  * questions、gold、spec 是同一份评测定义的三个投影：题号必须一一对应，
  * gold 只能引用 manifest 白名单中的真实切块，避免检索指标因漂移静默失真。
  */
-import { readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { loadCorpus, loadCorpusManifest } from './corpus.js'
 import { checkGold, loadGold, type GoldMap } from './hitrate.js'
 import type { BenchQuery } from './types.js'
+import { readSnapshot } from './snapshot.js'
 
 const QUESTION_ID_PATTERN = /^[FSG]\d{2}$/
 const EXPECTED_COUNTS = { fact: 10, system: 8, gadget: 2 } as const
@@ -19,6 +20,7 @@ export interface BenchmarkIntegritySummary {
   specCount: number
   corpusFileCount: number
   chunkCount: number
+  snapshotCount: number
 }
 
 function readQuestions(root: string): BenchQuery[] {
@@ -40,6 +42,30 @@ function duplicateIds(ids: readonly string[]): string[] {
 
 function missingFrom(source: Iterable<string>, target: ReadonlySet<string>): string[] {
   return [...source].filter((item) => !target.has(item))
+}
+
+function validateSharedSnapshots(root: string, errors: string[]): number {
+  const resultsRoot = join(root, 'bench', 'results')
+  if (!existsSync(resultsRoot)) {
+    errors.push('bench/results 不存在，至少需要一个已入库共享快照')
+    return 0
+  }
+  const files = readdirSync(resultsRoot, { withFileTypes: true })
+  const snapshots = files.filter((entry) => entry.isFile() && entry.name.endsWith('.json'))
+  if (snapshots.length === 0) {
+    errors.push('bench/results 没有可校验的 .json 共享快照')
+    return 0
+  }
+  for (const entry of snapshots) {
+    const path = join(resultsRoot, entry.name)
+    try {
+      readSnapshot(path)
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error)
+      errors.push(`共享快照 ${entry.name} 校验失败：${detail}`)
+    }
+  }
+  return snapshots.length
 }
 
 export function extractSpecQuestionIds(specText: string): string[] {
@@ -105,6 +131,8 @@ export function validateBenchmarkIntegrity(root: string): BenchmarkIntegritySumm
   if (specMissingQuestions.length > 0) errors.push(`spec 缺少题号：${specMissingQuestions.join('、')}`)
   if (specExtraQuestions.length > 0) errors.push(`spec 多出题号：${specExtraQuestions.join('、')}`)
 
+  const snapshotCount = validateSharedSnapshots(root, errors)
+
   if (errors.length > 0) {
     throw new Error(`基准完整性校验失败：\n${errors.map((error) => `- ${error}`).join('\n')}`)
   }
@@ -115,6 +143,7 @@ export function validateBenchmarkIntegrity(root: string): BenchmarkIntegritySumm
     specCount: specIds.length,
     corpusFileCount: manifest.size,
     chunkCount: chunks.length,
+    snapshotCount,
   }
 }
 

@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync, existsSync } from 'node:fs'
-import { spawnSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { cleanWithManifest, createCleanupManifest, writeCleanupManifest } from './tooling.mjs'
 
 function tempRoot() {
-  return mkdtempSync(join(tmpdir(), 'rag-tooling-clean-'))
+  const root = mkdtempSync(join(tmpdir(), 'rag-tooling-clean-'))
+  execFileSync('git', ['init', '--quiet', root])
+  return root
 }
 
 describe('tooling 显式清理清单', () => {
@@ -60,6 +62,10 @@ describe('tooling 显式清理清单', () => {
       writeCleanupManifest(root, runManifest, [{ path: 'dev-temp/runs/task/run-1', reason: '运行' }])
       expect(cleanWithManifest(root, runManifest).results[0].reason).toContain('结束产物')
 
+      const collectionManifest = join(root, 'dev-temp', 'runs-collection.json')
+      writeCleanupManifest(root, collectionManifest, [{ path: 'dev-temp/runs', reason: '运行集合' }])
+      expect(cleanWithManifest(root, collectionManifest).results[0].reason).toContain('结束产物')
+
       const benchRun = join(root, 'bench-runs', 'run-1')
       mkdirSync(benchRun, { recursive: true })
       writeFileSync(join(benchRun, 'records.jsonl'), '')
@@ -70,6 +76,34 @@ describe('tooling 显式清理清单', () => {
       const completedBenchManifest = join(root, 'dev-temp', 'bench-completed.json')
       writeCleanupManifest(root, completedBenchManifest, [{ path: 'bench-runs/run-1', reason: '基准运行' }])
       expect(cleanWithManifest(root, completedBenchManifest).results[0].action).toBe('delete')
+
+      const tracked = join(root, 'dev-temp', 'work', 'protected.txt')
+      writeFileSync(tracked, 'tracked')
+      execFileSync('git', ['add', '--', 'dev-temp/work/protected.txt'], { cwd: root })
+      const caseManifest = join(root, 'dev-temp', 'case.json')
+      writeCleanupManifest(root, caseManifest, [{ path: 'dev-temp/work/PROTECTED.txt', reason: '大小写' }])
+      expect(cleanWithManifest(root, caseManifest).results[0].reason).toContain('Git 跟踪')
+
+      const trackedChild = join(root, 'dev-temp', 'work', 'tracked-dir', 'child.txt')
+      mkdirSync(join(root, 'dev-temp', 'work', 'tracked-dir'), { recursive: true })
+      writeFileSync(trackedChild, 'tracked child')
+      execFileSync('git', ['add', '--', 'dev-temp/work/tracked-dir/child.txt'], { cwd: root })
+      const trackedDirectoryManifest = join(root, 'dev-temp', 'tracked-directory.json')
+      writeCleanupManifest(root, trackedDirectoryManifest, [{ path: 'dev-temp/work/tracked-dir', reason: '目录跟踪' }])
+      expect(cleanWithManifest(root, trackedDirectoryManifest).results[0].reason).toContain('Git 跟踪')
+
+      writeFileSync(join(root, '.keep'), '')
+      writeFileSync(join(root, 'dev-temp', 'work', 'root-protected.txt'), 'root')
+      const rootKeepManifest = join(root, 'dev-temp', 'root-keep.json')
+      writeCleanupManifest(root, rootKeepManifest, [{ path: 'dev-temp/work/root-protected.txt', reason: '根保护' }])
+      expect(cleanWithManifest(root, rootKeepManifest).results[0].reason).toContain('.keep')
+
+      const gitFailureTarget = join(root, 'dev-temp', 'work', 'git-failure.txt')
+      writeFileSync(gitFailureTarget, 'git failure')
+      const gitFailureManifest = join(root, 'dev-temp', 'git-failure.json')
+      writeCleanupManifest(root, gitFailureManifest, [{ path: 'dev-temp/work/git-failure.txt', reason: 'Git 失败' }])
+      rmSync(join(root, '.git'), { recursive: true, force: true })
+      expect(cleanWithManifest(root, gitFailureManifest).results[0].reason).toContain('无法确认 Git 跟踪状态')
 
       expect(() => writeCleanupManifest(root, join(root, '..', 'outside.json'), [{ path: 'dev-temp/work/changed.txt', reason: '越界清单' }])).toThrow('dev-temp')
     } finally {

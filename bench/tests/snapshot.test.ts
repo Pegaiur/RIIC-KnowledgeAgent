@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -51,6 +51,9 @@ describe('共享基准快照', () => {
         topic: 'rag-facts',
         meta: {
           model: 'qwen3.7-flash', apiKey: 'sk-should-not-survive',
+          corpusDir: 'C:\\private\\corpus',
+          headers: { Cookie: 'synthetic-cookie' },
+          unknownExtra: 'drop-me',
           totalCost: 99, inputTokens: 123, terminationReasons: { answer: 1 },
         },
         queries: [{
@@ -69,12 +72,20 @@ describe('共享基准快照', () => {
       expect(readSnapshot(path).meta).not.toHaveProperty('totalCost')
       expect(readSnapshot(path).meta).not.toHaveProperty('inputTokens')
       expect(readSnapshot(path).meta).not.toHaveProperty('terminationReasons')
+      expect(readSnapshot(path).meta).not.toHaveProperty('corpusDir')
+      expect(readSnapshot(path).meta).not.toHaveProperty('headers')
+      expect(readSnapshot(path).meta).not.toHaveProperty('unknownExtra')
       expect(() => writeSnapshot(path, { ...snapshot, topic: 'conflict' })).toThrow('拒绝覆盖')
       expect(readSnapshot(path).records[0]?.httpAttempts?.[0]?.error).toBeUndefined()
       expect(readSnapshot(path).records[0]?.toolBatch).toEqual({
         requested: 1, granted: 1, executed: 1, denied: 0, errors: 0,
         budgetBefore: 5, budgetAfter: 4, resultChars: 10,
       })
+      const unsafePath = join(dir, 'unsafe.json')
+      writeFileSync(unsafePath, JSON.stringify({ ...snapshot, meta: { ...snapshot.meta, unknownExtra: 'must-reject' } }))
+      expect(() => readSnapshot(unsafePath)).toThrow('meta.unknownExtra')
+      writeFileSync(unsafePath, JSON.stringify({ ...snapshot, meta: { ...snapshot.meta, corpusDir: 'C:\\private\\corpus' } }))
+      expect(() => readSnapshot(unsafePath)).toThrow('meta.corpusDir')
       expect(() => createSnapshot({
         ...snapshot,
         records: [{ ...record(), toolBatch: { requested: 'bad' } as unknown as CostRecord['toolBatch'] }],
@@ -131,15 +142,15 @@ describe('共享基准快照', () => {
     try {
       writeFileSync(join(dir, 'meta.json'), JSON.stringify({ topic: 'rag-facts', questionsPath: join(dir, 'questions.json') }))
       writeFileSync(join(dir, 'questions.json'), JSON.stringify([
-        { id: 'Q1', category: 'fact', question: '有记录的问题' },
+        { id: 'Q1', category: 'fact', question: '当前版本改名后的问题' },
         { id: 'Q2', category: 'system', question: '没有记录的问题' },
       ]))
-      writeFileSync(join(dir, 'records.jsonl'), `${JSON.stringify(record())}\n`)
+      writeFileSync(join(dir, 'records.jsonl'), `${JSON.stringify(record())}\n${JSON.stringify(record('Q3'))}\n`)
       writeFileSync(join(dir, 'injected.json'), JSON.stringify({ Q1: ['facts/Q1'] }))
       writeFileSync(join(dir, 'answers.md'), [
         '# 查询回答记录', '',
         '## Q1（fact）', '',
-        '- 问题：有记录的问题',
+        '- 问题：历史原始问题',
         '- 状态：completed｜终止：answer',
         '- 模型步骤：1｜工具批次：0｜预算：0/5｜工具序列：无',
         '- 宿主回馈：否', '',
@@ -148,10 +159,11 @@ describe('共享基准快照', () => {
       ].join('\n'))
 
       const snapshot = snapshotFromRunDir(dir, { root: dir })
-      expect(snapshot.queries).toHaveLength(2)
-      expect(snapshot.queries[0]).toMatchObject({ id: 'Q1', answer: '最终答案第一段\n\n最终答案第二段', injectedIds: ['facts/Q1'] })
+      expect(snapshot.queries).toHaveLength(3)
+      expect(snapshot.queries[0]).toMatchObject({ id: 'Q1', question: '历史原始问题', answer: '最终答案第一段\n\n最终答案第二段', injectedIds: ['facts/Q1'] })
       expect(snapshot.queries[1]).toMatchObject({ id: 'Q2', status: 'unknown', answer: null })
-      expect(aggregateSnapshot(snapshot)).toMatchObject({ totalQueries: 2, totalCalls: 1 })
+      expect(snapshot.queries[2]).toMatchObject({ id: 'Q3', question: '', status: 'unknown' })
+      expect(aggregateSnapshot(snapshot)).toMatchObject({ totalQueries: 3, totalCalls: 2 })
       expect(aggregateSnapshot(snapshot).byQuery.find((query) => query.queryId === 'Q2')).toMatchObject({ rounds: 0, costComplete: false })
     } finally {
       rmSync(dir, { recursive: true, force: true })
@@ -188,6 +200,36 @@ describe('共享基准快照', () => {
         toolTrace: ['rag_search'],
         answer: '旧版回答第一段\n\n旧版回答第二段',
       })
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('以嵌入题集和答案恢复历史题号，不用当前默认题集冒充历史', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'rag-history-export-'))
+    try {
+      mkdirSync(join(dir, 'bench'), { recursive: true })
+      writeFileSync(join(dir, 'bench', 'questions.json'), JSON.stringify([
+        { id: 'CURRENT', category: 'fact', question: '当前默认问题' },
+      ]))
+      writeFileSync(join(dir, 'meta.json'), JSON.stringify({ questions: 1 }))
+      writeFileSync(join(dir, 'records.jsonl'), '')
+      writeFileSync(join(dir, 'answers.md'), [
+        '# 查询回答记录', '',
+        '## ORIGINAL（fact）', '',
+        '- 问题：历史原始问题',
+        '- 轮数：1｜检索次数：0｜工具序列：无', '',
+        '历史答案', '',
+        '## FAILED（system）', '',
+        '- 问题：历史失败问题',
+        '- 轮数：0｜检索次数：0｜工具序列：无', '',
+        '（查询失败：服务不可用）',
+      ].join('\n'))
+
+      const snapshot = snapshotFromRunDir(dir, { root: dir })
+      expect(snapshot.queries.map((query) => query.id)).toEqual(['ORIGINAL', 'FAILED'])
+      expect(snapshot.queries[0]).toMatchObject({ id: 'ORIGINAL', question: '历史原始问题', status: 'completed' })
+      expect(snapshot.queries[1]).toMatchObject({ id: 'FAILED', question: '历史失败问题', status: 'failed', terminationReason: 'llm_error', answer: null })
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }

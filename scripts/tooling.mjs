@@ -572,8 +572,9 @@ function hasKeepMarker(abs, root) {
   if (basename(abs) === '.keep') return true
   let current = lstatSync(abs).isDirectory() ? abs : dirname(abs)
   const repoRoot = resolve(root)
-  while (isInside(repoRoot, current)) {
+  while (samePath(repoRoot, current) || isInside(repoRoot, current)) {
     if (existsSync(join(current, '.keep'))) return true
+    if (samePath(repoRoot, current)) break
     const parent = dirname(current)
     if (parent === current) break
     current = parent
@@ -588,11 +589,18 @@ function hasKeepMarker(abs, root) {
 }
 
 function isTracked(root, rel) {
+  const target = normalizeComparablePath(resolve(root, rel))
   try {
-    const output = execFileSync('git', ['ls-files', '--error-unmatch', '--', rel], { cwd: root, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] })
-    return output.trim() !== ''
-  } catch {
-    return false
+    const output = execFileSync('git', ['ls-files', '-z', '--'], { cwd: root, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'pipe'] })
+    return output.split('\0')
+      .filter(Boolean)
+      .some((tracked) => {
+        const trackedPath = normalizeComparablePath(resolve(root, tracked))
+        return trackedPath === target || isComparableInside(target, trackedPath)
+      })
+  } catch (e) {
+    const detail = e?.message ?? String(e)
+    throw new Error(`无法确认 Git 跟踪状态，拒绝清理：${rel}（${detail}）`)
   }
 }
 
@@ -616,11 +624,15 @@ function snapshotReady(root, rel) {
 
 function runCompleted(abs, root, rel) {
   if (rel.startsWith('bench-runs/')) return existsSync(join(abs, 'meta.json'))
-  if (!rel.startsWith('dev-temp/runs/')) return true
+  if (rel !== 'dev-temp/runs' && !rel.startsWith('dev-temp/runs/')) return true
   const runsRoot = resolve(root, 'dev-temp', 'runs')
+  const relativeToRuns = relative(runsRoot, abs).replace(/\\/g, '/')
+  // runs/task 是集合目录，无法从其自身证明每个 run 都已结束；必须选择具体 run 目录。
+  if (!relativeToRuns || relativeToRuns.split('/').length < 2) return false
   let current = lstatSync(abs).isDirectory() ? abs : dirname(abs)
-  while (isInside(runsRoot, current)) {
+  while (samePath(runsRoot, current) || isInside(runsRoot, current)) {
     if (existsSync(join(current, 'result.json'))) return true
+    if (samePath(runsRoot, current)) break
     const parent = dirname(current)
     if (parent === current) break
     current = parent
@@ -628,10 +640,24 @@ function runCompleted(abs, root, rel) {
   return false
 }
 
+function samePath(left, right) {
+  return normalizeComparablePath(left) === normalizeComparablePath(right)
+}
+
+function normalizeComparablePath(path) {
+  const normalized = resolve(path).replace(/\\/g, '/')
+  return process.platform === 'win32' ? normalized.toLowerCase() : normalized
+}
+
+function isComparableInside(parent, child) {
+  const rel = relative(parent, child).replace(/\\/g, '/')
+  return rel !== '' && rel !== '..' && !rel.startsWith('../') && !rel.startsWith('/')
+}
+
 function evaluateCleanupEntry(root, manifestPath, entry) {
   const target = resolveCleanupTarget(root, entry.path)
   const base = { entry, path: target.rel, abs: target.abs, files: 0, bytes: 0, destination: entry.snapshot ? `提取至 ${entry.snapshot}` : `舍弃：${entry.reason}`, action: 'skip', reason: '', blocking: false }
-  if (resolve(target.abs) === resolve(manifestPath)) return { ...base, reason: '清理清单自身不得成为删除目标', blocking: true }
+  if (samePath(target.abs, manifestPath)) return { ...base, reason: '清理清单自身不得成为删除目标', blocking: true }
   if (!existsSync(target.abs)) return { ...base, reason: '目标已不存在', blocking: false }
   try {
     assertSafeTree(target.abs)

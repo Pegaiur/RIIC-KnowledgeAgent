@@ -58,6 +58,13 @@ const META_SUMMARY_KEYS = new Set([
   'toolResultChars', 'httpAttempts', 'retryAttempts', 'feedbackUsed', 'terminationReasons',
   'elapsedMs',
 ])
+const META_ALLOWED_KEYS = new Set([
+  'schemaVersion', 'traceSchemaVersion', 'ts', 'thinking', 'dry', 'provider', 'model',
+  'temperature', 'baseUrl', 'retriever', 'minRagCalls', 'toolBudget', 'sessionTimeoutMs',
+  'feedbackOnNoToolAnswer', 'toolChoice', 'parallelToolCalls', 'agentInstructionsSha256',
+  'tokenizer', 'entityBoost', 'topK', 'maxContextChars', 'corpusDir', 'chunks', 'questions',
+  'questionIds', 'questionsPath', 'questionDefinitions', 'topic', 'prices', 'source',
+])
 const TERMINATION_REASONS = new Set<TerminationReason>([
   'answer', 'no_tool_after_feedback', 'llm_error', 'tool_error', 'timeout',
   'cancelled', 'empty_response', 'truncated', 'protocol_error',
@@ -70,16 +77,16 @@ export function snapshotFromRunDir(runDirInput: string, options: SnapshotFromRun
   const meta = readJsonObject(join(runDir, 'meta.json'), '运行元信息')
   const records = readJsonLines(join(runDir, 'records.jsonl'))
   const injected = readInjected(join(runDir, 'injected.json'))
-  const questions = options.questions ?? loadQuestionsFromMeta(meta, options.root ?? process.cwd())
   const answers = parseAnswers(readOptionalText(join(runDir, 'answers.md')))
+  const questions = options.questions ?? loadQuestionsFromMeta(meta, options.root ?? process.cwd())
   const queryMap = new Map<string, SnapshotQuery>()
 
   for (const question of questions) {
     const answer = answers.get(question.id)
     queryMap.set(question.id, {
       id: question.id,
-      category: question.category,
-      question: question.question,
+      category: answer?.category ?? question.category,
+      question: answer?.question || question.question,
       answer: answer?.answer ?? null,
       status: answer?.status ?? 'unknown',
       terminationReason: answer?.terminationReason ?? 'unknown',
@@ -90,6 +97,27 @@ export function snapshotFromRunDir(runDirInput: string, options: SnapshotFromRun
       budgetUsed: answer?.budgetUsed ?? 0,
       budgetRemaining: answer?.budgetRemaining ?? 0,
       injectedIds: injected[question.id] ?? [],
+    })
+  }
+
+  // 题集文件缺失时，answers.md 仍是历史运行保存的原始题目来源；失败题可能没有 CostRecord。
+  for (const [queryId, answer] of answers) {
+    if (queryMap.has(queryId)) continue
+    const queryRecords = records.filter((record) => record.queryId === queryId)
+    queryMap.set(queryId, {
+      id: queryId,
+      category: answer.category || queryRecords[0]?.category || 'unknown',
+      question: answer.question,
+      answer: answer.answer,
+      status: answer.status,
+      terminationReason: answer.terminationReason,
+      rounds: answer.rounds || queryRecords.length,
+      toolRounds: answer.toolRounds || queryRecords.filter((record) => record.toolBatch).length,
+      toolTrace: answer.toolTrace,
+      feedbackUsed: answer.feedbackUsed,
+      budgetUsed: answer.budgetUsed,
+      budgetRemaining: answer.budgetRemaining,
+      injectedIds: injected[queryId] ?? [],
     })
   }
 
@@ -182,7 +210,7 @@ export function validateSnapshot(value: unknown): BenchSnapshot {
     throw new Error('基准快照格式错误：runId 必须是非空安全标识')
   }
   if (!isNonEmptyString(value.topic)) throw new Error('基准快照格式错误：topic 必须是非空字符串')
-  if (!isRecord(value.meta)) throw new Error('基准快照格式错误：meta 必须是对象')
+  const meta = validateMeta(value.meta)
   if (!Array.isArray(value.queries)) throw new Error('基准快照格式错误：queries 必须是数组')
   if (!Array.isArray(value.records)) throw new Error('基准快照格式错误：records 必须是数组')
 
@@ -200,7 +228,7 @@ export function validateSnapshot(value: unknown): BenchSnapshot {
     schemaVersion: SNAPSHOT_SCHEMA_VERSION,
     runId: value.runId,
     topic: value.topic,
-    meta: sanitizeMeta(value.meta),
+    meta,
     queries,
     records,
   }
@@ -390,6 +418,7 @@ function loadQuestionsFromMeta(meta: Record<string, unknown>, root: string): Ben
   const rootAbs = resolve(root)
   const configuredPath = typeof meta.questionsPath === 'string' ? meta.questionsPath : null
   const candidate = configuredPath ? resolve(rootAbs, configuredPath) : join(rootAbs, 'bench', 'questions.json')
+  if (!configuredPath) return []
   const candidateRel = relative(rootAbs, candidate)
   if (!candidateRel || candidateRel.startsWith('..') || isAbsolute(candidateRel)) return []
   if (!existsSync(candidate)) return []
@@ -397,7 +426,7 @@ function loadQuestionsFromMeta(meta: Record<string, unknown>, root: string): Ben
     const value: unknown = JSON.parse(readFileSync(candidate, 'utf-8'))
     if (!Array.isArray(value)) return []
     const questions = value.filter((item): item is BenchQuery => isRecord(item) && typeof item.id === 'string' && typeof item.category === 'string' && typeof item.question === 'string')
-    return selectQuestions(meta, questions)
+    return selectQuestions(meta, questions, true)
   } catch {
     return []
   }
@@ -411,12 +440,12 @@ function readEmbeddedQuestions(meta: Record<string, unknown>): BenchQuery[] {
     && typeof item.question === 'string')
 }
 
-function selectQuestions(meta: Record<string, unknown>, questions: BenchQuery[]): BenchQuery[] {
+function selectQuestions(meta: Record<string, unknown>, questions: BenchQuery[], limitByCount = false): BenchQuery[] {
   if (Array.isArray(meta.questionIds)) {
     const byId = new Map(questions.map((question) => [question.id, question]))
     return meta.questionIds.filter((id): id is string => typeof id === 'string').map((id) => byId.get(id)).filter((question): question is BenchQuery => question !== undefined)
   }
-  return typeof meta.questions === 'number' ? questions.slice(0, meta.questions) : questions
+  return limitByCount && typeof meta.questions === 'number' ? questions.slice(0, meta.questions) : questions
 }
 
 interface ParsedAnswer {
@@ -459,13 +488,14 @@ function parseAnswers(raw: string | null): Map<string, ParsedAnswer> {
     const legacyIndex = legacyLine ? block.indexOf(legacyLine) : -1
     const answerStart = findAnswerStart(block, feedbackIndex, budgetIndex, legacyIndex)
     const body = block.slice(answerStart).join('\n').trim()
-    const status = statusMatch?.[1] ?? (legacyMatch && body ? 'completed' : undefined)
+    const legacyFailure = /^（查询(?:失败|未完成)：/.test(body)
+    const status = statusMatch?.[1] ?? (legacyMatch && body ? (legacyFailure ? 'failed' : 'completed') : undefined)
     out.set(header.id, {
       category: header.category,
       question: redactText(question),
       answer: status === 'completed' ? redactText(body) : null,
       status: status === 'completed' || status === 'failed' || status === 'cancelled' ? status : 'unknown',
-      terminationReason: parseTermination(statusMatch?.[2]),
+      terminationReason: parseTermination(statusMatch?.[2] ?? (legacyFailure ? 'llm_error' : undefined)),
       rounds: Number(budgetMatch?.[1] ?? legacyMatch?.[1] ?? 0),
       toolRounds: Number(budgetMatch?.[2] ?? legacyMatch?.[2] ?? 0),
       budgetUsed: Number(budgetMatch?.[3] ?? 0),
@@ -494,25 +524,144 @@ function readOptionalText(path: string): string | null {
   return existsSync(path) ? readFileSync(path, 'utf-8') : null
 }
 
-function sanitizeObject(value: Record<string, unknown>): Record<string, unknown> {
+function validateMeta(value: unknown): Record<string, unknown> {
+  if (!isRecord(value)) throw new Error('基准快照格式错误：meta 必须是对象')
+  for (const [key, item] of Object.entries(value)) {
+    if (!META_ALLOWED_KEYS.has(key) || META_SUMMARY_KEYS.has(key)) {
+      throw new Error(`基准快照格式错误：meta.${key} 不在允许字段白名单中`)
+    }
+    validateMetaFieldContract(key, item)
+  }
+  return sanitizeMeta(value)
+}
+
+function validateMetaFieldContract(key: string, value: unknown): void {
+  if (key === 'questionDefinitions') {
+    if (!Array.isArray(value)) throw new Error('基准快照格式错误：meta.questionDefinitions 必须是数组')
+    for (const [index, item] of value.entries()) {
+      if (!isRecord(item) || Object.keys(item).sort().join('\0') !== ['category', 'id', 'question'].join('\0')
+        || !isNonEmptyString(item.id)
+        || !isNonEmptyString(item.question)
+        || (item.category !== 'fact' && item.category !== 'system' && item.category !== 'gadget')) {
+        throw new Error(`基准快照格式错误：meta.questionDefinitions[${index}] 结构无效`)
+      }
+    }
+    return
+  }
+  if (key === 'questionIds') {
+    if (!Array.isArray(value) || value.some((item) => !isNonEmptyString(item))) {
+      throw new Error('基准快照格式错误：meta.questionIds 必须是非空字符串数组')
+    }
+    return
+  }
+  if (key === 'prices') {
+    if (!isRecord(value)) throw new Error('基准快照格式错误：meta.prices 必须是对象')
+    for (const field of Object.keys(value)) {
+      if (field !== 'inPerM' && field !== 'outPerM' && field !== 'cachePerM') {
+        throw new Error(`基准快照格式错误：meta.prices.${field} 不在允许字段中`)
+      }
+      if (typeof value[field] !== 'number' || !Number.isFinite(value[field])) {
+        throw new Error(`基准快照格式错误：meta.prices.${field} 必须是有限数字`)
+      }
+    }
+    return
+  }
+  if (key === 'source') {
+    if (!isRecord(value)) throw new Error('基准快照格式错误：meta.source 必须是对象')
+    const allowed = new Set(['nodeVersion', 'packageVersion', 'gitHead', 'gitDirty', 'metadataCapturedAt'])
+    for (const [field, item] of Object.entries(value)) {
+      if (!allowed.has(field)) throw new Error(`基准快照格式错误：meta.source.${field} 不在允许字段中`)
+      const valid = field === 'gitDirty'
+        ? typeof item === 'boolean' || item === null
+        : typeof item === 'string' || item === null
+      if (!valid) throw new Error(`基准快照格式错误：meta.source.${field} 类型无效`)
+    }
+    return
+  }
+  if (key === 'corpusDir' || key === 'questionsPath') {
+    if (normalizeRepoRelativePath(value) === undefined) {
+      throw new Error(`基准快照格式错误：meta.${key} 必须是仓库相对路径`)
+    }
+    return
+  }
+  if (value !== null
+    && typeof value !== 'string'
+    && typeof value !== 'boolean'
+    && (typeof value !== 'number' || !Number.isFinite(value))) {
+    throw new Error(`基准快照格式错误：meta.${key} 类型无效`)
+  }
+}
+
+/** 快照只保留明确契约内的运行来源与配置；总 token/费用等汇总统一由 records 重新计算。 */
+function sanitizeMeta(value: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {}
   for (const [key, item] of Object.entries(value)) {
-    if (/api[_-]?key|secret|authorization|password|(?:access[_-]?|refresh[_-]?)?token$/i.test(key)) continue
-    out[key] = sanitizeValue(item)
+    if (!META_ALLOWED_KEYS.has(key) || META_SUMMARY_KEYS.has(key)) continue
+    const sanitized = sanitizeMetaField(key, item)
+    if (sanitized !== undefined) out[key] = sanitized
   }
   return out
 }
 
-/** 快照只保留运行来源与配置；总 token/费用等汇总统一由 records 重新计算。 */
-function sanitizeMeta(value: Record<string, unknown>): Record<string, unknown> {
-  return sanitizeObject(Object.fromEntries(Object.entries(value).filter(([key]) => !META_SUMMARY_KEYS.has(key))))
+function sanitizeMetaField(key: string, value: unknown): unknown {
+  if (key === 'questionDefinitions') {
+    if (!Array.isArray(value)) return undefined
+    return value
+      .filter((item): item is Record<string, unknown> => isRecord(item)
+        && typeof item.id === 'string'
+        && typeof item.category === 'string'
+        && typeof item.question === 'string')
+      .map((item) => ({
+        id: redactText(item.id as string),
+        category: redactText(item.category as string),
+        question: redactText(item.question as string),
+      }))
+  }
+  if (key === 'questionIds') {
+    return Array.isArray(value) && value.every((item) => typeof item === 'string')
+      ? value.map((item) => redactText(item as string))
+      : undefined
+  }
+  if (key === 'prices') {
+    return sanitizeNumericObject(value, ['inPerM', 'outPerM', 'cachePerM'])
+  }
+  if (key === 'source') {
+    if (!isRecord(value)) return undefined
+    return sanitizeObjectWithKeys(value, ['nodeVersion', 'packageVersion', 'gitHead', 'gitDirty', 'metadataCapturedAt'])
+  }
+  if (key === 'corpusDir' || key === 'questionsPath') return normalizeRepoRelativePath(value)
+  if (typeof value === 'string') return redactText(value)
+  if (typeof value === 'number') return Number.isFinite(value) ? value : undefined
+  if (typeof value === 'boolean' || value === null) return value
+  return undefined
 }
 
-function sanitizeValue(value: unknown): unknown {
-  if (typeof value === 'string') return redactText(value)
-  if (Array.isArray(value)) return value.map(sanitizeValue)
-  if (isRecord(value)) return sanitizeObject(value)
-  return value
+function sanitizeNumericObject(value: unknown, keys: string[]): Record<string, number> | undefined {
+  if (!isRecord(value)) return undefined
+  const out: Record<string, number> = {}
+  for (const key of keys) {
+    if (typeof value[key] === 'number' && Number.isFinite(value[key])) out[key] = value[key]
+  }
+  return Object.keys(out).length > 0 ? out : undefined
+}
+
+function sanitizeObjectWithKeys(value: Record<string, unknown>, keys: string[]): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  for (const key of keys) {
+    const item = value[key]
+    if (typeof item === 'string') out[key] = redactText(item)
+    else if (typeof item === 'boolean' || item === null) out[key] = item
+  }
+  return out
+}
+
+function normalizeRepoRelativePath(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined
+  const normalized = value.replace(/\\/g, '/').replace(/^\.\//, '')
+  if (!normalized || normalized.startsWith('/') || /^[A-Za-z]:\//.test(normalized)) return undefined
+  const parts = normalized.split('/')
+  if (parts.some((part) => part === '..' || part === '')) return undefined
+  return redactText(parts.join('/'))
 }
 
 const SENSITIVE_PATTERNS = [
