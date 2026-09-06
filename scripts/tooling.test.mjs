@@ -3,7 +3,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync, existsSync } from 'node:
 import { execFileSync, spawnSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { join, parse } from 'node:path'
-import { cleanWithManifest, createCleanupManifest, writeCleanupManifest, validateCleanupManifest } from './tooling.mjs'
+import { cleanWithManifest, createCleanupManifest, previewCleanupManifest, writeCleanupManifest, validateCleanupManifest } from './tooling.mjs'
 
 function tempRoot() {
   const root = mkdtempSync(join(tmpdir(), 'rag-tooling-clean-'))
@@ -44,6 +44,50 @@ describe('tooling 显式清理清单', () => {
       expect(applied).toMatchObject({ deleted: 1, manifestRemoved: true })
       expect(existsSync(target)).toBe(false)
       expect(existsSync(manifest)).toBe(false)
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('直接路径只生成内存预览，不写清单文件或修改目标', () => {
+    const root = tempRoot()
+    try {
+      const target = join(root, 'dev-temp', 'work', 'preview.txt')
+      mkdirSync(join(root, 'dev-temp', 'work'), { recursive: true })
+      writeFileSync(target, 'preview')
+      const manifest = createCleanupManifest(root, [{ path: 'dev-temp/work/preview.txt', reason: '仅预览' }])
+
+      const preview = previewCleanupManifest(root, manifest)
+      expect(preview).toMatchObject({ apply: false, deleted: 0, manifestRemoved: false })
+      expect(preview.manifestPath).toBeUndefined()
+      expect(preview.results[0]).toMatchObject({ action: 'delete', files: 1, bytes: 7 })
+      expect(existsSync(target)).toBe(true)
+      expect(existsSync(join(root, 'dev-temp', 'cleanup-preview.json'))).toBe(false)
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('持久清单必须放在所有候选目标之外，部分失败保留清单', () => {
+    const root = tempRoot()
+    try {
+      const work = join(root, 'dev-temp', 'work')
+      mkdirSync(work, { recursive: true })
+      writeFileSync(join(work, 'good.txt'), 'good')
+      writeFileSync(join(work, 'changed.txt'), 'before')
+      expect(() => writeCleanupManifest(root, join(work, 'cleanup.json'), [{ path: 'dev-temp/work', reason: '错误落位' }])).toThrow('所有候选目标之外')
+
+      const manifest = join(root, 'dev-temp', 'partial.json')
+      writeCleanupManifest(root, manifest, [
+        { path: 'dev-temp/work/good.txt', reason: '可清理' },
+        { path: 'dev-temp/work/changed.txt', reason: '已变化' },
+      ])
+      writeFileSync(join(work, 'changed.txt'), 'after')
+      const applied = cleanWithManifest(root, manifest, { apply: true })
+      expect(applied).toMatchObject({ deleted: 1, failures: 1, manifestRemoved: false })
+      expect(existsSync(join(work, 'good.txt'))).toBe(false)
+      expect(existsSync(join(work, 'changed.txt'))).toBe(true)
+      expect(existsSync(manifest)).toBe(true)
     } finally {
       rmSync(root, { recursive: true, force: true })
     }
@@ -151,5 +195,16 @@ describe('tooling 显式清理清单', () => {
     })
     expect(result.status).toBe(2)
     expect(`${result.stdout}\n${result.stderr}`).toContain('--manifest')
+  })
+
+  it('退役 new/promote 入口只返回用法错误，不创建或移动文件', () => {
+    for (const args of [['new', 'demo/task'], ['promote', 'old/task', 'demo/task']]) {
+      const result = spawnSync(process.execPath, ['./scripts/tooling.mjs', ...args], {
+        cwd: new URL('..', import.meta.url),
+        encoding: 'utf-8',
+      })
+      expect(result.status).toBe(2)
+      expect(`${result.stdout}\n${result.stderr}`).toContain('用法')
+    }
   })
 })

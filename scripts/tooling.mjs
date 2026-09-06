@@ -5,23 +5,21 @@
  * 用法：
  *   node scripts/tooling.mjs list
  *   node scripts/tooling.mjs run <task> -- <args...>
- *   node scripts/tooling.mjs new <domain/name>
- *   node scripts/tooling.mjs promote <scratch> <domain/name>
- *   node scripts/tooling.mjs tmp path|list|clean [--manifest <path>] [--older-than <n>] [--apply]
+ *   node scripts/tooling.mjs tmp path|list|clean [--manifest <path>] [--older-than <n>] [--reason <text> | --snapshot <path>] [--apply]
  *
  * 约定：
  *   - tasks 目录发现是唯一注册事实，不维护第二份 manifest；
  *   - 退出码：0 成功 / 1 一般错误 / 2 参数错误；
- *   - list/new/promote 核心逻辑为接受注入 root 的纯函数，CLI 只负责参数解析与退出码。
+ *   - 核心逻辑为接受注入 root 的纯函数，CLI 只负责参数解析与退出码。
  */
 
 import { parseArgs } from 'node:util'
 import { createHash } from 'node:crypto'
-import { existsSync, readdirSync, mkdirSync, renameSync, rmSync, writeFileSync, readFileSync, lstatSync, unlinkSync } from 'node:fs'
+import { existsSync, readdirSync, mkdirSync, rmSync, writeFileSync, readFileSync, lstatSync, unlinkSync } from 'node:fs'
 import { resolve, dirname, join, relative, basename, isAbsolute } from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
-import { resolveRepoRoot, isPathInside as isInside, tasksRoot, scratchRoot } from './lib/repo-context.mjs'
+import { resolveRepoRoot, isPathInside as isInside, tasksRoot } from './lib/repo-context.mjs'
 import { runStreaming } from './lib/process.mjs'
 import { normalizeTaskRef } from './lib/task-ref.mjs'
 import { getDevTmpRoot, getRunDirRoot } from './lib/dev-workspace.mjs'
@@ -92,132 +90,6 @@ export function listLibModules(root) {
 }
 
 /**
- * 计算从目标脚本（scripts/{scratch|tasks}/<norm>.mjs）到 lib 指定模块的相对导入路径。
- * scratch 与 promote 后位于相同层级的同名文件相对路径一致，promote 无需重写。
- * @param {string} norm 规范化任务名（不含 .mjs）
- * @param {string} [file] lib 模块文件名（默认 repo-context.mjs）
- */
-function relativeLibImport(norm, file = 'repo-context.mjs') {
-  const depth = norm.split('/').length
-  return `${'../'.repeat(depth)}lib/${file}`
-}
-
-/**
- * 渲染 scratch 最小模板（promote 后 task 的质量基线）。
- * 固定包含：repo-context、dev-workspace（createRunDir）、parseArgs、中文错误、标准退出码、dev-temp/runs 示例与 lib 基元清单。
- * @param {string} norm 规范化任务名（不含 .mjs）
- */
-export function renderScratchTemplate(norm) {
-  const libImport = relativeLibImport(norm, 'repo-context.mjs')
-  const wsImport = relativeLibImport(norm, 'dev-workspace.mjs')
-  return `/**
- * ${norm} — 在此替换为简短描述
- *
- * 用法：
- *   node scripts/scratch/${norm}.mjs [参数...]
- *
- * 模板骨架（promote 后 task 的质量基线）：
- *   - repo-context：从模块位置定位仓库根，不手写路径拼接
- *   - dev-workspace：createRunDir 生成并发安全的 dev-temp/runs/<task>/<run-id>/ 目录
- *   - parseArgs：统一参数解析（'--' 之后的参数进入 positionals）
- *   - 中文错误：面向用户的错误消息使用中文
- *   - 标准退出码：0 成功 / 1 一般错误 / 2 参数错误
- *   - 更多可用 lib 基元（见 scripts/INDEX.md lib 模块表）：
- *       process.runCapture/runStreaming  —— 子进程执行（参数数组 + windowsHide，不拼 shell）
- *       git.diffFiles/logRange          —— 只读 git 封装
- *       output.formatJson/formatTsv/writeOutput —— 结构化输出与文件落位
- */
-
-import { parseArgs } from 'node:util'
-import { resolveRepoRoot } from '${libImport}'
-import { createRunDir } from '${wsImport}'
-
-// repo-context：从模块位置定位仓库根
-const root = resolveRepoRoot(import.meta.url)
-
-// 临时产物：完整中间结果写入 dev-temp/runs/<task>/<run-id>/（createRunDir 含时间戳+PID+随机后缀，并发安全）
-const runDir = createRunDir(root, '${norm}')
-
-// parseArgs：统一参数解析（'--' 之后的参数进入 positionals）
-const { values, positionals } = parseArgs({
-  args: process.argv.slice(2),
-  options: { verbose: { type: 'boolean', default: false } },
-  allowPositionals: true,
-})
-
-// 标准退出码：0 成功 / 1 一般错误 / 2 参数错误
-function fail(message, code = 1) {
-  console.error(\`错误：\${message}\`)
-  process.exit(code)
-}
-
-if (positionals.length === 0) {
-  fail('缺少必要参数', 2)
-}
-
-if (values.verbose) {
-  console.log(\`参数：\${JSON.stringify(positionals)}\`)
-}
-
-// TODO：在此实现任务主体逻辑；面向用户的错误与日志使用中文
-console.log(\`${norm} 运行中，run 目录：\${runDir}\`)
-`
-}
-
-/**
- * new：从最小模板创建 scratch。拒绝覆盖与路径穿越。
- * @param {string} root 仓库根
- * @param {string} ref 任务引用，如 "perf/load-run"
- * @returns {string} 创建的相对路径（scripts/scratch/<norm>.mjs）
- */
-export function createScratch(root, ref) {
-  const norm = normalizeTaskRef(ref)
-  if (!norm) throw new Error(`非法任务路径：${ref}`)
-
-  const scratchDir = scratchRoot(root)
-  const target = resolve(scratchDir, `${norm}.mjs`)
-  if (!isInside(scratchDir, target)) {
-    throw new Error(`路径越界：拒绝写入 scratch 目录之外（${ref}）`)
-  }
-  if (existsSync(target)) {
-    throw new Error(`已存在，拒绝覆盖：scripts/scratch/${norm}.mjs`)
-  }
-
-  mkdirSync(dirname(target), { recursive: true })
-  writeFileSync(target, renderScratchTemplate(norm), 'utf-8')
-  return `scripts/scratch/${norm}.mjs`
-}
-
-/**
- * promote：将 scratch 移动到 tasks。
- * 仅移动文件：不重写内容、不生成测试、不修改构建清单。
- * @param {string} root 仓库根
- * @param {string} scratchRef scratch 引用（相对 scripts/scratch/）
- * @param {string} taskRef 目标任务引用（相对 scripts/tasks/）
- * @returns {string} 移动后的相对路径（scripts/tasks/<norm>.mjs）
- */
-export function promoteScratch(root, scratchRef, taskRef) {
-  const scratchNorm = normalizeTaskRef(scratchRef)
-  const taskNorm = normalizeTaskRef(taskRef)
-  if (!scratchNorm) throw new Error(`非法 scratch 路径：${scratchRef}`)
-  if (!taskNorm) throw new Error(`非法任务路径：${taskRef}`)
-
-  const scratchDir = scratchRoot(root)
-  const tasksDir = tasksRoot(root)
-  const src = resolve(scratchDir, `${scratchNorm}.mjs`)
-  const dst = resolve(tasksDir, `${taskNorm}.mjs`)
-
-  if (!isInside(scratchDir, src)) throw new Error(`路径越界：scratch 来源非法（${scratchRef}）`)
-  if (!isInside(tasksDir, dst)) throw new Error(`路径越界：任务目标非法（${taskRef}）`)
-  if (!existsSync(src)) throw new Error(`scratch 不存在：scripts/scratch/${scratchNorm}.mjs`)
-  if (existsSync(dst)) throw new Error(`目标已存在，拒绝覆盖：scripts/tasks/${taskNorm}.mjs`)
-
-  mkdirSync(dirname(dst), { recursive: true })
-  renameSync(src, dst)
-  return `scripts/tasks/${taskNorm}.mjs`
-}
-
-/**
  * run：解析任务文件绝对路径，仅允许 scripts/tasks/ 目录内。
  * @param {string} root 仓库根
  * @param {string} ref 任务引用，如 "git/head-diff"
@@ -273,25 +145,6 @@ export function collectTmpCleanTargets(root) {
 }
 
 /**
- * 清理 tmp 工作区全部顶层条目；返回被删除的条目数。
- * @param {string} root 仓库根
- */
-export function cleanTmp(root) {
-  return cleanTmpTargets(collectTmpCleanTargets(root))
-}
-
-/**
- * 通用删除：删除给定 targets 数组中的全部条目；返回删除数。
- * @param {{rel:string, abs:string}[]} targets
- */
-export function cleanTmpTargets(targets) {
-  for (const t of targets) {
-    rmSync(t.abs, { recursive: true, force: true })
-  }
-  return targets.length
-}
-
-/**
  * 解析 run-id 目录名前缀时间戳（run-id 格式：时间戳-PID-随机后缀）。
  * @param {string} name 目录名
  * @returns {number|null} 毫秒时间戳；非 run-id 命名返回 null
@@ -306,7 +159,7 @@ export function parseRunIdTimestamp(name) {
 /**
  * 按龄期收集过期 run：递归扫描 dev-temp/runs 下全部 run-id 命名目录（run-id 格式：时间戳-PID-随机）。
  * 支持任务名带域的三层结构（如 runs/git/head-diff/<run-id>）：目录条目若为 run-id 命名且超过
- * cutoff 则收集，否则若是目录则继续下探；work/cache 非 run 目录不受影响。
+ * cutoff 则收集，否则若是目录则继续下探；work 非 run 目录不受影响。
  * @param {string} root 仓库根
  * @param {number} olderThanDays 超过 N 天视为过期（正整数）
  * @returns {{rel:string, abs:string}[]} 相对 dev-temp 根的路径与绝对路径
@@ -360,8 +213,9 @@ export function createCleanupManifest(root, selections) {
 
 /** 将新清单写入指定路径；拒绝覆盖已有清单，避免误换收尾范围。 */
 export function writeCleanupManifest(root, manifestPath, selections) {
-  const manifest = createCleanupManifest(root, selections)
   const target = resolveManifestPath(root, manifestPath)
+  const manifest = createCleanupManifest(root, selections)
+  assertManifestOutsideTargets(root, target, manifest.entries)
   if (existsSync(target)) throw new Error(`清理清单已存在，拒绝覆盖：${target}`)
   mkdirSync(dirname(target), { recursive: true })
   writeFileSync(target, `${JSON.stringify(manifest, null, 2)}\n`, 'utf-8')
@@ -384,6 +238,23 @@ export function cleanWithManifest(root, manifestInput, { apply = false } = {}) {
     throw new Error(`读取清理清单失败：${manifestPath}（${e.message ?? String(e)}）`)
   }
   const manifest = validateCleanupManifest(root, raw)
+  return evaluateAndMaybeApplyCleanupManifest(root, manifest, { apply, manifestPath })
+}
+
+/**
+ * 评估内存中的清理清单，不写入清单文件，也不执行删除。
+ * @param {string} root 仓库根
+ * @param {{schemaVersion:number,entries:object[]}} manifest 内存清单
+ * @param {{manifestPath?:string}} [options] 仅在需要检查清单自身时提供持久路径
+ */
+export function previewCleanupManifest(root, manifest, { manifestPath } = {}) {
+  const validated = validateCleanupManifest(root, manifest)
+  const resolvedManifestPath = manifestPath === undefined ? undefined : resolveManifestPath(root, manifestPath)
+  return evaluateAndMaybeApplyCleanupManifest(root, validated, { apply: false, manifestPath: resolvedManifestPath })
+}
+
+function evaluateAndMaybeApplyCleanupManifest(root, manifest, { apply, manifestPath }) {
+  if (manifestPath !== undefined) assertManifestOutsideTargets(root, manifestPath, manifest.entries)
   const results = manifest.entries.map((entry) => evaluateCleanupEntry(root, manifestPath, entry))
   let deleted = 0
   let failures = 0
@@ -413,10 +284,10 @@ export function cleanWithManifest(root, manifestInput, { apply = false } = {}) {
       failures++
     }
   }
-  if (apply && failures === 0) {
+  if (apply && failures === 0 && manifestPath !== undefined) {
     unlinkSync(manifestPath)
   }
-  return { manifestPath, apply, results, deleted, failures, manifestRemoved: apply && failures === 0 }
+  return { manifestPath, apply, results, deleted, failures, manifestRemoved: apply && failures === 0 && manifestPath !== undefined }
 }
 
 /** @param {string} root @param {unknown} value */
@@ -470,6 +341,15 @@ function resolveManifestPath(root, input) {
   }
   assertNoReparsePoints(rootAbs, target)
   return target
+}
+
+function assertManifestOutsideTargets(root, manifestPath, entries) {
+  for (const entry of entries) {
+    const target = resolveCleanupTarget(root, entry.path)
+    if (samePath(target.abs, manifestPath) || isComparableInside(target.abs, manifestPath)) {
+      throw new Error(`清理清单必须位于所有候选目标之外：${manifestPath} 位于 ${target.rel} 内`)
+    }
+  }
 }
 
 function resolveCleanupTarget(root, input) {
@@ -666,7 +546,7 @@ function isComparableInside(parent, child) {
 function evaluateCleanupEntry(root, manifestPath, entry) {
   const target = resolveCleanupTarget(root, entry.path)
   const base = { entry, path: target.rel, abs: target.abs, files: 0, bytes: 0, destination: entry.snapshot ? `提取至 ${entry.snapshot}` : `舍弃：${entry.reason}`, action: 'skip', reason: '', blocking: false }
-  if (samePath(target.abs, manifestPath)) return { ...base, reason: '清理清单自身不得成为删除目标', blocking: true }
+  if (manifestPath !== undefined && samePath(target.abs, manifestPath)) return { ...base, reason: '清理清单自身不得成为删除目标', blocking: true }
   if (!existsSync(target.abs)) return { ...base, reason: '目标已不存在', blocking: false }
   try {
     assertSafeTree(target.abs)
@@ -687,7 +567,7 @@ function evaluateCleanupEntry(root, manifestPath, entry) {
 
 function printCleanupResults(summary) {
   const mode = summary.apply ? 'apply' : 'dry-run'
-  console.log(`[${mode}] 清理清单：${summary.manifestPath}`)
+  console.log(`[${mode}] ${summary.manifestPath ? `清理清单：${summary.manifestPath}` : '内存预览（未写入清单文件）'}`)
   for (const result of summary.results) {
     if (result.action === 'delete' || result.action === 'deleted') {
       console.log(`  - ${result.path}（${result.files} 个文件，${result.bytes} 字节；${result.destination}）${result.action === 'deleted' ? '：已删除' : ''}`)
@@ -711,16 +591,15 @@ function usage() {
   list                     列出 scripts/tasks/ 下的可运行任务（目录发现）
   list --lib               列出 scripts/lib/ 共享基元（文件名 + 头部摘要，能力发现）
   run <task> -- <args...>  以独立 Node 子进程运行任务，args 透传给任务
-  new <domain/name>        从最小模板创建 scratch（拒绝覆盖）
-  promote <scratch> <domain/name>
-                           将 scratch 移动到 tasks（不重写、不生成测试、不改构建清单）
   tmp path                 显示仓库内开发工作区根路径（dev-temp/）
-  tmp list                 列出 dev-temp/runs|work|cache 内容
+  tmp list                 列出 dev-temp/runs|work 内容
   tmp manifest --out <path> (--snapshot <path> | --reason <text>) <target...>
                            按明确选择生成清单并计算指纹
   tmp clean --manifest <path> [--apply]
                            按显式 JSON 清单预览或删除 dev-temp/、bench-runs/ 目标；
-                           默认 dry-run，--apply 才真实删除。无 manifest 时仅保留旧 dry-run 入口。
+                           默认 dry-run，--apply 才真实删除
+  tmp clean (--snapshot <path> | --reason <text>) <target...>
+                           在内存生成清单并预览，不写文件、不支持 --apply
 
 退出码：0 成功 / 1 一般错误 / 2 参数错误`)
 }
@@ -810,22 +689,6 @@ async function main() {
         break
       }
 
-      case 'new': {
-        if (rest.length !== 1) failUsage('new 需要一个任务名（tooling new <domain/name>）')
-        const created = createScratch(CLI_ROOT, rest[0])
-        console.log(`已创建 scratch：${created}`)
-        console.log('提示：第二次复用时执行 node scripts/tooling.mjs promote 提升为 task；可用 lib 基元见 scripts/INDEX.md')
-        break
-      }
-
-      case 'promote': {
-        if (rest.length !== 2) failUsage('promote 需要 scratch 与目标任务名（tooling promote <scratch> <domain/name>）')
-        const moved = promoteScratch(CLI_ROOT, rest[0], rest[1])
-        console.log(`已提升为 task：${moved}`)
-        console.log('注意：promote 仅移动文件，未生成测试、未修改构建清单')
-        break
-      }
-
       case 'tmp': {
         const sub = rest[0] ?? ''
         const tmpRoot = getDevTmpRoot(CLI_ROOT)
@@ -855,7 +718,16 @@ async function main() {
             }
           }
         } else if (sub === 'clean') {
-          if (values.apply && values.manifest === undefined) failUsage('tmp clean --apply 必须使用 --manifest <path>')
+          if (values.manifest !== undefined && rest.length !== 1) failUsage('tmp clean --manifest 不能同时接收直接目标路径')
+          if (values.manifest !== undefined && (values.reason !== undefined || values.snapshot !== undefined)) {
+            failUsage('tmp clean --manifest 不能同时使用 --reason 或 --snapshot')
+          }
+          if (values.apply && values.manifest === undefined) {
+            if (values.reason !== undefined || values.snapshot !== undefined || rest.length > 1) {
+              failUsage('tmp clean 直接路径只支持内存预览，不支持 --apply；请先用 tmp manifest 保存持久清单')
+            }
+            failUsage('tmp clean --apply 必须使用 --manifest <path>')
+          }
           if (values.manifest !== undefined) {
             if (values['older-than'] !== undefined) failUsage('--manifest 与 --older-than 不能同时使用')
             const summary = cleanWithManifest(CLI_ROOT, values.manifest, { apply: values.apply })
@@ -863,6 +735,24 @@ async function main() {
             if (summary.failures > 0) process.exitCode = EXIT_ERROR
             break
           }
+          if (values['older-than'] !== undefined && (values.reason !== undefined || values.snapshot !== undefined || rest.length > 1)) {
+            failUsage('--older-than 不能同时使用直接预览参数或目标路径')
+          }
+          if (values.reason !== undefined || values.snapshot !== undefined) {
+            if ((values.reason === undefined) === (values.snapshot === undefined)) {
+              failUsage('tmp clean 直接预览需要且只能指定 --snapshot 或 --reason')
+            }
+            const targets = rest.slice(1)
+            if (targets.length === 0) failUsage('tmp clean 直接预览至少需要一个目标路径')
+            const selections = targets.map((path) => values.snapshot !== undefined
+              ? { path, snapshot: values.snapshot }
+              : { path, reason: values.reason })
+            const summary = previewCleanupManifest(CLI_ROOT, createCleanupManifest(CLI_ROOT, selections))
+            printCleanupResults(summary)
+            if (summary.failures > 0) process.exitCode = EXIT_ERROR
+            break
+          }
+          if (rest.length > 1) failUsage('tmp clean 直接目标路径必须同时指定 --snapshot 或 --reason')
           // --older-than <n>：只按龄期淘汰 dev-temp/runs 下过期 run；否则全清顶层条目
           if (values['older-than'] !== undefined) {
             const days = Number(values['older-than'])
@@ -874,13 +764,8 @@ async function main() {
               console.log(`dev-temp/runs 下无超过 ${days} 天的 run 可清理`)
               break
             }
-            if (!values.apply) {
-              console.log(`[dry-run] 将清理 ${targets.length} 个过期 run（真实删除需 --apply）：`)
-              for (const t of targets) console.log(`  - ${t.rel}`)
-            } else {
-              const n = cleanTmpTargets(targets)
-              console.log(`已清理 ${n} 个过期 run（超过 ${days} 天）`)
-            }
+            console.log(`[dry-run] 将清理 ${targets.length} 个过期 run（如需删除请先用 tmp manifest 生成持久清单）：`)
+            for (const t of targets) console.log(`  - ${t.rel}`)
             break
           }
           const targets = collectTmpCleanTargets(CLI_ROOT)
@@ -888,13 +773,8 @@ async function main() {
             console.log('dev-temp/ 下无内容可清理')
             break
           }
-          if (!values.apply) {
-            console.log(`[dry-run] 将清理 ${targets.length} 个顶层条目（真实删除需 --manifest <path> --apply）：`)
-            for (const t of targets) console.log(`  - ${t.rel}`)
-          } else {
-            const n = cleanTmp(CLI_ROOT)
-            console.log(`已清理 ${n} 个顶层条目`)
-          }
+          console.log(`[dry-run] 将清理 ${targets.length} 个顶层条目（真实删除需 --manifest <path> --apply）：`)
+          for (const t of targets) console.log(`  - ${t.rel}`)
         } else {
           failUsage('tmp 需要子命令：path | list | manifest | clean')
         }

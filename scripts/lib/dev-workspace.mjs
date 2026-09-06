@@ -1,8 +1,8 @@
 /**
- * 仓库内开发工作区：dev-temp/runs|work|cache
+ * 仓库内开发工作区：dev-temp/runs|work
  *
- * 生命周期：runs=完整中间结果（按任务/run-id 保留失败现场）；work=人工长期查看；
- *           cache=可重建缓存。三者均由 tmp clean --apply 显式清理。
+ * 生命周期：runs=正式工具完整中间结果（按任务/run-id 保留失败现场）；work=任务共置的临时脚本、输入、输出及交接产物。
+ *           二者均由 tmp clean --apply 显式清理。
  * 不替代应用 runtimeDir、Session output/.tmp 或测试 os.tmpdir()。
  */
 
@@ -20,14 +20,9 @@ export function getRunDirRoot(root) {
   return join(getDevTmpRoot(root), 'runs')
 }
 
-/** 人工长期查看目录根：<root>/dev-temp/work */
+/** 任务共置工作目录根：<root>/dev-temp/work */
 export function getWorkDirRoot(root) {
   return join(getDevTmpRoot(root), 'work')
-}
-
-/** 缓存目录根：<root>/dev-temp/cache */
-export function getCacheDirRoot(root) {
-  return join(getDevTmpRoot(root), 'cache')
 }
 
 /**
@@ -52,7 +47,7 @@ export function createRunDir(root, taskName, { runId = createRunId() } = {}) {
 }
 
 /**
- * 获取人工长期查看目录（默认不自动创建）。
+ * 获取任务共置工作目录（默认不自动创建）。
  * @param {string} root 仓库根
  * @param {string} topic 主题名
  * @param {{ ensure?: boolean }} [opts] ensure=true 时创建目录
@@ -60,19 +55,6 @@ export function createRunDir(root, taskName, { runId = createRunId() } = {}) {
  */
 export function getWorkDir(root, topic, { ensure = false } = {}) {
   const dir = join(getWorkDirRoot(root), topic)
-  if (ensure) mkdirSync(dir, { recursive: true })
-  return dir
-}
-
-/**
- * 获取可重建缓存目录（默认不自动创建）。
- * @param {string} root 仓库根
- * @param {string} taskName 任务名
- * @param {{ ensure?: boolean }} [opts] ensure=true 时创建目录
- * @returns {string}
- */
-export function getCacheDir(root, taskName, { ensure = false } = {}) {
-  const dir = join(getCacheDirRoot(root), taskName)
   if (ensure) mkdirSync(dir, { recursive: true })
   return dir
 }
