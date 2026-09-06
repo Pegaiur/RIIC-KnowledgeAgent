@@ -2,8 +2,9 @@
  * 基准运行器：跑问题集 → 写 JSONL 成本记录
  */
 import { createHash } from 'node:crypto'
-import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs'
+import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { execFileSync } from 'node:child_process'
 import { loadConfig, type BenchConfig } from './config.js'
 import { loadCorpus } from './corpus.js'
 import { buildIndex } from './retriever.js'
@@ -14,6 +15,8 @@ import { aggregate } from './report.js'
 
 export interface RunOutput {
   records: CostRecord[]
+  /** 原始运行目录；可交给 bench export 转换为共享快照。 */
+  runDir: string
   /** JSONL 文件路径 */
   jsonlPath: string
   /** 汇总信息文件路径 */
@@ -206,6 +209,11 @@ export async function runBenchmark(
         corpusDir: config.corpusDir,
         chunks: chunks.length,
         questions: questions.length,
+        questionIds: questions.map((question) => question.id),
+        questionsPath: 'bench/questions.json',
+        topic: `rag-${config.retriever}`,
+        prices: config.prices,
+        source: collectSourceMetadata(),
         records: lines.length,
         inputTokens: runReport.totalInput,
         outputTokens: runReport.totalOutput,
@@ -240,6 +248,7 @@ export async function runBenchmark(
 
   return {
     records: runRecords,
+    runDir,
     jsonlPath,
     metaPath,
     answersPath,
@@ -253,7 +262,27 @@ export async function runBenchmark(
 function renderAnswers(answers: AnswerRecord[]): string {
   const blocks = answers.map((a) => {
     const toolLine = a.toolTrace.length > 0 ? `｜工具序列：${a.toolTrace.join('→')}` : '｜工具序列：无'
-    return `## ${a.queryId}（${a.category}）\n\n- 问题：${a.question}\n- 状态：${a.status}｜终止：${a.terminationReason}\n- 模型步骤：${a.rounds}｜工具批次：${a.toolRounds}｜预算：${a.budgetUsed}/${a.budgetUsed + a.budgetRemaining}${toolLine}\n\n${a.answer ?? '（无最终回答）'}`
+    return `## ${a.queryId}（${a.category}）\n\n- 问题：${a.question}\n- 状态：${a.status}｜终止：${a.terminationReason}\n- 模型步骤：${a.rounds}｜工具批次：${a.toolRounds}｜预算：${a.budgetUsed}/${a.budgetUsed + a.budgetRemaining}${toolLine}\n- 宿主回馈：${a.feedbackUsed ? '是' : '否'}\n\n${a.answer ?? '（无最终回答）'}`
   })
   return ['# 查询回答记录', '', '> 供人工抽查答案质量，不参与成本评估。', '', ...blocks].join('\n')
+}
+
+/** 在运行时记录源码版本；失败时保留 null，不用导出时的 HEAD 回填。 */
+function collectSourceMetadata(): Record<string, unknown> {
+  let gitHead: string | null = null
+  let gitDirty: boolean | null = null
+  try {
+    gitHead = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: process.cwd(), encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] }).trim() || null
+    gitDirty = execFileSync('git', ['status', '--porcelain', '--untracked-files=all'], { cwd: process.cwd(), encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] }).trim().length > 0
+  } catch {
+    // 非 Git 副本或 git 不可用时如实保留缺失信息。
+  }
+  let packageVersion: string | null = null
+  try {
+    const packageJson = JSON.parse(readFileSync(join(process.cwd(), 'package.json'), 'utf-8')) as { version?: unknown }
+    packageVersion = typeof packageJson.version === 'string' ? packageJson.version : null
+  } catch {
+    // package.json 缺失时不阻塞运行。
+  }
+  return { nodeVersion: process.version, packageVersion, gitHead, gitDirty, metadataCapturedAt: new Date().toISOString() }
 }

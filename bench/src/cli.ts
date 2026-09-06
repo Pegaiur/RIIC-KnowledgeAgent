@@ -3,11 +3,13 @@
  *
  * 用法：
  *   node dist/cli.js run   [--thinking off|low|high] [--temperature N] [--limit N] [--dry] [--questions <path>] [--out <dir>]
- *   node dist/cli.js report <runDir> [--out <path>]
+ *   node dist/cli.js export <runDir> [--questions <path>] [--topic <name>] [--out <path>]
+ *   node dist/cli.js report <runDir|snapshot> [--out <path>]
+ *   node dist/cli.js compare <runDir|snapshot> <runDir|snapshot> [--out <path>]
  *   node dist/cli.js hitrate [--topk 3,5,10] [--gold <path>] [--check-gold] [--out <path>]
  *   node dist/cli.js validate
  */
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { loadConfig, validateBenchConfig } from './config.js'
 import { corpusStats, loadCorpus } from './corpus.js'
@@ -15,10 +17,11 @@ import { checkGold, loadGold, renderHitrate, runHitrate } from './hitrate.js'
 import { buildIndex } from './retriever.js'
 import { getCardStore } from './facts/store.js'
 import { runBenchmark } from './runner.js'
-import { aggregate, renderCrossProvider, renderCsv, renderMarkdown, type BenchReport } from './report.js'
+import { aggregate, aggregateSnapshot, renderCrossProvider, renderCsv, renderMarkdown, type BenchReport } from './report.js'
 import type { BenchQuery, CostRecord } from './types.js'
 import { validateBenchmarkIntegrity } from './benchmark-integrity.js'
 import { parseArgs } from './cli-args.js'
+import { readSnapshot, snapshotFromRunDir, writeSnapshot } from './snapshot.js'
 
 /**
  * 非 facts 模式的散文 RAG 与 hitrate 均直接使用 knowledge/白名单语料。
@@ -33,8 +36,9 @@ function printUsage(): void {
       '',
       '用法：',
       '  node dist/cli.js run [--provider hy3|qwen] [--thinking off|low|high] [--temperature N] [--retriever bm25|grep|both|facts|hybrid] [--tool-budget N] [--session-timeout-ms N] [--min-rag 0|1] [--limit N] [--dry] [--questions <path>] [--out <dir>]',
-      '  node dist/cli.js report <runDir> [--out <path>]',
-      '  node dist/cli.js compare <runDir1> <runDir2> [--out <path>]',
+      '  node dist/cli.js export <runDir> [--questions <path>] [--topic <name>] [--out <path>]',
+      '  node dist/cli.js report <runDir|snapshot> [--out <path>]',
+      '  node dist/cli.js compare <runDir|snapshot> <runDir|snapshot> [--out <path>]',
       '  node dist/cli.js hitrate [--topk 3,5,10] [--gold <path>] [--check-gold] [--out <path>]',
       '  node dist/cli.js validate',
       '',
@@ -43,8 +47,8 @@ function printUsage(): void {
       '  node dist/cli.js run --provider qwen --thinking low   # 真实跑（需 DASHSCOPE_API_KEY）',
       '  node dist/cli.js run --provider qwen --thinking low --retriever grep --min-rag 1   # grep 对照（P3）',
       '  node dist/cli.js run --retriever hybrid --thinking off   # BM25 RAG + facts 混合工具',
-      '  node dist/cli.js report bench-runs/xxx        # 聚合最近一次运行',
-      '  node dist/cli.js compare bench-runs/<hy3> bench-runs/<qwen>   # 跨模型对比',
+      '  node dist/cli.js report bench/results/<run-id>.json        # 从共享快照生成报告',
+      '  node dist/cli.js compare bench/results/<hy3>.json bench/results/<qwen>.json   # 跨模型对比',
       '  node dist/cli.js hitrate --check-gold         # 仅校验 gold ↔ 语料对应关系',
       '  node dist/cli.js validate                     # 校验 questions / gold / spec / manifest / anchors',
       '  node dist/cli.js hitrate                      # bigram 检索 recall@3/5/10 基线',
@@ -70,8 +74,12 @@ function loadRecords(runDir: string): CostRecord[] {
     .map((l) => JSON.parse(l) as CostRecord)
 }
 
-function loadReport(runDir: string): BenchReport {
-  return aggregate(loadRecords(runDir))
+function loadReportInput(inputPath: string): BenchReport {
+  if (existsSync(inputPath) && statSync(inputPath).isFile()) {
+    const snapshot = readSnapshot(inputPath)
+    return aggregateSnapshot(snapshot)
+  }
+  return aggregate(loadRecords(inputPath))
 }
 
 async function main(): Promise<void> {
@@ -194,7 +202,7 @@ async function main(): Promise<void> {
   if (args.command === 'compare') {
     const runDirs = args.runDir ? [args.runDir, ...args.positional] : args.positional
     if (runDirs.length < 2) throw new Error('compare 需要至少 2 个 runDir（bench-runs/<ts>-<provider>-<thinking>）')
-    const reports = runDirs.map(loadReport)
+    const reports = runDirs.map(loadReportInput)
     const md = renderCrossProvider(reports)
     if (args.out) {
       const { writeFileSync } = await import('node:fs')
@@ -208,7 +216,7 @@ async function main(): Promise<void> {
 
   if (args.command === 'report') {
     if (!args.runDir) throw new Error('report 需要 runDir 参数（bench-runs/<ts>-<provider>-<thinking>）')
-    const report = aggregate(loadRecords(args.runDir))
+    const report = loadReportInput(args.runDir)
     const md = renderMarkdown(report)
     if (args.out) {
       const { writeFileSync } = await import('node:fs')
@@ -218,6 +226,21 @@ async function main(): Promise<void> {
     } else {
       process.stdout.write(md)
     }
+    return
+  }
+
+  if (args.command === 'export') {
+    if (!args.runDir) throw new Error('export 需要 runDir 参数（bench-runs/<run-id>）')
+    const questions = args.questions ? loadQuestions(args.questions) : undefined
+    const snapshot = snapshotFromRunDir(args.runDir, {
+      root: process.cwd(),
+      questions,
+      topic: args.topic ?? undefined,
+    })
+    const outputPath = args.out ?? join(process.cwd(), 'bench', 'results', `${snapshot.runId}.json`)
+    writeSnapshot(outputPath, snapshot)
+    process.stdout.write(`共享快照：${outputPath}\n`)
+    process.stdout.write(`查询：${snapshot.queries.length}｜记录：${snapshot.records.length}\n`)
     return
   }
 
