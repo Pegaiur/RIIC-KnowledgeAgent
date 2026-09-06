@@ -195,7 +195,7 @@ async function main(): Promise<void> {
   if (args.command === 'validate') {
     const summary = validateBenchmarkIntegrity(process.cwd())
     process.stdout.write(
-      `基准完整性校验通过：${summary.questionCount} 题 / ${summary.goldCount} 个 gold 题号 / ${summary.specCount} 个 spec 题号 / ${summary.corpusFileCount} 个白名单文档 / ${summary.chunkCount} 个切块 / ${summary.snapshotCount} 个共享快照\n`,
+      `基准完整性校验通过：${summary.questionCount} 题 / ${summary.goldCount} 个 gold 题号 / ${summary.specCount} 个 spec 题号 / ${summary.corpusFileCount} 个白名单文档 / ${summary.chunkCount} 个切块 / ${summary.snapshotCount} 个共享快照 / ${summary.snapshotBytes} 字节\n`,
     )
     return
   }

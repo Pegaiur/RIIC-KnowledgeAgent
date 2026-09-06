@@ -73,4 +73,6 @@ node scripts/tooling.mjs tmp clean --manifest dev-temp/cleanup-<名称>.json  # 
 node scripts/tooling.mjs tmp clean --manifest dev-temp/cleanup-<名称>.json --apply  # 复核后删除
 ```
 
+共享基准快照的入库、当前用途与淘汰规则见 [`docs/rules/document-lifecycle.md`](docs/rules/document-lifecycle.md)；发布技能只承载收尾时机和上述命令用法。
+
 退出码约定：0 成功 / 1 一般错误 / 2 参数错误。

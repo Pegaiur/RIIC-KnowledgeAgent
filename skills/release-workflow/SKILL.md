@@ -27,7 +27,7 @@ description: 发版与版本管理——在 feature 分支收束发布元数据�
 ### 1. 发布元数据收束（feature 分支）
 
 1. 确认当前位于待合并的 `feature/*` 分支，plan checklist 全部 [x]；没有 checklist 或没有实施证据时降级 draft/挂起，不机械补勾。
-2. 先执行 `pnpm run build`，再对支撑本次结论的原始运行目录执行 `node dist/cli.js export <runDir> --out bench/results/<run-id>.json`；用 `report`/`compare` 从快照复核，导出器不自动暂存或提交。失败题、重试台账和未知用量随快照保留，不能只挑选表现较好的运行。
+2. 收尾前按 [`docs/rules/document-lifecycle.md`](../../docs/rules/document-lifecycle.md) 核对快照用途与去留；先执行 `pnpm run build`，再对支撑本次结论的原始运行目录执行 `node dist/cli.js export <runDir> --out bench/results/<run-id>.json`，用 `report`/`compare` 从快照复核。导出器不自动暂存或提交，具体保留失败题、重试台账和未知用量按生命周期规则处理。
 3. 先以根版本推算 dry-run 确定根目标版本，再执行 `node scripts/tooling.mjs run release/prepare -- --plan <待归档plan> --version <根版本> --apply` 冻结归档（合并 notes 为实施纪要、更新 archive INDEX）。
 4. 清理 inbox [x] 条目、同步相关 ADR 与 INDEX 状态；核对 changed 子包的包级约定文档（如 PACKAGE.md）职责/接口。
 5. 执行子包版本 `--pkg all --apply` 与根版本 `--apply`，将子包和根版本一并写入；子包版本每次发版只 apply 一次（单包仓库无 packages/ 目录时跳过 --pkg，仅执行根版本写入）。
@@ -48,6 +48,7 @@ description: 发版与版本管理——在 feature 分支收束发布元数据�
 1. 由操作者明确选择路径和去向，生成清单：`node scripts/tooling.mjs tmp manifest --out dev-temp/cleanup-<名称>.json --snapshot bench/results/<run-id>.json <target...>`；无须保留的条目改用 `--reason <中文理由>`。清单只记录仓库相对路径、预览时指纹和 snapshot/reason，不推断分支归属。
 2. 先执行 `node scripts/tooling.mjs tmp clean --manifest dev-temp/cleanup-<名称>.json` 预览文件数、体积、去向及跳过原因；在用户明确授权且确认无误后追加 `--apply`。清理器会复核指纹、路径白名单、Git 跟踪文件、`.keep`、junction/symlink、结束产物和 snapshot 提交状态。
 3. 合并、共享或停止条件不满足时保留原件；部分失败保留清单以便重试，清理失败不撤销合并。旧存量沿用同一清单格式，备份和未知来源不凭名称自动删除。
+4. 若共享快照在正常收尾时失去当前用途，随该收尾的普通 Git 提交移除；仍需查阅的历史结论先按生命周期规则补齐实际包含该 JSON 的完整提交号与路径，并用 `git show <commit>:<path>` 验证。快照淘汰不另设审批或等待周期。
 
 ## 授权边界
 
