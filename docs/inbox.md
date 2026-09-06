@@ -26,6 +26,8 @@
 
 ## 待办区
 
+- [ ] **共享基准快照更新与淘汰生命周期** — 按严进宽出补齐入库筛选、基线替换、当前目录淘汰及历史证据定位；实施计划独立复审通过，已建实施笔记，待实施 — 2026-09-06 — → [实施计划](plan-benchmark-snapshot-lifecycle.md)、[实施笔记](plan-benchmark-snapshot-lifecycle-notes.md)
+
 - [x] **评测结果与 harness 修改边界** — 已明确答错不自动触发修复、harness 修改须有独立依据、禁止针对评测题追分 — 2026-09-06 — → `AGENTS.md` 常驻规则
 
 - [x] **提交审查规则与中文提示词** — 已强制 subagent 无上下文审查，无法使用时不得自行 commit；中文审查模板已纳入提交技能并同步调用规则 — 2026-09-06 — → `skills/commit-convention/`（技能文档修订）
