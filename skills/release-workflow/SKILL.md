@@ -27,11 +27,12 @@ description: 发版与版本管理——在 feature 分支收束发布元数据�
 ### 1. 发布元数据收束（feature 分支）
 
 1. 确认当前位于待合并的 `feature/*` 分支，plan checklist 全部 [x]；没有 checklist 或没有实施证据时降级 draft/挂起，不机械补勾。
-2. 先以根版本推算 dry-run 确定根目标版本，再执行 `node scripts/tooling.mjs run release/prepare -- --plan <待归档plan> --version <根版本> --apply` 冻结归档（合并 notes 为实施纪要、更新 archive INDEX）。
-3. 清理 inbox [x] 条目、同步相关 ADR 与 INDEX 状态；核对 changed 子包的包级约定文档（如 PACKAGE.md）职责/接口。
-4. 执行子包版本 `--pkg all --apply` 与根版本 `--apply`，将子包和根版本一并写入；子包版本每次发版只 apply 一次（单包仓库无 packages/ 目录时跳过 --pkg，仅执行根版本写入）。
-5. 执行 `node scripts/tooling.mjs run release/changelog -- --version <根版本> --apply` 追加 docs/CHANGELOG.md 版本段（与版本文件同笔 chore(release) 提交；发版后新任务可用 `--agent --max <n>` 紧凑视图快速掌握变更面）。
-6. 执行 `node scripts/tooling.mjs run release/check` 确认 P1-P4 已收束，将以上发布元数据作为一笔 `chore(release): 准备 v<根版本>` 提交。提交动作复用 commit-convention 的检查、审查与精准暂存要求，提交范围由本技能确定。
+2. 先执行 `pnpm run build`，再对支撑本次结论的原始运行目录执行 `node dist/cli.js export <runDir> --out bench/results/<run-id>.json`；用 `report`/`compare` 从快照复核，导出器不自动暂存或提交。失败题、重试台账和未知用量随快照保留，不能只挑选表现较好的运行。
+3. 先以根版本推算 dry-run 确定根目标版本，再执行 `node scripts/tooling.mjs run release/prepare -- --plan <待归档plan> --version <根版本> --apply` 冻结归档（合并 notes 为实施纪要、更新 archive INDEX）。
+4. 清理 inbox [x] 条目、同步相关 ADR 与 INDEX 状态；核对 changed 子包的包级约定文档（如 PACKAGE.md）职责/接口。
+5. 执行子包版本 `--pkg all --apply` 与根版本 `--apply`，将子包和根版本一并写入；子包版本每次发版只 apply 一次（单包仓库无 packages/ 目录时跳过 --pkg，仅执行根版本写入）。
+6. 执行 `node scripts/tooling.mjs run release/changelog -- --version <根版本> --apply` 追加 docs/CHANGELOG.md 版本段（与版本文件同笔 chore(release) 提交；发版后新任务可用 `--agent --max <n>` 紧凑视图快速掌握变更面）。
+7. 执行 `node scripts/tooling.mjs run release/check` 确认 P1-P4 已收束，将以上发布元数据与必要 `bench/results/*.json` 作为一笔 `chore(release): 准备 v<根版本>` 提交。提交动作复用 commit-convention 的检查、审查与精准暂存要求，提交范围由本技能确定。
 
 ### 2. 合并发布
 
@@ -39,6 +40,14 @@ description: 发版与版本管理——在 feature 分支收束发布元数据�
 2. 在主分支的 merge commit 上执行 `node scripts/verify.mjs release`；失败或 HEAD 意外变化立即终止 tag/push，保留 feature 分支用于修复。
 3. 给通过门禁的 merge commit 创建 `git tag -a v<根版本> -m "v<根版本>: <变更摘要>"`，push 主分支与 tag 后删除 feature 分支。
 4. 部署可选：按仓库部署流程与用户授权边界确认后执行。
+
+### 3. 共享后清理证据原件
+
+合并后的共享提交已确认可复核、相关实验已停止后，才处理本机原始产物：
+
+1. 由操作者明确选择路径和去向，生成清单：`node scripts/tooling.mjs tmp manifest --out dev-temp/cleanup-<名称>.json --snapshot bench/results/<run-id>.json <target...>`；无须保留的条目改用 `--reason <中文理由>`。清单只记录仓库相对路径、预览时指纹和 snapshot/reason，不推断分支归属。
+2. 先执行 `node scripts/tooling.mjs tmp clean --manifest dev-temp/cleanup-<名称>.json` 预览文件数、体积、去向及跳过原因；在用户明确授权且确认无误后追加 `--apply`。清理器会复核指纹、路径白名单、Git 跟踪文件、`.keep`、junction/symlink、结束产物和 snapshot 提交状态。
+3. 合并、共享或停止条件不满足时保留原件；部分失败保留清单以便重试，清理失败不撤销合并。旧存量沿用同一清单格式，备份和未知来源不凭名称自动删除。
 
 ## 授权边界
 
