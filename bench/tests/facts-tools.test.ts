@@ -2,7 +2,7 @@ import { describe, expect, it, beforeEach, vi } from 'vitest'
 import { loadConfig } from '../src/config.js'
 import { buildIndex } from '../src/retriever.js'
 import { buildSystemPrompt, runQuery } from '../src/agent.js'
-import { toolsForRetriever } from '../src/tool-executor.js'
+import { createKnowledgeToolExecutor, serializeToolResult, toolsForRetriever } from '../src/tool-executor.js'
 import { buildCardStore, getCardStore, serializeCards } from '../src/facts/store.js'
 import { FACTS_FIXTURES } from '../src/facts/fixtures.js'
 import type { ProviderResult } from '../src/types.js'
@@ -16,6 +16,54 @@ vi.mock('../src/provider.js', () => ({ callLLM: mockCall }))
 function toolName(tool: Record<string, unknown>): string {
   const fn = tool.function as { name: string }
   return fn.name
+}
+
+const SYNTHETIC_CARDS: RecordCard[] = [
+  {
+    canonical: '测试甲',
+    aliases: [],
+    rarity: '4',
+    class: '医疗',
+    rooms: ['制造站', '办公室'],
+    factionGroups: ['测试组一'],
+    skillGroups: ['测试技能组'],
+    skills: [
+      { grantId: 'a0', room: '制造站', name: '锻造初式', unlockType: '初始解锁', target: '', effectText: '制造站生产力+5%', notes: '初始备注' },
+      { grantId: 'a1', room: '制造站', name: '锻造进式', unlockType: '精英1提升', target: '', effectText: '制造站生产力+10%', notes: '升级备注', replacesGrantId: 'a0', equivalenceSkillNames: ['锻造进式', '锻造同效'] },
+      { grantId: 'a2', room: '办公室', name: '联络术', unlockType: '初始解锁', target: '', effectText: '联络关键词', notes: '办公室备注' },
+    ],
+    notes: '卡级专词：全局约束',
+  },
+  {
+    canonical: '测试乙',
+    aliases: [],
+    rarity: '4',
+    class: '近卫',
+    rooms: ['制造站'],
+    factionGroups: ['测试组一'],
+    skillGroups: ['测试技能组'],
+    skills: [
+      { grantId: 'b1', room: '制造站', name: '锻造同效', unlockType: '初始解锁', target: '', effectText: '制造站生产力+10%', equivalenceSkillNames: ['锻造进式', '锻造同效'] },
+    ],
+    notes: '',
+  },
+  {
+    canonical: '测试丙',
+    aliases: [],
+    rarity: '4',
+    class: '近卫',
+    rooms: ['制造站'],
+    factionGroups: ['测试组二'],
+    skillGroups: [],
+    skills: [
+      { grantId: 'c1', room: '制造站', name: '锻造进式附注', unlockType: '初始解锁', target: '', effectText: '制造站生产力+1%' },
+    ],
+    notes: '',
+  },
+]
+
+function canonicals(cards: RecordCard[]): string[] {
+  return cards.map((card) => card.canonical)
 }
 
 describe('store：lookup 解析', () => {
@@ -36,7 +84,7 @@ describe('store：lookup 解析', () => {
   })
 
   it('等价组技能名展开命中全部同效持有者', () => {
-    expect(new Set(getCardStore().lookup('裁缝·β').map((card) => card.canonical))).toEqual(new Set(['卡夫卡', '折光', '明椒', '柏喙']))
+    expect(getCardStore().lookup('裁缝·β').map((card) => card.canonical)).toEqual(['卡夫卡', '折光', '明椒', '柏喙'])
   })
 
   it('未命中返回空列表', () => {
@@ -127,9 +175,132 @@ describe('store：queryOperators 分类过滤', () => {
   })
 
   it('记录卡直接说明升级替换关系，并完整返回已审定干员备注', () => {
-    expect(serializeCards(getCardStore().lookup('温蒂'))).toContain('替换「自动化·β」')
+    const text = serializeCards(getCardStore().lookup('温蒂'))
+    expect(text).toContain('【设施：制造站】初始解锁「自动化·β」')
+    expect(text).toContain('【设施：制造站】精英 2 提升，替换「自动化·β」「仿生海龙」')
+    expect(text).toContain('替换「自动化·β」')
     expect(serializeCards(getCardStore().lookup('巫恋'))).toContain('「低语」与初始「裁缝·α」并存')
     expect(serializeCards(getCardStore().lookup('孑'))).toContain('精英1并不必然优于精英0')
+  })
+})
+
+describe('第一阶段合成卡契约', () => {
+  const store = buildCardStore(SYNTHETIC_CARDS)
+
+  it('T02 lookup 只做精确 canonical/技能/等价名解析，不把子串当命中', () => {
+    expect(canonicals(store.lookup('测试甲'))).toEqual(['测试甲'])
+    expect(canonicals(store.lookup('锻造初式'))).toEqual(['测试甲'])
+    expect(canonicals(store.lookup('锻造进式'))).toEqual(['测试甲', '测试乙'])
+    expect(canonicals(store.lookup('锻造同效'))).toEqual(['测试甲', '测试乙'])
+    expect(canonicals(store.lookup('锻造进'))).toEqual([])
+  })
+
+  it('T03 分类条件精确匹配、多个正向条件取交集且 excludeIds 只排除 canonical', () => {
+    expect(canonicals(store.queryOperators({ room: '制造站' }))).toEqual(['测试甲', '测试乙', '测试丙'])
+    expect(canonicals(store.queryOperators({ faction: '测试组一' }))).toEqual(['测试甲', '测试乙'])
+    expect(canonicals(store.queryOperators({ profession: '医疗' }))).toEqual(['测试甲'])
+    expect(canonicals(store.queryOperators({ termQuery: '锻造进' }))).toEqual(['测试甲', '测试乙', '测试丙'])
+    expect(canonicals(store.queryOperators({ room: '制造站', faction: '测试组一', profession: '近卫' }))).toEqual(['测试乙'])
+    expect(canonicals(store.queryOperators({ faction: '测试组一', excludeIds: ['测试乙'] }))).toEqual(['测试甲'])
+  })
+
+  it('T04 room 约束技能、技能组和卡级备注，不跨多设施串线', () => {
+    expect(canonicals(store.queryOperators({ room: '制造站', termQuery: '联络' }))).toEqual([])
+    expect(canonicals(store.queryOperators({ room: '制造站', termQuery: '卡级专词' }))).toEqual([])
+    expect(canonicals(store.queryOperators({ room: '办公室', termQuery: '测试技能组' }))).toEqual([])
+  })
+
+  it('T05 canonical 命中仍返回卡，但 room 投影只展示对应设施技能并保留卡级字段', () => {
+    const cards = store.queryOperators({ room: '制造站', termQuery: '测试甲' })
+    expect(canonicals(cards)).toEqual(['测试甲'])
+    const text = serializeCards(cards, { room: '制造站', termQuery: '测试甲', queryOperators: true })
+    expect(text).toContain('查询范围说明：')
+    expect(text).toContain('卡级专词：全局约束')
+    expect(text).toContain('「锻造初式」')
+    expect(text).toContain('「锻造进式」')
+    expect(text).not.toContain('「联络术」')
+  })
+
+  it('T06/T14 技能命中裁剪到投影范围，canonical 命中无技能时回退 scopedSkills', () => {
+    const skillHits = store.queryOperators({ room: '制造站', termQuery: '锻造进式' })
+    expect(canonicals(skillHits)).toEqual(['测试甲', '测试乙', '测试丙'])
+    const skillText = serializeCards(skillHits, { room: '制造站', termQuery: '锻造进式', queryOperators: true })
+    expect(skillText).toContain('【设施：制造站】精英1提升「锻造进式」：制造站生产力+10%；替换「锻造初式」；备注：升级备注')
+    expect(skillText).toContain('【设施：制造站】初始解锁「锻造同效」')
+    expect(skillText).toContain('【设施：制造站】初始解锁「锻造进式附注」')
+    expect(skillText).not.toContain('「联络术」')
+
+    const canonicalText = serializeCards(store.queryOperators({ termQuery: '测试甲' }), { termQuery: '测试甲', queryOperators: true })
+    expect(canonicalText).toContain('「锻造初式」')
+    expect(canonicalText).toContain('「锻造进式」')
+    expect(canonicalText).toContain('「联络术」')
+  })
+
+  it('兼容 fixture 缺少技能 room 时显示未知设施，不猜归属', () => {
+    const card: RecordCard = {
+      canonical: '缺设施标注',
+      aliases: [],
+      rarity: '4',
+      class: '医疗',
+      rooms: ['制造站'],
+      factionGroups: [],
+      skillGroups: [],
+      skills: [{ name: '未标设施技能', unlockType: '初始解锁', target: '', effectText: '效果' }],
+      notes: '',
+    }
+    expect(serializeCards([card])).toContain('【设施：未知设施】')
+  })
+})
+
+describe('第一阶段 facts 结果 envelope', () => {
+  it('T01 合法空查按 hitIds 判定 empty，并返回完整范围元数据', async () => {
+    const config = loadConfig()
+    config.retriever = 'facts'
+    const executor = createKnowledgeToolExecutor({
+      config,
+      query: { id: 'FACTS-EMPTY', category: 'fact', question: '不存在的干员？' },
+      chunks: [],
+      index: buildIndex([]),
+    }, 5)
+
+    const result = await executor.executeBatch([
+      { id: 'empty-lookup', name: 'lookup', arguments: '{"term":"__不存在的规范名_核查__"}' },
+      { id: 'empty-query', name: 'query_operators', arguments: '{"room":"不存在设施"}' },
+    ])
+
+    expect(result.results).toHaveLength(2)
+    for (const item of result.results) {
+      expect(item).toMatchObject({ status: 'empty', executed: true, hitIds: [], injectedIds: [], factsResult: {
+        factsResultVersion: 1, matchedCount: 0, returnedCount: 0, complete: true,
+      } })
+      expect(item.factsResult?.scope).toEqual(item.actualParams)
+      const envelope = JSON.parse(serializeToolResult(item)) as Record<string, unknown>
+      expect(envelope).toMatchObject({ status: 'empty', executed: true, factsResultVersion: 1, matchedCount: 0, returnedCount: 0, complete: true })
+      expect(envelope.data).toContain('无匹配')
+    }
+    expect(JSON.parse(serializeToolResult(result.results[0]!)).scope).toEqual({ term: '__不存在的规范名_核查__' })
+    expect(JSON.parse(serializeToolResult(result.results[1]!)).scope).toEqual({ room: '不存在设施' })
+    expect(result.snapshot).toMatchObject({ used: 2, executed: 2, remaining: 3 })
+  })
+
+  it('T07 参数错误不携带事实结果元数据，合法未知值仍是空查', async () => {
+    const config = loadConfig()
+    config.retriever = 'facts'
+    const executor = createKnowledgeToolExecutor({
+      config,
+      query: { id: 'FACTS-INVALID', category: 'fact', question: '参数边界？' },
+      chunks: [],
+      index: buildIndex([]),
+    }, 5)
+
+    const result = await executor.executeBatch([
+      { id: 'invalid', name: 'lookup', arguments: '{"term":"   "}' },
+      { id: 'unknown-but-valid', name: 'query_operators', arguments: '{"profession":"不存在职业"}' },
+    ])
+    expect(result.results[0]).toMatchObject({ status: 'invalid_params', executed: false })
+    expect(result.results[0]?.factsResult).toBeUndefined()
+    expect(JSON.parse(serializeToolResult(result.results[0]!))).not.toHaveProperty('factsResultVersion')
+    expect(result.results[1]).toMatchObject({ status: 'empty', executed: true, factsResult: { matchedCount: 0, complete: true } })
   })
 })
 
@@ -251,6 +422,26 @@ describe('runQuery（facts 模式）', () => {
     expect(result.records[0].tools).toEqual(['lookup'])
   })
 
+  it('合法 facts 空查回写 empty 后仍允许 Agent 继续作答', async () => {
+    const config = loadConfig()
+    config.retriever = 'facts'
+    const index = buildIndex(chunks)
+    const query = { id: 'FACTS-EMPTY-AGENT', category: 'fact' as const, question: '查一个不存在的干员' }
+
+    mockCall
+      .mockResolvedValueOnce(providerResult({ toolCalls: [{ ...toolCall('lookup', '{"term":"__不存在的规范名_核查__"}') } as any] }))
+      .mockResolvedValueOnce(providerResult({ content: '知识库未查到该名称对应的记录卡。' }))
+
+    const trace = createQueryTrace(query)
+    const result = await runQuery(query, { config, thinking: 'off', dry: false, trace }, chunks, index)
+
+    expect(result.status).toBe('completed')
+    expect(result.finalAnswer).toBe('知识库未查到该名称对应的记录卡。')
+    const toolEvent = trace.events.find((event) => event.type === 'tool_call') as { status: string; executed: boolean; hitIds?: string[]; writtenContent: string }
+    expect(toolEvent).toMatchObject({ status: 'empty', executed: true, hitIds: [] })
+    expect(JSON.parse(toolEvent.writtenContent)).toMatchObject({ status: 'empty', matchedCount: 0, complete: true })
+  })
+
   it('trace 记录 facts 的实际参数与 canonical 命中/注入 ID', async () => {
     const config = loadConfig()
     config.retriever = 'facts'
@@ -272,7 +463,11 @@ describe('runQuery（facts 模式）', () => {
       hitIds: ['刻俄柏'],
       injectedIds: ['刻俄柏'],
     })
-    expect((trace.events[1] as { writtenContent: string }).writtenContent).toContain('【刻俄柏】')
+    const writtenContent = (trace.events[1] as { writtenContent: string }).writtenContent
+    expect(writtenContent).toContain('【刻俄柏】')
+    expect(JSON.parse(writtenContent)).toMatchObject({ factsResultVersion: 1, matchedCount: 1, returnedCount: 1, complete: true, scope: { term: '刻俄柏' } })
+    const secondMessages = mockCall.mock.calls[1]?.[0] as Array<{ role: string; content: string }>
+    expect(secondMessages.find((message) => message.role === 'tool')?.content).toBe(writtenContent)
   })
 
   it('lookup 抛错时 trace 仍保留实际 term 参数', async () => {

@@ -6,13 +6,13 @@ import { createHash } from 'node:crypto'
 import { loadConfig, type BenchConfig, type RetrieverId } from './config.js'
 import { grepSearch, buildGrepResult } from './grep-retriever.js'
 import { search, type IndexEntry } from './retriever.js'
-import type { BenchQuery, DocChunk, ToolCall, ToolId } from './types.js'
+import { isFactTool, type BenchQuery, type DocChunk, type ToolCall, type ToolId } from './types.js'
 import { getCardStore, serializeCards, type OperatorFilters } from './facts/store.js'
 
 export type KnowledgeOperation = ToolId
 
 /** 工具 schema 发生协议变化时递增；快照保留该值供对照分组。 */
-export const TOOL_SCHEMA_VERSION = 2 as const
+export const TOOL_SCHEMA_VERSION = 3 as const
 
 export interface ToolBudgetState {
   limit: number
@@ -31,6 +31,16 @@ export type ToolResultStatus =
   | 'error'
   | 'budget_exhausted'
 
+export const FACTS_RESULT_VERSION = 1 as const
+
+export interface FactsResultMetadata {
+  factsResultVersion: typeof FACTS_RESULT_VERSION
+  matchedCount: number
+  returnedCount: number
+  complete: true
+  scope: Record<string, unknown>
+}
+
 export interface ToolExecutionResult {
   callId: string
   operation?: string
@@ -41,6 +51,7 @@ export interface ToolExecutionResult {
   actualParams?: unknown
   hitIds?: string[]
   injectedIds?: string[]
+  factsResult?: FactsResultMetadata
   message?: string
   fatal?: boolean
 }
@@ -104,7 +115,7 @@ const TOOL_DEFINITIONS: Record<ToolId, JsonObject> = {
     type: 'function',
     function: {
       name: 'lookup',
-      description: '按当前索引中的干员正式名、技能名、技能组或等价组名精确查找记录卡；一般机制或组合建议使用 rag_search（若可用）。',
+      description: '按当前索引中的干员正式名、技能名、技能组或等价组名精确查找记录卡；不做字面子串匹配。一般机制或组合建议使用 rag_search（若可用）。',
       parameters: {
         type: 'object',
         properties: {
@@ -119,15 +130,15 @@ const TOOL_DEFINITIONS: Record<ToolId, JsonObject> = {
     type: 'function',
     function: {
       name: 'query_operators',
-      description: '按分类或关键词筛选记录卡；多个条件取交集，至少提供一个正向条件。',
+      description: '筛选干员记录卡；room、faction、profession 精确匹配，termQuery 按字面子串匹配，多个条件取交集；至少提供一个正向条件。',
       parameters: {
         type: 'object',
         properties: {
-          room: { type: 'string', minLength: 1, description: '设施名称；按已有设施分类匹配' },
-          faction: { type: 'string', minLength: 1, description: '阵营或干员组名称；按已有分类匹配' },
-          profession: { type: 'string', minLength: 1, description: '职业名称；按已有分类匹配' },
-          termQuery: { type: 'string', minLength: 1, description: '名称或技能关键词，按字面子串筛选' },
-          excludeIds: { type: 'array', items: { type: 'string', minLength: 1 }, description: '从已返回结果取得的 canonical ID，仅作排除条件' },
+          room: { type: 'string', minLength: 1, description: '设施名称；精确匹配干员卡声明的已有设施。设置后，termQuery 的技能匹配只检查该设施作用域。' },
+          faction: { type: 'string', minLength: 1, description: '阵营或干员组名称；按已有分类精确匹配。' },
+          profession: { type: 'string', minLength: 1, description: '职业名称；按已有分类精确匹配。' },
+          termQuery: { type: 'string', minLength: 1, description: '名称、技能或卡级字段关键词，按字面子串筛选；设置 room 时技能部分只检查该设施。' },
+          excludeIds: { type: 'array', items: { type: 'string', minLength: 1 }, description: '从既有结果取得的 canonical 身份 ID，仅作排除条件，不能替代正向条件。' },
         },
         anyOf: [
           { required: ['room'] },
@@ -252,7 +263,18 @@ async function executeOne(
   state.executed++
   try {
     const output = runOperation(call.name as KnowledgeOperation, parsed.value, context, config)
-    const status: ToolResultStatus = output.data ? 'success' : 'empty'
+    const status: ToolResultStatus = isFactTool(call.name)
+      ? output.hitIds.length > 0 ? 'success' : 'empty'
+      : output.data ? 'success' : 'empty'
+    const factsResult = isFactTool(call.name)
+      ? {
+          factsResultVersion: FACTS_RESULT_VERSION,
+          matchedCount: output.hitIds.length,
+          returnedCount: output.hitIds.length,
+          complete: true as const,
+          scope: parsed.value,
+        }
+      : undefined
     return {
       callId: call.id,
       operation: call.name,
@@ -263,6 +285,7 @@ async function executeOne(
       actualParams: parsed.value,
       hitIds: output.hitIds,
       injectedIds: output.injectedIds,
+      factsResult,
       message: state.remaining === 0 ? BUDGET_ANSWER_HINT : undefined,
     }
   } catch (error) {
@@ -409,7 +432,11 @@ function runOperation(
   }
   const filters = params as OperatorFilters
   const hits = store.queryOperators(filters)
-  return { data: serializeCards(hits, filters), hitIds: hits.map((card) => card.canonical), injectedIds: hits.map((card) => card.canonical) }
+  return {
+    data: serializeCards(hits, { ...filters, queryOperators: true }),
+    hitIds: hits.map((card) => card.canonical),
+    injectedIds: hits.map((card) => card.canonical),
+  }
 }
 
 function ragInjectedIds(chunks: DocChunk[], hits: number[], maxChars: number): string[] {
@@ -431,6 +458,7 @@ export function serializeToolResult(item: ToolExecutionResult): string {
     executed: item.executed,
     data: item.data,
     budget_remaining: item.budgetRemaining,
+    ...(item.factsResult ?? {}),
     ...(item.message ? { message: item.message } : {}),
   })
 }

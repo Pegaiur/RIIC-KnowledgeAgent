@@ -40,6 +40,8 @@ export interface CardStore {
 export interface CardSerializationFilters {
   room?: string
   termQuery?: string
+  /** 标记 query_operators 输出，以加入卡级属性与技能投影范围说明。 */
+  queryOperators?: boolean
 }
 
 function addTerm(byTerm: Map<string, Set<string>>, term: string, canonical: string): void {
@@ -130,8 +132,14 @@ function skillMatchesTerm(skill: RecordCard['skills'][number], q: string): boole
 
 /** 渲染命中卡列表为工具结果文本；保留全部审定备注和替换关系。 */
 export function serializeCards(cards: RecordCard[], filters: CardSerializationFilters = {}): string {
-  if (cards.length === 0) return '（无匹配记录卡）'
-  return cards.map((card) => serializeCard(card, filters)).join('\n\n')
+  const content = cards.length === 0
+    ? '（无匹配记录卡）'
+    : cards.map((card) => serializeCard(card, filters)).join('\n\n')
+  return filters.queryOperators ? `${operatorScopeNotice()}\n${content}` : content
+}
+
+function operatorScopeNotice(): string {
+  return '查询范围说明：卡头中的设施、阵营、职业，以及技能组和卡级备注属于干员全局属性，不代表当前设施专属；下方技能按本次查询条件投影，未必包含该卡全部技能。'
 }
 
 function serializeCard(card: RecordCard, filters: CardSerializationFilters): string {
@@ -145,12 +153,13 @@ function serializeCard(card: RecordCard, filters: CardSerializationFilters): str
     `【${card.canonical}】${card.rarity}星·${card.class}｜设施：${card.rooms.join('、')}｜阵营：${card.factionGroups.join('、') || '无'}`,
   ]
   for (const skill of skills) {
+    const room = skill.room?.trim() || '未知设施'
     const note = skill.notes === undefined ? '' : `；备注：${skill.notes}`
     const replaced = skill.replacesGrantId === undefined
       ? undefined
       : card.skills.find((candidate) => candidate.grantId === skill.replacesGrantId)
     const replacement = replaced === undefined ? '' : `；替换「${replaced.name}」`
-    lines.push(`- ${skill.unlockType}「${skill.name}」：${skill.effectText}${replacement}${note}`)
+    lines.push(`- 【设施：${room}】${skill.unlockType}「${skill.name}」：${skill.effectText}${replacement}${note}`)
   }
   if (card.skillGroups.length > 0) lines.push(`技能组：${card.skillGroups.join('、')}`)
   if (card.notes) lines.push(`备注：${card.notes}`)

@@ -48,10 +48,21 @@ describe('独立函数工具 schema', () => {
       excludeIds: expect.any(Object),
     }))
     expect(parameters.parameters.anyOf).toHaveLength(4)
+
+    const fn = queryOperators.function as { description: string; parameters: { properties: Record<string, { description?: string }> } }
+    expect(fn.description).toContain('精确匹配')
+    expect(fn.description).toContain('字面子串匹配')
+    expect(fn.description).toContain('交集')
+    expect(fn.parameters.properties.room?.description).toContain('设施作用域')
+    expect(fn.parameters.properties.excludeIds?.description).toContain('canonical')
+
+    const lookup = toolsForRetriever('facts').find((tool) => (tool.function as { name: string }).name === 'lookup')!
+    expect((lookup.function as { description: string }).description).toContain('精确查找')
+    expect((lookup.function as { description: string }).description).toContain('不做字面子串匹配')
   })
 
   it('schema 指纹只由当前实际工具数组决定', () => {
-    expect(toolSchemaMetadata('bm25')).toMatchObject({ toolSchemaVersion: 2, toolNames: ['rag_search'] })
+    expect(toolSchemaMetadata('bm25')).toMatchObject({ toolSchemaVersion: 3, toolNames: ['rag_search'] })
     expect(toolSchemaMetadata('bm25').toolSchemaSha256).toMatch(/^[a-f0-9]{64}$/)
     expect(toolSchemaMetadata('bm25').toolSchemaSha256).not.toBe(toolSchemaMetadata('hybrid').toolSchemaSha256)
   })
@@ -93,6 +104,64 @@ describe('独立函数 executor：按批次预占工具预算', () => {
     expect(result.snapshot).toMatchObject({ used: 5, executed: 5, denied: 1 })
     expect(result.results[4]?.message).toContain('依据已有证据作答')
     expect(JSON.parse(serializeToolResult(result.results[4]!))).toMatchObject({ message: expect.stringContaining('依据已有证据作答') })
+  })
+
+  it('facts 第五次合法空查仍执行，第六次才拒绝，并按卡计数', async () => {
+    const config = loadConfig()
+    config.retriever = 'facts'
+    const executor = createKnowledgeToolExecutor({ config, query: { id: 'FACTS-BUDGET', category: 'fact', question: '预算边界' }, chunks, index: buildIndex(chunks) }, 5)
+    const calls = [
+      call('fact-1', 'lookup', { term: '刻俄柏' }),
+      call('fact-2', 'lookup', { term: '刻俄柏' }),
+      call('fact-3', 'lookup', { term: '刻俄柏' }),
+      call('fact-4', 'lookup', { term: '刻俄柏' }),
+      call('fact-5', 'lookup', { term: '__不存在的规范名_核查__' }),
+      call('fact-6', 'query_operators', { room: '制造站' }),
+    ]
+
+    const result = await executor.executeBatch(calls)
+    expect(result.results.slice(0, 4).every((item) => item.status === 'success' && item.executed)).toBe(true)
+    expect(result.results[4]).toMatchObject({ status: 'empty', executed: true, factsResult: { matchedCount: 0, returnedCount: 0, complete: true }, message: expect.stringContaining('依据已有证据作答') })
+    expect(result.results[5]).toMatchObject({ status: 'budget_exhausted', executed: false })
+    expect(result.results[5]?.factsResult).toBeUndefined()
+    expect(result.snapshot).toMatchObject({ used: 5, requested: 6, executed: 5, denied: 1, remaining: 0 })
+  })
+
+  it('facts 第五次坏参数消耗准入点但不执行，第六次仍按预算拒绝', async () => {
+    const config = loadConfig()
+    config.retriever = 'facts'
+    const executor = createKnowledgeToolExecutor({ config, query: { id: 'FACTS-INVALID-BUDGET', category: 'fact', question: '预算参数边界' }, chunks, index: buildIndex(chunks) }, 5)
+    const calls = [
+      call('invalid-fact-1', 'lookup', { term: '刻俄柏' }),
+      call('invalid-fact-2', 'lookup', { term: '刻俄柏' }),
+      call('invalid-fact-3', 'lookup', { term: '刻俄柏' }),
+      call('invalid-fact-4', 'lookup', { term: '刻俄柏' }),
+      call('invalid-fact-5', 'lookup', { term: '   ' }),
+      call('invalid-fact-6', 'lookup', { term: '刻俄柏' }),
+    ]
+
+    const result = await executor.executeBatch(calls)
+    expect(result.results[4]).toMatchObject({ status: 'invalid_params', executed: false })
+    expect(result.results[4]?.factsResult).toBeUndefined()
+    expect(result.results[5]).toMatchObject({ status: 'budget_exhausted', executed: false })
+    expect(result.snapshot).toMatchObject({ used: 5, requested: 6, executed: 4, denied: 1, remaining: 0 })
+  })
+
+  it('T12 facts 宽查按完整卡集合返回，计数按卡去重且不套 RAG 字符上限', async () => {
+    const config = loadConfig()
+    config.retriever = 'facts'
+    const executor = createKnowledgeToolExecutor({ config, query: { id: 'FACTS-WIDE', category: 'fact', question: '进驻设施的干员' }, chunks, index: buildIndex(chunks) }, 5)
+    const result = await executor.executeBatch([call('wide', 'query_operators', { termQuery: '进驻' })])
+    const item = result.results[0]!
+    expect(item.status).toBe('success')
+    expect(item.factsResult).toMatchObject({
+      matchedCount: item.hitIds?.length,
+      returnedCount: item.hitIds?.length,
+      complete: true,
+      scope: { termQuery: '进驻' },
+    })
+    expect(new Set(item.hitIds).size).toBe(item.hitIds?.length ?? 0)
+    expect(item.data.length).toBeGreaterThan(config.maxContextChars)
   })
 
   it('旧 knowledge 外壳被视为未知工具，不自动解包', async () => {
