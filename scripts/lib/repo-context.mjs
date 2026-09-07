@@ -3,7 +3,7 @@
  *
  * 定位方式：从调用模块路径向上查找标志文件（默认 .git，泛语言通用；
  * monorepo 可传入 marker 如 pnpm-workspace.yaml / Cargo.toml 精确锚定），
- * 与调用者所在层级无关（scripts/、scripts/tasks/<domain>/、scripts/scratch/... 均可用）。
+ * 与调用者所在层级无关（scripts/、scripts/tasks/<domain>/ 均可用）。
  * 测试可注入 root 直接覆盖推导。
  */
 
@@ -49,9 +49,4 @@ export function isPathInside(parent, child) {
 /** tasks 目录根：<root>/scripts/tasks（scripts 平铺结构单点持有，tooling/ref-check/prepare 统一引用） */
 export function tasksRoot(root) {
   return join(root, 'scripts', 'tasks')
-}
-
-/** scratch 目录根：<root>/scripts/scratch */
-export function scratchRoot(root) {
-  return join(root, 'scripts', 'scratch')
 }

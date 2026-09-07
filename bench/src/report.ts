@@ -3,6 +3,13 @@
  */
 import { isRetrievalTool, isFactTool, type CostRecord, type LlmUsage } from './types.js'
 import { aggregateUsages } from './pricing.js'
+import type { BenchSnapshot } from './snapshot.js'
+
+export interface ReportQueryContext {
+  id: string
+  category: string
+  rounds?: number
+}
 
 export interface QueryAgg {
   queryId: string
@@ -206,7 +213,7 @@ function tokenValues(records: CostRecord[]): {
  * 从记录数组聚合。
  * TODO(tech-debt) A2：函数较长，可提取局部 groupBy/sum 助手收敛模板；收益低，暂缓。
  */
-export function aggregate(records: CostRecord[]): BenchReport {
+export function aggregate(records: CostRecord[], queryContext: readonly ReportQueryContext[] = []): BenchReport {
   const byQuery = new Map<string, CostRecord[]>()
   for (const r of records) {
     const list = byQuery.get(r.queryId) ?? []
@@ -229,6 +236,26 @@ export function aggregate(records: CostRecord[]): BenchReport {
       truncated: list.filter((r) => r.truncated).length,
     }
   })
+
+  // 快照保留没有任何 CostRecord 的失败题；报告仍以完整题集作为分母。
+  for (const query of queryContext) {
+    if (byQuery.has(query.id)) continue
+    queryAggs.push({
+      queryId: query.id,
+      category: query.category,
+      rounds: query.rounds ?? 0,
+      outputTokens: 0,
+      outputTokensExact: 0,
+      reasoningTokens: 0,
+      inputTokens: 0,
+      inputTokensExact: 0,
+      costOut: 0,
+      costIn: 0,
+      costTotal: 0,
+      costComplete: false,
+      truncated: 0,
+    })
+  }
 
   const byThinking = new Map<string, CostRecord[]>()
   for (const r of records) {
@@ -285,7 +312,7 @@ export function aggregate(records: CostRecord[]): BenchReport {
   const totals = tokenValues(records)
   return {
     totalCalls: records.length,
-    totalQueries: byQuery.size,
+    totalQueries: new Set([...byQuery.keys(), ...queryContext.map((query) => query.id)]).size,
     totalInput: totals.inputTokens,
     totalOutput: totals.outputTokens,
     totalInputExact: totals.inputTokensExact,
@@ -305,6 +332,15 @@ export function aggregate(records: CostRecord[]): BenchReport {
     toolUsage: aggregateToolUsage(records),
     toolStats: aggregateToolStats(records),
   }
+}
+
+/** 从共享快照聚合；queries 用于补齐无模型调用的失败题。 */
+export function aggregateSnapshot(snapshot: BenchSnapshot): BenchReport {
+  return aggregate(snapshot.records, snapshot.queries.map((query) => ({
+    id: query.id,
+    category: query.category,
+    rounds: query.rounds,
+  })))
 }
 
 /** 聚合检索工具调用（双工具模式统计当前 run 内 rag/grep 各被调用多少轮） */

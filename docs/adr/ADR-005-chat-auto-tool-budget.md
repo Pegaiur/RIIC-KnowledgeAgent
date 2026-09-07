@@ -1,7 +1,7 @@
 # ADR-005：Chat auto 工具循环与每题积分预算
 
 - 日期：2026-09-05
-- 状态：已决策
+- 状态：已实施
 
 ## 背景
 
@@ -45,6 +45,6 @@ auto 不保证首检，回馈也不保证后续一定查询；应显式记录未
 
 ## 关联
 
-- 规划文档：[Chat auto 工具循环与每题积分预算实施计划](../plan-agent-auto-tool-budget.md)。
+- 规划文档：[Chat auto 工具循环与每题积分预算实施计划](../archive/plan-agent-auto-tool-budget.md)。
 - 需求入口：[需求收件箱](../inbox.md)。
 - 既有约束：[ADR-004](ADR-004-query-agent-knowledge-layering.md)。

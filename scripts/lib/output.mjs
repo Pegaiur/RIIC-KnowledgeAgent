@@ -1,7 +1,7 @@
 /**
  * 输出格式化与文件落位：text / JSON / TSV
  *
- * 落位约定：完整中间结果 → dev-temp/runs（runOutputPath）；人工长期查看 → dev-temp/work；
+ * 落位约定：完整中间结果 → dev-temp/runs（runOutputPath）；任务共置脚本、输入、输出及交接产物 → dev-temp/work；
  * 由调用方显式选择，本模块不隐式写盘。
  */
 

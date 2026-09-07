@@ -10,7 +10,7 @@
  * 解析规则：
  *   - 相对路径按引用文件所在目录解析；
  *   - glob 引用（如 scripts/__tests__/*.test.mjs）需至少一个条目匹配（支持 *、?、[abc]）；
- *   - 豁免：dev-temp/**、scripts/scratch/**、node_modules；
+ *   - 豁免：dev-temp/**、历史 scripts/scratch/**、node_modules；
  *   - 排除源：docs/adr/**（ADR 叙述）、docs/ 其余文档（非当前可执行引用）；
  *   - tasks 由 tooling 目录发现自检，D4 只轻校验引用中 domain/name 路径可规范化。
  *
@@ -220,7 +220,7 @@ export function resolveRef(ref, baseDir, root) {
 }
 
 /**
- * 豁免判定：dev-temp/**、scripts/scratch/** 内引用不检查（可清理/本地临时产物）。
+ * 豁免判定：dev-temp/**、历史 scripts/scratch/** 内引用不检查（本地临时产物）。
  * 路径前缀大小写不敏感（Windows 文件系统语义）。
  * @param {string} resolved 绝对路径
  * @param {string} root 仓库根

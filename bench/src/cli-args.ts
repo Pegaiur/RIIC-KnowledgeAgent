@@ -29,6 +29,8 @@ export interface ParsedArgs {
   checkGold: boolean
   /** 位置参数（compare 收集多个 runDir） */
   positional: string[]
+  /** export：快照主题名 */
+  topic: string | null
   help: boolean
 }
 
@@ -58,6 +60,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
     gold: null,
     checkGold: false,
     positional: [],
+    topic: null,
     help: false,
   }
   for (let i = 1; i < argv.length; i++) {
@@ -87,6 +90,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
       i++
     } else if (arg === '--questions') parsed.questions = argv[++i] ?? null
     else if (arg === '--out') parsed.out = argv[++i] ?? null
+    else if (arg === '--topic') parsed.topic = argv[++i] ?? null
     else if (!parsed.runDir && !arg.startsWith('-')) parsed.runDir = arg
     else if (!arg.startsWith('-')) parsed.positional.push(arg)
   }
