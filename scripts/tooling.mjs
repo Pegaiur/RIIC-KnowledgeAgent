@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 /**
  * 通用开发脚本工具（tooling）
  *

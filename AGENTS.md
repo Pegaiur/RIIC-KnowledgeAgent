@@ -98,11 +98,16 @@ rag-test/
 
 ## 运行与验证
 
+本地依赖工具（如 Vitest、TypeScript）统一通过 `package.json` 定义的 `pnpm run <脚本名>` 调用；终端命令、文档示例和自动化脚本均遵守此约定，不直接运行 `vitest` / `tsc`，也不使用 `pnpm exec` 或 `npx` 代替。`package.json` 的 scripts 内直接写工具名，由 `pnpm run` 提供本地 `.bin` 路径。新增工具调用先复用已有 script；确有新用途时再添加命名明确的 script。
+
+当前 Windows 环境曾出现 `PATH` / `Path` 重复，导致 `pnpm exec` 启动子进程时丢失本地 `.bin` 路径；不能仅凭命令未找到就判定依赖未安装。依赖安装仍用 `pnpm install`，仓库自有脚本仍按既有 `node scripts/...` 入口执行。
+
 ```bash
 pnpm install                        # 安装依赖（含 typescript / vitest）
 pnpm run typecheck                  # tsc --noEmit
 pnpm run test                       # vitest run
-pnpm run bench                      # 干跑基准（--dry，不发真实请求）
+pnpm run test -- scripts/tooling.test.mjs   # 定向测试，参数透传给已有 test 脚本
+pnpm run bench:dry                  # 构建后干跑基准（--dry，不发真实请求）
 node scripts/doc-check.mjs          # 文档一致性校验
 node scripts/verify.mjs merge -- --base main   # 合并门禁
 ```
