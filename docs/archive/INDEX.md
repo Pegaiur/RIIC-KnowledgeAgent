@@ -6,6 +6,10 @@
 | 完成日期 | 版本 | 文件 | 摘要 |
 |----------|------|------|------|
 
+| 2026-09-07 | — | [plan-agent-auto-tool-budget.md](plan-agent-auto-tool-budget.md) | plan-agent-auto-tool-budget |
+| 2026-09-07 | — | [plan-benchmark-snapshot-lifecycle.md](plan-benchmark-snapshot-lifecycle.md) | plan-benchmark-snapshot-lifecycle |
+| 2026-09-07 | — | [plan-dev-temp-simplification.md](plan-dev-temp-simplification.md) | plan-dev-temp-simplification |
+| 2026-09-07 | — | [plan-temp-cleanup.md](plan-temp-cleanup.md) | plan-temp-cleanup |
 | 2026-09-05 | — | [plan-agent-trace-observability.md](plan-agent-trace-observability.md) | plan-agent-trace-observability |
 | 2026-09-04 | — | [plan-hybrid-facts.md](plan-hybrid-facts.md) | facts-first 确定性记录卡、lookup/query_operators 与全量 425 卡运行时切换完成 |
 | 2026-09-04 | — | [plan-facts-record-cards.md](plan-facts-record-cards.md) | 完成 425 名干员记录卡确定性解析、分类/等价关系拼装与全量门禁 |
