@@ -193,6 +193,27 @@ describe('第一阶段合成卡契约', () => {
     expect(canonicals(store.lookup('锻造进式'))).toEqual(['测试甲', '测试乙'])
     expect(canonicals(store.lookup('锻造同效'))).toEqual(['测试甲', '测试乙'])
     expect(canonicals(store.lookup('锻造进'))).toEqual([])
+    expect(canonicals(store.lookup('锻造进式＝锻造同效'))).toEqual([])
+  })
+
+  it('termQuery 按连续字面子串匹配，不把含空格的短语拆成多词条件', () => {
+    const makeCard = (canonical: string, effectText: string): RecordCard => ({
+      canonical,
+      aliases: [],
+      rarity: '4',
+      class: '医疗',
+      rooms: ['制造站'],
+      factionGroups: [],
+      skillGroups: [],
+      skills: [{ grantId: `${canonical}-skill`, room: '制造站', name: '测试技能', unlockType: '初始解锁', target: '', effectText }],
+      notes: '',
+    })
+    const compact = buildCardStore([makeCard('连续串', '联络速度')])
+    const spaced = buildCardStore([makeCard('带空格', '联络 速度')])
+
+    expect(canonicals(compact.queryOperators({ termQuery: '联络速度' }))).toEqual(['连续串'])
+    expect(canonicals(compact.queryOperators({ termQuery: '联络 速度' }))).toEqual([])
+    expect(canonicals(spaced.queryOperators({ termQuery: '联络 速度' }))).toEqual(['带空格'])
   })
 
   it('T03 分类条件精确匹配、多个正向条件取交集且 excludeIds 只排除 canonical', () => {
@@ -368,6 +389,9 @@ describe('runQuery（facts 模式）', () => {
   it.each([
     ['空对象', '{}'],
     ['非法 JSON', '{'],
+    ['room 为 null', '{"room":null}'],
+    ['profession 为空串', '{"profession":""}'],
+    ['faction 为空白', '{"faction":"   "}'],
     ['空白 termQuery', '{"termQuery":"   "}'],
     ['仅 excludeIds', '{"excludeIds":["刻俄柏"]}'],
     ['仅已删除 rarity', '{"rarity":"5"}'],
@@ -388,6 +412,7 @@ describe('runQuery（facts 模式）', () => {
     ['faction', '{"faction":"  萨尔贡 "}', { faction: '萨尔贡' }],
     ['profession', '{"profession":"  近卫 "}', { profession: '近卫' }],
     ['termQuery', '{"termQuery":"  木天蓼 "}', { termQuery: '木天蓼' }],
+    ['空 excludeIds', '{"room":"制造站","excludeIds":[]}', { room: '制造站', excludeIds: [] }],
   ])('%s 作为单独正向条件有效并完成 trim', async (_label, argumentsText, expectedFilters) => {
     await runQueryOperatorsCall(argumentsText)
     expect(queryOperatorsSpy).toHaveBeenCalledWith(expectedFilters)
@@ -440,6 +465,28 @@ describe('runQuery（facts 模式）', () => {
     const toolEvent = trace.events.find((event) => event.type === 'tool_call') as { status: string; executed: boolean; hitIds?: string[]; writtenContent: string }
     expect(toolEvent).toMatchObject({ status: 'empty', executed: true, hitIds: [] })
     expect(JSON.parse(toolEvent.writtenContent)).toMatchObject({ status: 'empty', matchedCount: 0, complete: true })
+  })
+
+  it('合法 facts 空查后仍允许继续一个新的合法查询再作答', async () => {
+    const config = loadConfig()
+    config.retriever = 'facts'
+    const index = buildIndex(chunks)
+    const query = { id: 'FACTS-EMPTY-CONTINUE', category: 'fact' as const, question: '空查后继续查设施' }
+
+    mockCall
+      .mockResolvedValueOnce(providerResult({ toolCalls: [{ id: 'empty-lookup', name: 'lookup', arguments: '{"term":"__不存在的规范名_核查__"}' }] }))
+      .mockResolvedValueOnce(providerResult({ toolCalls: [{ id: 'new-query', name: 'query_operators', arguments: '{"room":"制造站"}' }] }))
+      .mockResolvedValueOnce(providerResult({ content: '新的设施查询已返回证据。' }))
+
+    const trace = createQueryTrace(query)
+    const result = await runQuery(query, { config, thinking: 'off', dry: false, trace }, chunks, index)
+
+    expect(result.finalAnswer).toBe('新的设施查询已返回证据。')
+    expect(result.budget).toMatchObject({ used: 2, executed: 2, remaining: 3 })
+    expect(result.toolTrace).toEqual([['lookup'], ['query_operators']])
+    expect(trace.events.filter((event) => event.type === 'tool_call').map((event) => event.type === 'tool_call' ? event.status : ''))
+      .toEqual(['empty', 'success'])
+    expect(queryOperatorsSpy).toHaveBeenCalledWith({ room: '制造站' })
   })
 
   it('trace 记录 facts 的实际参数与 canonical 命中/注入 ID', async () => {

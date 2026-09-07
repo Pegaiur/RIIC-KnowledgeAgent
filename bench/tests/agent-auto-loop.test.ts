@@ -31,11 +31,14 @@ describe('Agent auto 主循环', () => {
   beforeEach(() => mockCall.mockReset())
 
   it('能力块只暴露当前独立工具，并描述工具与积分预算', () => {
-    const prompt = buildSystemPrompt('both', '规则', 5)
+    const prompt = buildSystemPrompt('both', '规则', 2)
 
     expect(prompt).toContain('可用工具：rag_search、grep_search')
     expect(prompt).toContain('rag_search、grep_search')
-    expect(prompt).toContain('工具积分预算：5 点')
+    expect(prompt).toContain('工具积分预算：2 点')
+    expect(prompt).toContain('每个准入工具调用占 1 点，参数错误也占点')
+    expect(prompt).toContain('同批调用分别计费')
+    expect(prompt).toContain('余额用尽后新增调用不会执行')
     expect(prompt).not.toContain('工具调用上限：2 次')
   })
 

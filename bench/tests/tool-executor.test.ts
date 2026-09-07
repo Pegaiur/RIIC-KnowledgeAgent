@@ -53,7 +53,10 @@ describe('独立函数工具 schema', () => {
     expect(fn.description).toContain('精确匹配')
     expect(fn.description).toContain('字面子串匹配')
     expect(fn.description).toContain('交集')
+    expect(fn.description).toContain('未用字段省略')
     expect(fn.parameters.properties.room?.description).toContain('设施作用域')
+    expect(fn.parameters.properties.termQuery?.description).toContain('连续关键词或短语')
+    expect(fn.parameters.properties.termQuery?.description).toContain('不拆词')
     expect(fn.parameters.properties.excludeIds?.description).toContain('canonical')
 
     const lookup = toolsForRetriever('facts').find((tool) => (tool.function as { name: string }).name === 'lookup')!
@@ -62,9 +65,27 @@ describe('独立函数工具 schema', () => {
   })
 
   it('schema 指纹只由当前实际工具数组决定', () => {
-    expect(toolSchemaMetadata('bm25')).toMatchObject({ toolSchemaVersion: 3, toolNames: ['rag_search'] })
+    expect(toolSchemaMetadata('bm25')).toMatchObject({ toolSchemaVersion: 4, toolNames: ['rag_search'] })
     expect(toolSchemaMetadata('bm25').toolSchemaSha256).toMatch(/^[a-f0-9]{64}$/)
     expect(toolSchemaMetadata('bm25').toolSchemaSha256).not.toBe(toolSchemaMetadata('hybrid').toolSchemaSha256)
+  })
+
+  it('拼接的多个名称仍是合法 lookup，未命中时执行为空查并扣点', async () => {
+    const config = loadConfig()
+    config.retriever = 'facts'
+    const executor = createKnowledgeToolExecutor({
+      config,
+      query: { id: 'LOOKUP-CONCAT', category: 'fact', question: '拼接名称边界' },
+      chunks: [],
+      index: buildIndex([]),
+    }, 1)
+
+    const result = await executor.executeBatch([
+      call('concat', 'lookup', { term: '不存在技能甲＝不存在技能乙' }),
+    ])
+
+    expect(result.results[0]).toMatchObject({ status: 'empty', executed: true, factsResult: { matchedCount: 0, returnedCount: 0 } })
+    expect(result.snapshot).toMatchObject({ used: 1, executed: 1, remaining: 0 })
   })
 })
 
