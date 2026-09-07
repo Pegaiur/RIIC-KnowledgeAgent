@@ -12,7 +12,7 @@ import { getCardStore, serializeCards, type OperatorFilters } from './facts/stor
 export type KnowledgeOperation = ToolId
 
 /** 工具 schema 发生协议变化时递增；快照保留该值供对照分组。 */
-export const TOOL_SCHEMA_VERSION = 3 as const
+export const TOOL_SCHEMA_VERSION = 4 as const
 
 export interface ToolBudgetState {
   limit: number
@@ -115,11 +115,11 @@ const TOOL_DEFINITIONS: Record<ToolId, JsonObject> = {
     type: 'function',
     function: {
       name: 'lookup',
-      description: '按当前索引中的干员正式名、技能名、技能组或等价组名精确查找记录卡；不做字面子串匹配。一般机制或组合建议使用 rag_search（若可用）。',
+      description: '按当前索引中的干员正式名、技能名（含等价组内技能名）或已收录技能组词精确查找记录卡；一个名称可能返回多位持有者。不做字面子串匹配或模糊匹配，不会把拼接的多个名称拆开查询。机制和组合关系优先使用 rag_search（若本次已暴露）；无可用证据时说明未覆盖。',
       parameters: {
         type: 'object',
         properties: {
-          term: { type: 'string', minLength: 1, description: '已核验的干员正式名、技能名、技能组或等价组名' },
+          term: { type: 'string', minLength: 1, description: '一个干员正式名、技能名或已收录技能组词；保留名称中的标点。不要传整句问题或等价组完整标题。' },
         },
         required: ['term'],
         additionalProperties: false,
@@ -130,14 +130,14 @@ const TOOL_DEFINITIONS: Record<ToolId, JsonObject> = {
     type: 'function',
     function: {
       name: 'query_operators',
-      description: '筛选干员记录卡；room、faction、profession 精确匹配，termQuery 按字面子串匹配，多个条件取交集；至少提供一个正向条件。',
+      description: '筛选干员记录卡；room、faction、profession 精确匹配，termQuery 按字面子串匹配，多个条件取交集；至少提供一个正向条件。未用字段省略，不传 null；字符串字段不得为空或仅含空白。分类值须精确，未知值可能合法但无匹配。返回匹配干员卡集合，技能文本按查询投影，不按效率排序。',
       parameters: {
         type: 'object',
         properties: {
           room: { type: 'string', minLength: 1, description: '设施名称；精确匹配干员卡声明的已有设施。设置后，termQuery 的技能匹配只检查该设施作用域。' },
           faction: { type: 'string', minLength: 1, description: '阵营或干员组名称；按已有分类精确匹配。' },
           profession: { type: 'string', minLength: 1, description: '职业名称；按已有分类精确匹配。' },
-          termQuery: { type: 'string', minLength: 1, description: '名称、技能或卡级字段关键词，按字面子串筛选；设置 room 时技能部分只检查该设施。' },
+          termQuery: { type: 'string', minLength: 1, description: '一个连续关键词或短语，按字面子串匹配；不拆词或解释查询运算符。检查名称及技能等字段；设置 room 时只检查该设施技能，多设施卡的全局技能组和备注不作为该设施的命中依据，名称匹配仍有效。' },
           excludeIds: { type: 'array', items: { type: 'string', minLength: 1 }, description: '从既有结果取得的 canonical 身份 ID，仅作排除条件，不能替代正向条件。' },
         },
         anyOf: [

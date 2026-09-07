@@ -87,7 +87,7 @@ export function buildSystemPrompt(
     '## 本次运行能力',
     `- 检索模式：${retriever}`,
     `- 可用工具：${toolNames.join('、')}`,
-    `- 工具积分预算：${toolBudget} 点；余额耗尽后仍可调用工具，但宿主会返回预算耗尽提示。`,
+    `- 工具积分预算：${toolBudget} 点；每个准入工具调用占 1 点，参数错误也占点；同批调用分别计费。余额用尽后新增调用不会执行。`,
   ]
   return `${agentInstructions.trim()}\n\n${runtime.join('\n')}`
 }
