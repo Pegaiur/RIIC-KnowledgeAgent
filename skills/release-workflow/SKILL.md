@@ -26,7 +26,7 @@ description: 发版与版本管理——在 feature 分支收束发布元数据�
 
 ### 1. 发布元数据收束（feature 分支）
 
-1. 确认当前位于待合并的 `feature/*` 分支，plan checklist 全部 [x]；没有 checklist 或没有实施证据时降级 draft/挂起，不机械补勾。
+1. 确认当前位于待合并的 `feature/*` 分支，plan checklist 全部 [x]；没有 checklist 或没有实施证据时降级 draft/挂起，不机械补勾。按 [`scripts/INDEX.md`](../../scripts/INDEX.md) 的收尾约定核对本轮产物去留及交接，再归档任务文档。
 2. 收尾前按 [`docs/rules/document-lifecycle.md`](../../docs/rules/document-lifecycle.md) 核对快照用途与去留；先执行 `pnpm run build`，再对支撑本次结论的原始运行目录执行 `node dist/cli.js export <runDir> --out bench/results/<run-id>.json`，用 `report`/`compare` 从快照复核。导出器不自动暂存或提交，具体保留失败题、重试台账和未知用量按生命周期规则处理。
 3. 先以根版本推算 dry-run 确定根目标版本，再执行 `node scripts/tooling.mjs run release/prepare -- --plan <待归档plan> --version <根版本> --apply` 冻结归档（合并 notes 为实施纪要、更新 archive INDEX）。
 4. 清理 inbox [x] 条目、同步相关 ADR 与 INDEX 状态；核对 changed 子包的包级约定文档（如 PACKAGE.md）职责/接口。
@@ -43,7 +43,7 @@ description: 发版与版本管理——在 feature 分支收束发布元数据�
 
 ### 3. 共享后清理证据原件
 
-本技能在分支合并或放弃时触发收尾：先按任务目录和实际用途核对本轮产物，决定正式资产、继续交接和可舍弃内容；不推测整个旧目录属于当前分支，也不要求其他任务同时结束。正式基准证据原件须在共享提交已可复核且相关实验已停止后处理；普通临时物的任务结束清理按 scripts/INDEX.md 执行。
+合并前已核对去留的正式基准证据原件，在共享提交已可复核且相关实验已停止后执行清理。普通任务完成、交接或分支放弃时，直接按 scripts/INDEX.md 收尾，无需等待发版。
 
 本技能只规定上述收尾时机；具体落位、清理操作、保护条件和快照去留以 [`scripts/INDEX.md`](../../scripts/INDEX.md) 与 [`docs/rules/document-lifecycle.md`](../../docs/rules/document-lifecycle.md) 为准。
 
