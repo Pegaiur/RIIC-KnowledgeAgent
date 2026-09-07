@@ -77,7 +77,7 @@ describe('report：聚合与渲染', () => {
     expect(report.incompleteUsageCalls).toBe(1)
     expect(report.unknownUsageCalls).toBe(0)
     expect(report.costComplete).toBe(false)
-    expect(report.toolStats).toEqual({ batches: 1, requested: 3, granted: 2, executed: 2, denied: 1, errors: 0, resultChars: 120 })
+    expect(report.toolStats).toEqual({ batches: 1, requested: 3, granted: 2, executed: 2, denied: 1, errors: 0, hitCount: 0, hitUnknown: 2, resultChars: 120 })
     expect(renderMarkdown(report)).toContain('费用状态：不完整')
   })
 
@@ -203,7 +203,7 @@ describe('report：聚合与渲染', () => {
     expect(rag.calls).toBe(2)
     expect(grep.calls).toBe(2)
     // 渲染含工具统计行
-    expect(renderMarkdown(report)).toContain('检索工具调用：')
+    expect(renderMarkdown(report)).toContain('工具调用：')
   })
 
   it('Markdown 渲染含表头与总数', () => {

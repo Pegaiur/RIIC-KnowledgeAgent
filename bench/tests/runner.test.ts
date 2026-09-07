@@ -30,11 +30,16 @@ describe('runBenchmark：trace 逐题落盘', () => {
         toolBudget: 5,
         sessionTimeoutMs: 300000,
         feedbackOnNoToolAnswer: true,
+        toolSchemaVersion: 2,
+        toolNames: ['lookup', 'query_operators'],
         modelSteps: 2,
         toolBatches: 0,
         toolCallsRequested: 0,
         failed: 2,
+        toolHitCount: 0,
+        toolHitUnknown: 0,
       })
+      expect(meta.toolSchemaSha256).toMatch(/^[a-f0-9]{64}$/)
 
       const traces = readFileSync(output.tracePath, 'utf-8')
         .trim()
@@ -76,6 +81,8 @@ describe('runBenchmark：trace 逐题落盘', () => {
         costComplete: report.costComplete,
         httpAttempts: report.totalHttpAttempts,
         retryAttempts: report.retryAttempts,
+        toolHitCount: report.toolStats.hitCount,
+        toolHitUnknown: report.toolStats.hitUnknown,
       })
     } finally {
       rmSync(outDir, { recursive: true, force: true })

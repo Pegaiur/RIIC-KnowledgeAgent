@@ -23,17 +23,17 @@ function result(partial: Partial<ProviderResult>): ProviderResult {
   }
 }
 
-function knowledgeCall(id: string, operation = 'rag_search', params: Record<string, unknown> = { query: '制造站' }) {
-  return { id, name: 'knowledge', arguments: JSON.stringify({ operation, params }) }
+function toolCall(id: string, name = 'rag_search', params: Record<string, unknown> = { query: '制造站' }) {
+  return { id, name, arguments: JSON.stringify(params) }
 }
 
 describe('Agent auto 主循环', () => {
   beforeEach(() => mockCall.mockReset())
 
-  it('能力块只暴露 knowledge，并描述当前 operation 与积分预算', () => {
+  it('能力块只暴露当前独立工具，并描述工具与积分预算', () => {
     const prompt = buildSystemPrompt('both', '规则', 5)
 
-    expect(prompt).toContain('可用工具：knowledge')
+    expect(prompt).toContain('可用工具：rag_search、grep_search')
     expect(prompt).toContain('rag_search、grep_search')
     expect(prompt).toContain('工具积分预算：5 点')
     expect(prompt).not.toContain('工具调用上限：2 次')
@@ -46,9 +46,9 @@ describe('Agent auto 主循环', () => {
     const trace = createQueryTrace({ id: 'AUTO-BATCH', category: 'fact', question: '制造站？' })
     mockCall
       .mockResolvedValueOnce(result({ toolCalls: [
-        knowledgeCall('a', 'rag_search'),
-        knowledgeCall('b', 'grep_search'),
-        knowledgeCall('c', 'rag_search', { query: '超额' }),
+        toolCall('a', 'rag_search'),
+        toolCall('b', 'grep_search'),
+        toolCall('c', 'rag_search', { query: '超额' }),
       ] }))
       .mockResolvedValueOnce(result({ content: '最终答案' }))
 
@@ -88,7 +88,7 @@ describe('Agent auto 主循环', () => {
   it('允许五次有依赖的工具步骤后由模型作答，不再使用旧 maxRounds 上限', async () => {
     const config = loadConfig()
     config.toolBudget = 5
-    const calls = Array.from({ length: 5 }, (_, index) => result({ toolCalls: [knowledgeCall(`step-${index + 1}`)] }))
+    const calls = Array.from({ length: 5 }, (_, index) => result({ toolCalls: [toolCall(`step-${index + 1}`)] }))
     mockCall.mockResolvedValueOnce(calls[0])
       .mockResolvedValueOnce(calls[1])
       .mockResolvedValueOnce(calls[2])
@@ -134,12 +134,12 @@ describe('Agent auto 主循环', () => {
     expect(trace.summary).toMatchObject({ terminationReason: 'no_tool_after_feedback', feedbackUsed: true, toolBatches: 0 })
   })
 
-  it('预算归零后仍继续提供 knowledge/auto，模型可基于拒绝结果作答', async () => {
+  it('预算归零后仍继续提供独立工具/auto，模型可基于拒绝结果作答', async () => {
     const config = loadConfig()
     config.toolBudget = 1
     mockCall
-      .mockResolvedValueOnce(result({ toolCalls: [knowledgeCall('first')] }))
-      .mockResolvedValueOnce(result({ toolCalls: [knowledgeCall('denied')] }))
+      .mockResolvedValueOnce(result({ toolCalls: [toolCall('first')] }))
+      .mockResolvedValueOnce(result({ toolCalls: [toolCall('denied')] }))
       .mockResolvedValueOnce(result({ content: '基于已有证据的答案' }))
 
     const agentResult = await runQuery(
@@ -150,13 +150,13 @@ describe('Agent auto 主循环', () => {
     )
 
     expect(agentResult.finalAnswer).toBe('基于已有证据的答案')
-    expect((mockCall.mock.calls[1]?.[1] as Array<Record<string, unknown>>)[0]).toMatchObject({ function: { name: 'knowledge' } })
-    expect((mockCall.mock.calls[2]?.[1] as Array<Record<string, unknown>>)[0]).toMatchObject({ function: { name: 'knowledge' } })
+    expect((mockCall.mock.calls[1]?.[1] as Array<Record<string, unknown>>)[0]).toMatchObject({ function: { name: 'rag_search' } })
+    expect((mockCall.mock.calls[2]?.[1] as Array<Record<string, unknown>>)[0]).toMatchObject({ function: { name: 'rag_search' } })
   })
 
   it('批内重复 call ID 直接失败，不回写不完整工具结果', async () => {
     const config = loadConfig()
-    mockCall.mockResolvedValueOnce(result({ toolCalls: [knowledgeCall('same'), knowledgeCall('same')] }))
+    mockCall.mockResolvedValueOnce(result({ toolCalls: [toolCall('same'), toolCall('same')] }))
 
     const agentResult = await runQuery(
       { id: 'AUTO-PROTOCOL', category: 'fact', question: '协议错误' },

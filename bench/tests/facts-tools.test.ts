@@ -2,7 +2,7 @@ import { describe, expect, it, beforeEach, vi } from 'vitest'
 import { loadConfig } from '../src/config.js'
 import { buildIndex } from '../src/retriever.js'
 import { buildSystemPrompt, runQuery } from '../src/agent.js'
-import { knowledgeTool } from '../src/tool-executor.js'
+import { toolsForRetriever } from '../src/tool-executor.js'
 import { buildCardStore, getCardStore, serializeCards } from '../src/facts/store.js'
 import { FACTS_FIXTURES } from '../src/facts/fixtures.js'
 import type { ProviderResult } from '../src/types.js'
@@ -133,19 +133,17 @@ describe('store：queryOperators 分类过滤', () => {
   })
 })
 
-describe('agent：facts 工具 schema 与系统提示', () => {
-  it('facts 模式只暴露 knowledge schema', () => {
-    const fn = knowledgeTool('facts').function as { name: string; parameters: { required: string[]; properties: { operation: { enum: string[] } } } }
-    expect(fn.name).toBe('knowledge')
-    expect(fn.parameters.required).toEqual(['operation', 'params'])
-    expect(fn.parameters.properties.operation.enum).toEqual(['lookup', 'query_operators'])
+describe('agent：facts 独立工具 schema 与系统提示', () => {
+  it('facts 模式只暴露 lookup/query_operators', () => {
+    expect(toolsForRetriever('facts').map((tool) => (tool.function as { name: string }).name))
+      .toEqual(['lookup', 'query_operators'])
   })
 
   it('系统提示 facts 分支描述 operation 与预算', () => {
     const prompt = buildSystemPrompt('facts')
     expect(prompt).toContain('lookup')
     expect(prompt).toContain('query_operators')
-    expect(prompt).toContain('可用工具：knowledge')
+    expect(prompt).toContain('可用工具：lookup、query_operators')
     expect(prompt).toContain('工具积分预算：5 点')
   })
 })
@@ -156,14 +154,7 @@ describe('runQuery（facts 模式）', () => {
   const lookupSpy = vi.spyOn(getCardStore(), 'lookup')
 
   function toolCall(name: string, args: string) {
-    let params: Record<string, unknown> = {}
-    try {
-      const parsed = JSON.parse(args) as unknown
-      if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) params = parsed as Record<string, unknown>
-    } catch {
-      // 保留空参数，让统一执行器返回结构化参数错误。
-    }
-    return { id: 'call_1', name: 'knowledge', arguments: JSON.stringify({ operation: name, params }) }
+    return { id: 'call_1', name, arguments: args }
   }
 
   function providerResult(partial: Partial<ProviderResult>): ProviderResult {
@@ -231,12 +222,12 @@ describe('runQuery（facts 模式）', () => {
     expect(queryOperatorsSpy).toHaveBeenCalledWith(expectedFilters)
   })
 
-  it('有效正向条件下 excludeIds 元素 trim 且忽略空字符串', async () => {
+  it('有效正向条件下 excludeIds 含空字符串时拒绝，不静默过滤', async () => {
     const { toolResult } = await runQueryOperatorsCall('{"room":"  制造站 ","excludeIds":["  森蚺 ","","   "]}')
 
     expect(toolResult).toBeDefined()
-    expect(toolResult).not.toContain('【森蚺】')
-    expect(queryOperatorsSpy).toHaveBeenCalledWith({ room: '制造站', excludeIds: ['森蚺'] })
+    expect(JSON.parse(toolResult ?? '{}')).toMatchObject({ status: 'invalid_params', executed: false })
+    expect(queryOperatorsSpy).not.toHaveBeenCalled()
   })
 
   it('facts 模式暴露 lookup，派发并统计工具调用', async () => {
@@ -276,7 +267,7 @@ describe('runQuery（facts 模式）', () => {
     expect(trace.events[1]).toMatchObject({
       type: 'tool_call',
       tool: 'lookup',
-      rawArguments: '{"operation":"lookup","params":{"term":"刻俄柏"}}',
+      rawArguments: '{"term":"刻俄柏"}',
       actualParams: { term: '刻俄柏' },
       hitIds: ['刻俄柏'],
       injectedIds: ['刻俄柏'],
@@ -427,8 +418,8 @@ describe('runQuery（hybrid 模式）', () => {
       .mockResolvedValueOnce({
         content: null,
         toolCalls: [
-          { id: 'call_rag', name: 'knowledge', arguments: '{"operation":"rag_search","params":{"query":"制造站 效率计算"}}' },
-          { id: 'call_facts', name: 'knowledge', arguments: '{"operation":"lookup","params":{"term":"刻俄柏"}}' },
+          { id: 'call_rag', name: 'rag_search', arguments: '{"query":"制造站 效率计算"}' },
+          { id: 'call_facts', name: 'lookup', arguments: '{"term":"刻俄柏"}' },
         ],
         usage: { input: 100, output: 50, cached: 0, reasoning: 0 },
         model: 'qwen',
@@ -450,7 +441,7 @@ describe('runQuery（hybrid 模式）', () => {
     )
 
     const exposed = (mockCall.mock.calls[0]?.[1] as Record<string, unknown>[]).map(toolName)
-    expect(exposed).toEqual(['knowledge'])
+    expect(exposed).toEqual(['rag_search', 'lookup', 'query_operators'])
     expect(result.toolTrace[0]).toEqual(['rag_search', 'lookup'])
     expect(result.injectedIds).toEqual(['base/机制-制造站.md#效率计算'])
     const secondMessages = mockCall.mock.calls[1]?.[0] as Array<{ role: string; tool_call_id?: string; content: string }>

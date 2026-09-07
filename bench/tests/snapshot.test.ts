@@ -44,6 +44,7 @@ describe('共享基准快照', () => {
       const recordWithExtraToolBatch = record() as CostRecord & { toolBatch?: Record<string, unknown> }
       recordWithExtraToolBatch.toolBatch = {
         requested: 1, granted: 1, executed: 1, denied: 0, errors: 0,
+        hitCount: 1, hitUnknown: 0,
         budgetBefore: 5, budgetAfter: 4, resultChars: 10, unexpected: 'drop-me',
       }
       const snapshot = createSnapshot({
@@ -54,6 +55,11 @@ describe('共享基准快照', () => {
           corpusDir: 'C:\\private\\corpus',
           headers: { Cookie: 'synthetic-cookie' },
           unknownExtra: 'drop-me',
+          toolSchemaVersion: 2,
+          toolSchemaSha256: 'a'.repeat(64),
+          toolNames: ['rag_search'],
+          toolHitCount: 1,
+          toolHitUnknown: 0,
           totalCost: 99, inputTokens: 123, terminationReasons: { answer: 1 },
         },
         queries: [{
@@ -72,6 +78,8 @@ describe('共享基准快照', () => {
       expect(readSnapshot(path).meta).not.toHaveProperty('totalCost')
       expect(readSnapshot(path).meta).not.toHaveProperty('inputTokens')
       expect(readSnapshot(path).meta).not.toHaveProperty('terminationReasons')
+      expect(readSnapshot(path).meta).not.toHaveProperty('toolHitCount')
+      expect(readSnapshot(path).meta).not.toHaveProperty('toolHitUnknown')
       expect(readSnapshot(path).meta).not.toHaveProperty('corpusDir')
       expect(readSnapshot(path).meta).not.toHaveProperty('headers')
       expect(readSnapshot(path).meta).not.toHaveProperty('unknownExtra')
@@ -79,7 +87,13 @@ describe('共享基准快照', () => {
       expect(readSnapshot(path).records[0]?.httpAttempts?.[0]?.error).toBeUndefined()
       expect(readSnapshot(path).records[0]?.toolBatch).toEqual({
         requested: 1, granted: 1, executed: 1, denied: 0, errors: 0,
+        hitCount: 1, hitUnknown: 0,
         budgetBefore: 5, budgetAfter: 4, resultChars: 10,
+      })
+      expect(readSnapshot(path).meta).toMatchObject({
+        toolSchemaVersion: 2,
+        toolSchemaSha256: 'a'.repeat(64),
+        toolNames: ['rag_search'],
       })
       const unsafePath = join(dir, 'unsafe.json')
       writeFileSync(unsafePath, JSON.stringify({ ...snapshot, meta: { ...snapshot.meta, unknownExtra: 'must-reject' } }))
