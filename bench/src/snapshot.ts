@@ -61,19 +61,21 @@ const RECORD_KEYS = [
   'costIn', 'costOut', 'costTotal', 'usageCompleteness', 'usageAggregation',
   'httpAttempts', 'truncated', 'tools', 'toolBatch',
 ]
-const TOOL_BATCH_KEYS = ['requested', 'granted', 'executed', 'denied', 'errors', 'budgetBefore', 'budgetAfter', 'resultChars']
+const TOOL_BATCH_KEYS = ['requested', 'granted', 'executed', 'denied', 'errors', 'hitCount', 'hitUnknown', 'budgetBefore', 'budgetAfter', 'resultChars']
+const OPTIONAL_TOOL_BATCH_KEYS = new Set(['hitCount', 'hitUnknown'])
 const META_SUMMARY_KEYS = new Set([
   'records', 'inputTokens', 'outputTokens', 'inputTokensExact', 'outputTokensExact',
   'totalCostIn', 'totalCostOut', 'totalCost', 'costComplete', 'incompleteUsageCalls',
   'unknownUsageCalls', 'failed', 'modelSteps', 'toolBatches', 'toolCallsRequested',
   'toolCallsGranted', 'toolCallsExecuted', 'toolCallsDenied', 'toolErrors',
-  'toolResultChars', 'httpAttempts', 'retryAttempts', 'feedbackUsed', 'terminationReasons',
+  'toolResultChars', 'toolHitCount', 'toolHitUnknown', 'httpAttempts', 'retryAttempts', 'feedbackUsed', 'terminationReasons',
   'elapsedMs',
 ])
 const META_ALLOWED_KEYS = new Set([
   'schemaVersion', 'traceSchemaVersion', 'ts', 'thinking', 'dry', 'provider', 'model',
   'temperature', 'baseUrl', 'retriever', 'minRagCalls', 'toolBudget', 'sessionTimeoutMs',
   'feedbackOnNoToolAnswer', 'toolChoice', 'parallelToolCalls', 'agentInstructionsSha256',
+  'toolSchemaVersion', 'toolSchemaSha256', 'toolNames',
   'tokenizer', 'entityBoost', 'topK', 'maxContextChars', 'corpusDir', 'chunks', 'questions',
   'questionIds', 'questionsPath', 'questionDefinitions', 'topic', 'prices', 'source',
 ])
@@ -329,6 +331,7 @@ function validateHttpAttempts(value: unknown, index: number): void {
 function validateToolBatch(value: unknown, index: number): void {
   if (!isRecord(value)) throw new Error(`基准快照格式错误：records[${index}].toolBatch 必须是对象`)
   for (const key of TOOL_BATCH_KEYS) {
+    if (OPTIONAL_TOOL_BATCH_KEYS.has(key) && !Object.prototype.hasOwnProperty.call(value, key)) continue
     if (!Object.prototype.hasOwnProperty.call(value, key)
       || !Number.isInteger(value[key])
       || (value[key] as number) < 0) {
@@ -607,6 +610,12 @@ function validateMetaFieldContract(key: string, value: unknown): void {
     }
     return
   }
+  if (key === 'toolNames') {
+    if (!Array.isArray(value) || value.some((item) => !isNonEmptyString(item))) {
+      throw new Error('基准快照格式错误：meta.toolNames 必须是非空字符串数组')
+    }
+    return
+  }
   if (key === 'prices') {
     if (!isRecord(value)) throw new Error('基准快照格式错误：meta.prices 必须是对象')
     for (const field of Object.keys(value)) {
@@ -671,6 +680,11 @@ function sanitizeMetaField(key: string, value: unknown): unknown {
       }))
   }
   if (key === 'questionIds') {
+    return Array.isArray(value) && value.every((item) => typeof item === 'string')
+      ? value.map((item) => redactText(item as string))
+      : undefined
+  }
+  if (key === 'toolNames') {
     return Array.isArray(value) && value.every((item) => typeof item === 'string')
       ? value.map((item) => redactText(item as string))
       : undefined

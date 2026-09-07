@@ -12,6 +12,7 @@ import { loadKnowledgeAgentInstructions, runQuery, type AgentOptions } from './a
 import type { BenchQuery, CostRecord, TerminationReason, ThinkingMode } from './types.js'
 import { createQueryTrace, markTraceFailed, serializeTrace } from './trace.js'
 import { aggregate } from './report.js'
+import { toolSchemaMetadata } from './tool-executor.js'
 
 export interface RunOutput {
   records: CostRecord[]
@@ -55,6 +56,7 @@ export async function runBenchmark(
   const started = Date.now()
   const agentInstructions = loadKnowledgeAgentInstructions()
   const agentInstructionsSha256 = createHash('sha256').update(agentInstructions).digest('hex')
+  const toolSchema = toolSchemaMetadata(config.retriever)
 
   // 语料 + 索引（一次构建，全部查询复用；facts 模式不依赖散文语料——语料目录已删除，跳过加载以空占位）
   const chunks = config.retriever === 'facts' ? [] : loadCorpus(config.corpusDir, config.maxContextChars)
@@ -79,12 +81,6 @@ export async function runBenchmark(
   let failed = 0
   let modelSteps = 0
   let toolBatches = 0
-  let toolCallsRequested = 0
-  let toolCallsGranted = 0
-  let toolCallsExecuted = 0
-  let toolCallsDenied = 0
-  let toolErrors = 0
-  let toolResultChars = 0
   let feedbackUsed = 0
   const terminationReasons: Partial<Record<TerminationReason, number>> = {}
 
@@ -96,18 +92,8 @@ export async function runBenchmark(
       for (const r of result.records) lines.push(JSON.stringify(r))
       modelSteps += result.modelSteps
       toolBatches += result.toolRounds
-      toolCallsRequested += result.budget.requested
-      toolCallsExecuted += result.budget.executed
-      toolCallsDenied += result.budget.denied
       feedbackUsed += result.feedbackUsed ? 1 : 0
       terminationReasons[result.terminationReason] = (terminationReasons[result.terminationReason] ?? 0) + 1
-      for (const r of result.records) {
-        if (r.toolBatch) {
-          toolCallsGranted += r.toolBatch.granted
-          toolErrors += r.toolBatch.errors
-          toolResultChars += r.toolBatch.resultChars
-        }
-      }
       injectedMap[q.id] = result.injectedIds
       if (result.status === 'completed' && result.finalAnswer != null) {
         answers.push({
@@ -187,7 +173,7 @@ export async function runBenchmark(
     JSON.stringify(
       {
         schemaVersion: 2,
-        traceSchemaVersion: 2,
+        traceSchemaVersion: 3,
         ts: new Date().toISOString(),
         thinking: opts.thinking,
         dry: opts.dry,
@@ -202,6 +188,7 @@ export async function runBenchmark(
         toolChoice: 'auto',
         parallelToolCalls: config.provider === 'qwen',
         agentInstructionsSha256,
+        ...toolSchema,
         tokenizer: config.tokenizer,
         entityBoost: config.entityBoost,
         topK: config.topK,
@@ -229,12 +216,14 @@ export async function runBenchmark(
         failed,
         modelSteps,
         toolBatches,
-        toolCallsRequested,
-        toolCallsGranted,
-        toolCallsExecuted,
-        toolCallsDenied,
-        toolErrors,
-        toolResultChars,
+        toolCallsRequested: runReport.toolStats.requested,
+        toolCallsGranted: runReport.toolStats.granted,
+        toolCallsExecuted: runReport.toolStats.executed,
+        toolCallsDenied: runReport.toolStats.denied,
+        toolErrors: runReport.toolStats.errors,
+        toolResultChars: runReport.toolStats.resultChars,
+        toolHitCount: runReport.toolStats.hitCount,
+        toolHitUnknown: runReport.toolStats.hitUnknown,
         httpAttempts: runReport.totalHttpAttempts,
         retryAttempts: runReport.retryAttempts,
         feedbackUsed,

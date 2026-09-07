@@ -62,7 +62,7 @@ export interface BenchReport {
   byQuery: QueryAgg[]
   byThinking: ThinkingAgg[]
   byProvider: ProviderAgg[]
-  /** 检索工具调用统计（双工具模式；单工具模式返回空数组） */
+  /** 独立工具调用统计；没有工具调用时返回空数组。 */
   toolUsage: ToolUsageAgg[]
   toolStats: ToolStatsAgg
 }
@@ -83,7 +83,7 @@ export interface ProviderAgg {
   costTotal: number
 }
 
-/** 检索工具调用统计（双工具模式） */
+/** 独立工具调用统计（按模型响应中的函数调用计数）。 */
 export interface ToolUsageAgg {
   tool: string
   calls: number
@@ -96,6 +96,10 @@ export interface ToolStatsAgg {
   executed: number
   denied: number
   errors: number
+  /** 已执行且明确有命中的结果数。 */
+  hitCount: number
+  /** 已执行但旧记录或异常缺少 hitIds 的结果数。 */
+  hitUnknown: number
   resultChars: number
 }
 
@@ -343,7 +347,7 @@ export function aggregateSnapshot(snapshot: BenchSnapshot): BenchReport {
   })))
 }
 
-/** 聚合检索工具调用（双工具模式统计当前 run 内 rag/grep 各被调用多少轮） */
+/** 聚合独立函数工具调用，统计当前 run 内各工具被调用多少轮。 */
 function aggregateToolUsage(records: CostRecord[]): ToolUsageAgg[] {
   const counter = new Map<string, number>()
   for (const r of records) {
@@ -358,6 +362,12 @@ function aggregateToolUsage(records: CostRecord[]): ToolUsageAgg[] {
 
 function aggregateToolStats(records: CostRecord[]): ToolStatsAgg {
   const batches = records.map((record) => record.toolBatch).filter((batch): batch is NonNullable<CostRecord['toolBatch']> => Boolean(batch))
+  const hitCount = sum(batches.map((batch) => batch.hitCount))
+  const hitUnknown = sum(batches.map((batch) => {
+    if (batch.hitUnknown !== undefined) return batch.hitUnknown
+    if (batch.hitCount !== undefined) return Math.max(0, batch.executed - batch.hitCount)
+    return batch.executed
+  }))
   return {
     batches: batches.length,
     requested: sum(batches.map((batch) => batch.requested)),
@@ -365,6 +375,8 @@ function aggregateToolStats(records: CostRecord[]): ToolStatsAgg {
     executed: sum(batches.map((batch) => batch.executed)),
     denied: sum(batches.map((batch) => batch.denied)),
     errors: sum(batches.map((batch) => batch.errors)),
+    hitCount,
+    hitUnknown,
     resultChars: sum(batches.map((batch) => batch.resultChars)),
   }
 }
@@ -386,9 +398,9 @@ export function renderMarkdown(report: BenchReport): string {
     `- 费用状态：${report.costComplete ? '完整' : '不完整'}｜不完整 usage 调用：${report.incompleteUsageCalls}｜用量未知调用：${report.unknownUsageCalls}`,
     `- HTTP 尝试：${report.totalHttpAttempts}｜重试：${report.retryAttempts}`,
     `- 每查询输出 tokens：均值 ${avgOut}｜P95 ${p95Out.toLocaleString()}`,
-    `- 工具批次：${report.toolStats.batches}｜提出 ${report.toolStats.requested}｜准入 ${report.toolStats.granted}｜执行 ${report.toolStats.executed}｜拒绝 ${report.toolStats.denied}｜错误 ${report.toolStats.errors}`,
+    `- 工具批次：${report.toolStats.batches}｜提出 ${report.toolStats.requested}｜准入 ${report.toolStats.granted}｜执行 ${report.toolStats.executed}｜拒绝 ${report.toolStats.denied}｜错误 ${report.toolStats.errors}｜有命中 ${report.toolStats.hitCount}｜命中未知 ${report.toolStats.hitUnknown}`,
     ...(report.toolUsage.length > 0
-      ? [`- 检索工具调用：${report.toolUsage.map((u) => `${u.tool} ${u.calls} 次`).join('｜')}`]
+      ? [`- 工具调用：${report.toolUsage.map((u) => `${u.tool} ${u.calls} 次`).join('｜')}`]
       : []),
     '',
     '## 按思考档位',

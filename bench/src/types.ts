@@ -36,6 +36,10 @@ export interface ToolBatchStats {
   executed: number
   denied: number
   errors: number
+  /** 已执行且 hitIds 非空的结果数；旧记录缺失时不可回填。 */
+  hitCount?: number
+  /** 已执行但缺少 hitIds 的结果数；表示命中状态未知。 */
+  hitUnknown?: number
   budgetBefore: number
   budgetAfter: number
   resultChars: number
@@ -110,7 +114,7 @@ export interface CostRecord {
   httpAttempts?: HttpAttempt[]
   /** 是否因 max_tokens 截断 */
   truncated: boolean
-  /** 本轮实际调用的检索工具名（双工具模式下统计；无工具调用则省略） */
+  /** 本轮实际调用的独立函数工具名（无工具调用则省略）。 */
   tools?: ToolId[]
   /** 本轮工具批次统计；无工具调用的模型步骤省略。 */
   toolBatch?: ToolBatchStats
