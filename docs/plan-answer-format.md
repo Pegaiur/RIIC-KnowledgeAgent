@@ -1,7 +1,7 @@
 # 名单作答整理优化计划
 
 > 创建日期：2026-09-08
-> 状态：实施完成，待发版归档
+> 状态：已撤回（实验未达标，不保留），留档
 > 需求入口：[inbox](inbox.md)
 
 ## 目标
@@ -25,6 +25,15 @@
 5. **准备对照运行**：提供 `run-compare.mjs`（仅切换指令快照 → 用固定 dist 跑 CLI → 还原）与 README 中的命令/handoff 说明；两方案各跑 5 题一次，共 10 次 query，本任务不执行。
 6. **匹配检查**：运行 `node scripts/doc-check.mjs`、`pnpm run typecheck`、`pnpm run test`；不重复历史全量验收或合并门禁。
 
+## 实验结论
+
+10 次真实对照（5 题×2 方案，代码与配置固定、仅切指令；证据见 `dev-temp/work/answer-format-test/compare-report.md`）：
+
+- 局部改善：H3 覆盖与正确性提升并去掉一处重复；F1/F2 更简洁且准确；R2 补入余/塑心、档位标注更规范。
+- 目标未实现：R1/R2 的重复列举与“更正/修正/未知/未提及”等过程性残留不降反增；输出 tokens +28.4%、费用 +10.4%、耗时 +6.2s。
+- 结论：不以变短/变长判断优劣，本轮新增四条规则未达目标，**撤回并恢复第 10 条提交前措辞，不保留**；不追加提示词微调、不实现事实卡字段投影。
+- 证据留档：`dev-temp/work/answer-format-test/`（`compare-report.md` 与两批 `runs/` 原始产物），用途为该次实验的对照留档；清理按 `scripts/INDEX.md` 临时区约定。
+
 ## 验收清单
 
 - [x] `knowledge/AGENTS.md` 第 10 条补充名单与事实整理规则，保留取证/阅读/停止/忠实原文规则
@@ -33,6 +42,7 @@
 - [x] dev 3 题与 2 道留出题已就绪，留出题在候选方案输出前冻结
 - [x] 对照运行命令与 handoff 说明已准备，本任务未发起付费模型请求
 - [x] `node scripts/doc-check.mjs`、`pnpm run typecheck`、`pnpm run test` 通过
+- [x] 依据 10 次对照结论撤回第 10 条新增规则并恢复提交前措辞，inbox/plan/notes 记录结论
 
 ## 关联 ADR
 

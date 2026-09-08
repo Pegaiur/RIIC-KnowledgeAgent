@@ -26,7 +26,7 @@
 
 ## 待办区
 
-- [x] **实施名单作答整理优化** — 在 `knowledge/AGENTS.md` 第 10 条补充名单与事实整理规则（多对象集中条目/表格行、不同技能与档位分别保留、只输出要求字段、同一名单不重复列举、不输出“重新核对/此处修正”过程），未改工具/检索/预算/模型/agent loop，未增加整理调用或输出长度限制。对照材料（改动前后指令快照、dev 3 题＋冻结留出题 2 题、固定配置与 handoff）见 `dev-temp/work/answer-format-test/`；两方案各 5 题共 10 次真实对照待授权后执行，本轮未发起付费调用。[实施计划](plan-answer-format.md) — 2026-09-08
+- [x] **名单作答整理指令实验（未保留）** — 曾在 `knowledge/AGENTS.md` 第 10 条补充名单与事实整理规则；10 次真实对照（5 题×2 方案，代码与配置固定、仅切指令）显示局部覆盖改善，但去重与去过程文字目标未实现、输出 tokens +28.4%（费用 +10.4%），故已撤回该四条规则、第 10 条恢复提交前措辞，不保留本轮改动。[实验计划](plan-answer-format.md)｜原始证据与对照报告见 `dev-temp/work/answer-format-test/` — 2026-09-08
 
 - [x] **增加上级范围阅读入口与无增益搜索停止引导** — 依据引导优化对照（范围枚举题逐个 `read_section`、另一题重复 `rag_search`），复用 `SectionEntry.parentId` 为 RAG 增加「上级范围入口」、为 `read_section` 附加直接父级行，并在 `knowledge/AGENTS.md` 明确优先读取上级范围、不重复相同查询、搜索无新增证据时转向范围入口或按已有证据作答；未新增工具、未改 schema/检索/预算/知识事实。对照材料与 handoff 见 `dev-temp/work/scope-reading-test/`，真实对照待授权后执行。[实施计划](plan-scope-reading.md) — 2026-09-08
 
