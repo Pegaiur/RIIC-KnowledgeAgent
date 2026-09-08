@@ -13,7 +13,7 @@ import { getCardStore, serializeFactsMatches, type CardStore } from './facts/sto
 export type KnowledgeOperation = ToolId
 
 /** 工具 schema 发生协议变化时递增；快照保留该值供对照分组。 */
-export const TOOL_SCHEMA_VERSION = 5 as const
+export const TOOL_SCHEMA_VERSION = 6 as const
 
 export interface ToolBudgetState {
   limit: number
@@ -134,13 +134,34 @@ const TOOL_DEFINITIONS: Record<CurrentToolId, JsonObject> = {
       },
     },
   },
+  read_section: {
+    type: 'function',
+    function: {
+      name: 'read_section',
+      description: '按小节 ID 读取知识库原文小节，可分段续读；ID 来自检索结果中的小节标识。',
+      parameters: {
+        type: 'object',
+        properties: {
+          section_id: { type: 'string', minLength: 1, description: '检索结果返回的小节 ID' },
+          offset: { type: 'integer', minimum: 0, description: '可选，正文 UTF-16 索引，默认 0；用返回的 next_offset 续读' },
+        },
+        required: ['section_id'],
+        additionalProperties: false,
+      },
+    },
+  },
 }
 
 function allowedOperations(retriever: RetrieverId): CurrentToolId[] {
-  if (retriever === 'hybrid') return ['rag_search', 'facts_search']
+  if (retriever === 'hybrid') return ['rag_search', 'facts_search', 'read_section']
   if (retriever === 'facts') return ['facts_search']
-  if (retriever === 'both') return ['rag_search', 'grep_search']
-  return retriever === 'grep' ? ['grep_search'] : ['rag_search']
+  if (retriever === 'both') return ['rag_search', 'grep_search', 'read_section']
+  return retriever === 'grep' ? ['grep_search'] : ['rag_search', 'read_section']
+}
+
+/** 当前模式是否开放原文小节阅读（bm25 / hybrid / both）。 */
+export function supportsReadSection(retriever: RetrieverId): boolean {
+  return allowedOperations(retriever).includes('read_section')
 }
 
 /** 返回当前模式实际发送的独立函数工具数组。 */
@@ -244,12 +265,15 @@ async function executeOne(
     return result(call, call.name, 'invalid_params', false, parsed.reason, state)
   }
 
-  state.executed++
   try {
     const output = runOperation(call.name as KnowledgeOperation, parsed.value, context, config)
-    const status: ToolResultStatus = isFactTool(call.name)
-      ? output.hitIds.length > 0 ? 'success' : 'empty'
-      : output.data ? 'success' : 'empty'
+    const status: ToolResultStatus = output.status
+      ?? (isFactTool(call.name)
+        ? output.hitIds.length > 0 ? 'success' : 'empty'
+        : output.data ? 'success' : 'empty')
+    // 上下文相关的参数错误（如 read_section 越界 offset）不计入已执行，但仍已占用预算点。
+    const executed = status !== 'invalid_params'
+    if (executed) state.executed++
     const factsResult = isFactTool(call.name)
       ? {
           factsResultVersion: FACTS_RESULT_VERSION,
@@ -263,7 +287,7 @@ async function executeOne(
       callId: call.id,
       operation: call.name,
       status,
-      executed: true,
+      executed,
       data: output.data || '（无匹配结果）',
       budgetRemaining: state.remaining,
       actualParams: parsed.value,
@@ -273,6 +297,7 @@ async function executeOne(
       message: state.remaining === 0 ? BUDGET_ANSWER_HINT : undefined,
     }
   } catch (error) {
+    state.executed++
     return result(
       call,
       call.name,
@@ -321,6 +346,8 @@ function parseToolParams(
   }
   if (!isObject(raw)) return { reason: `${tool} 参数必须是对象；参数示例：${exampleFor(tool)}` }
 
+  if (tool === 'read_section') return parseReadSectionParams(raw, exampleFor(tool))
+
   const allowedKeys = ['query']
   const unknownKey = Object.keys(raw).find((key) => !allowedKeys.includes(key))
   if (unknownKey) return { reason: `${tool} 不支持参数字段 ${unknownKey}；参数示例：${exampleFor(tool)}` }
@@ -329,6 +356,28 @@ function parseToolParams(
     return parseRequiredString(raw, tool, 'query', exampleFor(tool))
   }
   return parseRequiredString(raw, tool, 'query', exampleFor(tool))
+}
+
+/** read_section 参数：section_id 必填非空字符串，offset 可选非负整数，额外字段拒绝。 */
+function parseReadSectionParams(
+  input: JsonObject,
+  example: string,
+): { value?: Record<string, unknown>; reason: string } {
+  const allowedKeys = ['section_id', 'offset']
+  const unknownKey = Object.keys(input).find((key) => !allowedKeys.includes(key))
+  if (unknownKey) return { reason: `read_section 不支持参数字段 ${unknownKey}；参数示例：${example}` }
+
+  if (typeof input.section_id !== 'string' || input.section_id.trim() === '') {
+    return { reason: `read_section 缺少非空字符串 section_id；参数示例：${example}` }
+  }
+  let offset = 0
+  if (input.offset !== undefined) {
+    if (typeof input.offset !== 'number' || !Number.isInteger(input.offset) || input.offset < 0) {
+      return { reason: `read_section 的 offset 必须是非负整数；参数示例：${example}` }
+    }
+    offset = input.offset
+  }
+  return { value: { section_id: input.section_id.trim(), offset }, reason: '' }
 }
 
 function parseRequiredString(
@@ -352,7 +401,7 @@ function runOperation(
   params: Record<string, unknown>,
   context: KnowledgeToolContext,
   config: BenchConfig,
-): { data: string; hitIds: string[]; injectedIds: string[] } {
+): { data: string; hitIds: string[]; injectedIds: string[]; status?: ToolResultStatus } {
   if (operation === 'rag_search' || operation === 'grep_search') {
     const query = params.query as string
     const hits = operation === 'grep_search'
@@ -375,6 +424,7 @@ function runOperation(
     }
     return { data, hitIds, injectedIds }
   }
+  if (operation === 'read_section') return readSectionOperation(params, context, config)
   let store: CardStore
   try {
     store = getCardStore()
@@ -489,6 +539,78 @@ function appendSectionContext(data: string, lines: string[], maxChars: number): 
     if (room > 0) out += `${separator}${line.slice(0, room)}${marker}`
   })
   return out
+}
+
+/** 单次 read_section 的正文页上限（UTF-16 字符）。 */
+const READ_SECTION_PAGE_CHARS = 6000
+
+function readSectionOperation(
+  params: Record<string, unknown>,
+  context: KnowledgeToolContext,
+  config: BenchConfig,
+): { data: string; hitIds: string[]; injectedIds: string[]; status: ToolResultStatus } {
+  const sectionId = params.section_id as string
+  const offset = params.offset as number
+  const directory = context.sections
+  if (!directory) {
+    return { data: `本运行未启用小节阅读（没有小节目录），无法读取：${sectionId}。`, hitIds: [], injectedIds: [], status: 'empty' }
+  }
+  const section = directory.get(sectionId)
+  if (!section) {
+    return { data: `本运行目录中没有该小节：${sectionId}。不会改为模糊搜索。`, hitIds: [], injectedIds: [], status: 'empty' }
+  }
+  if (offset > section.body.length) {
+    return {
+      data: `read_section 的 offset 超出小节正文长度（${section.body.length}）：${offset}`,
+      hitIds: [],
+      injectedIds: [],
+      status: 'invalid_params',
+    }
+  }
+  return { data: renderSectionPage(section, offset, config.maxContextChars), hitIds: [], injectedIds: [], status: 'success' }
+}
+
+/** 渲染一页原文；元数据先占预算，必要时在行边界缩短，保证可续读且不丢中段。 */
+function renderSectionPage(section: SectionEntry, offset: number, maxContextChars: number): string {
+  const path = section.level === 0 ? '（文档根节点）' : [...section.ancestors, section.heading].join(' > ')
+  const build = (page: string, nextOffset: number | null, complete: boolean): string => {
+    const startLine = section.startLine + countNewlines(section.body.slice(0, offset))
+    const endLine = page.length === 0 ? startLine - 1 : startLine + countNewlines(page)
+    return [
+      `【read_section】${section.sectionId}`,
+      `标题路径：${path}`,
+      `行范围：L${startLine}-${endLine}｜offset：${offset}｜next_offset：${nextOffset === null ? 'null' : nextOffset}｜complete：${complete}`,
+      '',
+      page,
+    ].join('\n')
+  }
+
+  const remaining = section.body.length - offset
+  // 用最宽的分页元数据估算占用，避免正文把总长度顶出上限。
+  const metaLength = build('', Number.MAX_SAFE_INTEGER, false).length
+  let budget = Math.min(READ_SECTION_PAGE_CHARS, remaining)
+  if (metaLength + budget > maxContextChars) {
+    budget = Math.max(0, maxContextChars - metaLength)
+    if (remaining > 0 && budget < 1) budget = 1
+    budget = Math.min(budget, remaining)
+  }
+  let page = section.body.slice(offset, offset + budget)
+  if (offset + page.length < section.body.length) page = cutAtLine(page)
+  const nextOffset = offset + page.length
+  const complete = nextOffset >= section.body.length
+  return build(page, complete ? null : nextOffset, complete)
+}
+
+function countNewlines(text: string): number {
+  let count = 0
+  for (let i = 0; i < text.length; i++) if (text.charCodeAt(i) === 10) count++
+  return count
+}
+
+/** 在最后一个换行处截断；单行超长时保留原样，避免空页导致无法续读。 */
+function cutAtLine(text: string): string {
+  const newline = text.lastIndexOf('\n')
+  return newline > 0 ? text.slice(0, newline) : text
 }
 
 /** 将执行结果写成 tool message；同一对象同时用于 trace 的 writtenContent。 */

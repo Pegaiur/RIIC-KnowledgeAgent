@@ -764,7 +764,7 @@ describe('runQuery（hybrid 模式）', () => {
     )
 
     const exposed = (mockCall.mock.calls[0]?.[1] as Record<string, unknown>[]).map(toolName)
-    expect(exposed).toEqual(['rag_search', 'facts_search'])
+    expect(exposed).toEqual(['rag_search', 'facts_search', 'read_section'])
     expect(result.toolTrace[0]).toEqual(['rag_search', 'facts_search'])
     expect(result.injectedIds).toEqual(['base/机制-制造站.md#效率计算'])
     const secondMessages = mockCall.mock.calls[1]?.[0] as Array<{ role: string; tool_call_id?: string; content: string }>

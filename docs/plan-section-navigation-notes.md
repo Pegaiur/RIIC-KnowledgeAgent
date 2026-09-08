@@ -36,6 +36,12 @@
 - **原因**：sectionId 是 read_section 的入口，必须随命中片段稳定送达；标题路径与导航体积可变，按 spec 的优先级降为可选，避免挤占正文。
 - **后果**：无目录或预算不足时不出现标题路径/导航，但 sectionId 仍在来源头；模型可据 sectionId 直接 read_section。
 
+### 2026-09-08 — read_section 输出格式与越界 offset 语义
+- **spec 原文**：`read_section` 在 data 中以固定格式给出 sectionId、标题路径、实际行范围、offset、next_offset、complete 与原文；offset 大于长度返回 invalid_params。
+- **实际做法**：data 前三行固定为 `【read_section】{id}`、`标题路径：…`、`行范围：Lx-y｜offset：n｜next_offset：m|null｜complete：bool`，空行后接原文页；分页按 UTF-16 索引，必要时在行边界截断并由 next_offset 续读。越界 offset 归入 invalid_params，`executed=false`（与解析期参数错误一致），但仍已占用 1 点共享预算。
+- **原因**：固定文本行便于模型与离线样例解析，也避免 JSON 转义原文；越界属参数问题而非执行结果，按既有 invalid_params 语义处理。
+- **后果**：read_section 的 hitIds/injectedIds 恒为空数组，不进入搜索命中统计；`TOOL_SCHEMA_VERSION` 由 5 递增至 6，report 按 `isObservedTool` 计入 read_section 调用次数。
+
 ## 债务记录
 > 遗留的技术债、被牺牲的改进与延期偿还事项
 

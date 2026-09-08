@@ -21,11 +21,11 @@ function call(id: string, name: string, params: unknown): ToolCall {
 
 describe('独立函数工具 schema', () => {
   it.each([
-    ['bm25', ['rag_search']],
+    ['bm25', ['rag_search', 'read_section']],
     ['grep', ['grep_search']],
-    ['both', ['rag_search', 'grep_search']],
+    ['both', ['rag_search', 'grep_search', 'read_section']],
     ['facts', ['facts_search']],
-    ['hybrid', ['rag_search', 'facts_search']],
+    ['hybrid', ['rag_search', 'facts_search', 'read_section']],
   ] as const)('%s 只暴露当前模式允许的函数工具', (retriever, names) => {
     const tools = toolsForRetriever(retriever)
     expect(tools.map((tool) => (tool.function as { name: string }).name)).toEqual(names)
@@ -48,7 +48,7 @@ describe('独立函数工具 schema', () => {
   })
 
   it('schema 指纹只由当前实际工具数组决定', () => {
-    expect(toolSchemaMetadata('bm25')).toMatchObject({ toolSchemaVersion: 5, toolNames: ['rag_search'] })
+    expect(toolSchemaMetadata('bm25')).toMatchObject({ toolSchemaVersion: 6, toolNames: ['rag_search', 'read_section'] })
     expect(toolSchemaMetadata('bm25').toolSchemaSha256).toMatch(/^[a-f0-9]{64}$/)
     expect(toolSchemaMetadata('bm25').toolSchemaSha256).not.toBe(toolSchemaMetadata('hybrid').toolSchemaSha256)
   })

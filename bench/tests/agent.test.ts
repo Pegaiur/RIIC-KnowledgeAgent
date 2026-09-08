@@ -20,7 +20,7 @@ vi.mock('../src/provider.js', () => ({ callLLM: mockCall }))
 describe('agent：独立函数工具 schema', () => {
   it('按模式直接暴露独立函数工具', () => {
     expect(toolsForRetriever('hybrid').map((tool) => (tool.function as { name: string }).name))
-      .toEqual(['rag_search', 'facts_search'])
+      .toEqual(['rag_search', 'facts_search', 'read_section'])
   })
 
   it('所有模式注入同一份决策契约，工具名随检索器切换', () => {
@@ -31,11 +31,11 @@ describe('agent：独立函数工具 schema', () => {
   })
 
   it.each([
-    ['bm25', 'rag_search'],
+    ['bm25', 'rag_search、read_section'],
     ['grep', 'grep_search'],
-    ['both', 'rag_search、grep_search'],
+    ['both', 'rag_search、grep_search、read_section'],
     ['facts', 'facts_search'],
-    ['hybrid', 'rag_search、facts_search'],
+    ['hybrid', 'rag_search、facts_search、read_section'],
   ] as const)('%s 模式的能力块精确列出工具名', (retriever, expectedTools) => {
     const prompt = buildSystemPrompt(retriever, '唯一规则正文')
     const capabilityBlock = prompt.split('## 本次运行能力\n')[1]
@@ -145,7 +145,8 @@ describe('runQuery：轮次耗尽兜底（末位强制作答轮）', () => {
     expect(result.finalAnswer).toBe('灰毫 126% 最终答案')
     expect(result.rounds).toBe(4)
     const fallbackArgs = mockCall.mock.calls[3]?.[1] ?? null
-    expect(fallbackArgs).toMatchObject([{ function: { name: 'rag_search' } }])
+    expect((fallbackArgs as Array<{ function: { name: string } }>).map((tool) => tool.function.name))
+      .toEqual(['rag_search', 'read_section'])
     expect(result.injectedIds).toEqual(['2-体系/红松林经验.md#制造站'])
   })
 
@@ -273,7 +274,7 @@ describe('runQuery：trace 事件记录', () => {
     expect(result.finalAnswer).toBe('最终答案')
     expect(trace.events.map((event) => event.type)).toEqual(['llm_call', 'tool_call', 'llm_call'])
     const llmEvent = trace.events[0]
-    expect(llmEvent).toMatchObject({ type: 'llm_call', round: 1, offeredTools: ['rag_search'], content: null })
+    expect(llmEvent).toMatchObject({ type: 'llm_call', round: 1, offeredTools: ['rag_search', 'read_section'], content: null })
     const toolEvent = trace.events[1]
     expect(toolEvent).toMatchObject({
       type: 'tool_call',
