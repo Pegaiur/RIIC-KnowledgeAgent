@@ -1,8 +1,8 @@
 # 单词条 facts 统一入口实施计划
 
 > 创建日期：2026-09-07
-> 状态：实施完成（待发布元数据收束）
-> 需求入口：[inbox](inbox.md)
+> 状态：已完成
+> 需求入口：[inbox](../inbox.md)
 
 ## 目标
 
@@ -73,7 +73,7 @@ facts模式仅暴露facts_search；hybrid暴露rag_search和facts_search。bm25/
 
 ### 迁移范围
 
-这是工具公共接口改变，已由[ADR-007](adr/ADR-007-single-term-facts-tool.md)局部替代ADR-006的facts暴露决策；不要改写旧ADR历史。同步工具类型、模式映射、派发、isFactTool、provider dry、系统能力列表、trace/report工具分类及兼容测试。snapshot当前按字符串保留工具名称，没有固定工具名枚举白名单，优先验证兼容，不无故修改其格式或版本。旧lookup/query_operators历史记录继续可读、按原名统计；新的运行只记录facts_search，不自动重写旧快照。历史结果版本缺失保持未知，不补成版本1或2。
+这是工具公共接口改变，已由[ADR-007](../adr/ADR-007-single-term-facts-tool.md)局部替代ADR-006的facts暴露决策；不要改写旧ADR历史。同步工具类型、模式映射、派发、isFactTool、provider dry、系统能力列表、trace/report工具分类及兼容测试。snapshot当前按字符串保留工具名称，没有固定工具名枚举白名单，优先验证兼容，不无故修改其格式或版本。旧lookup/query_operators历史记录继续可读、按原名统计；新的运行只记录facts_search，不自动重写旧快照。历史结果版本缺失保持未知，不补成版本1或2。
 
 历史名称识别与当前允许执行的工具白名单必须分开：保留旧工具名类型/统计识别，不代表当前executor继续接受旧调用。新facts/hybrid运行若收到lookup或query_operators，应按既有unknown_operation路径拒绝执行、正常占用一个准入点（预算已耗尽则先按既有规则拒绝）；不自动转译参数、不暗中兼容两个外部入口。
 
@@ -126,9 +126,95 @@ facts模式仅暴露facts_search；hybrid暴露rag_search和facts_search。bm25/
 
 ## 关联 ADR
 
-- [ADR-007](adr/ADR-007-single-term-facts-tool.md)：单词条facts统一入口。
-- [ADR-006](adr/ADR-006-independent-function-tools.md)：保留其RAG暴露、独立调用与预算等其余契约。
+- [ADR-007](../adr/ADR-007-single-term-facts-tool.md)：单词条facts统一入口。
+- [ADR-006](../adr/ADR-006-independent-function-tools.md)：保留其RAG暴露、独立调用与预算等其余契约。
 
 ## 独立审查
 
 设计阶段独立agent `review_single_facts` 已审查方向与实际代码，认可精确跨类别并集、全卡输出和高级过滤取舍。已采纳意见：旧工具历史识别与执行准入分离，新增U11；U08限定仅A，U07明确三技能；说明技能组投影同源关系；真源样本明确四名成员；snapshot按现有字符串能力兼容，缺失版本保持未知。实施后的代码与测试批次已由只读 subagent 复核通过；当前文档批次的验证记录以实施笔记为准。
+
+## 实施纪要
+
+# 实施笔记：单词条 facts 统一入口
+
+> 对应归档计划：docs/archive/plan-facts-single-query.md
+> 开始日期：2026-09-07
+
+## 决策偏离
+
+### 2026-09-07 — 审查后定稿并交接
+- **背景**：用户要求将已独立复审PASS的草案转为计划，同分支按旧配置交接。
+- **决策**：草案原位重命名为plan，增加实施顺序及未完成验收清单；新增ADR-007记录公共接口取舍。沿用feature/independent-tools-schema，在当前仓库交给Luna/xhigh新任务，不创建工作树。
+- **审查**：review_single_facts的初审意见及最终PASS保留在计划末尾；旧名称执行/历史分离、测试fixture、同源字段和snapshot兼容意见均已落实。
+- **影响**：当前仅定稿，worker按U01–U11实施及验证后再勾选验收；本任务未授权付费跑测、自动提交或合并。
+
+## 实现调整
+
+### 2026-09-08 — 单词条入口实施
+- 将当前工具 schema 版本从4递增为5；facts/hybrid 对外入口改为 `facts_search({query})` / `rag_search + facts_search`，旧 `lookup`、`query_operators` 仅保留历史统计与 store 内部兼容，执行器收到旧名按 `unknown_operation` 处理。
+- 在 RecordCard store 增加六类规范词条精确索引（干员、技能、技能组、设施、阵营、职业），同名按 canonical 稳定去重并带命中类别；facts 结果版本为2，空查明确为未收录精确词条，完整返回卡不做设施投影或 RAG 字符截断。
+- provider dry、人工指令、agent 能力块、trace/report 工具识别已同步；历史工具名仍可读和统计，缺失历史结果版本不回填。
+- 新增 U01–U08 手工 fixture 与 U11 旧名拒绝测试；参数、预算、坏 ID、fatal、trace、snapshot 兼容回归均保留。
+
+## 债务记录
+
+### 2026-09-08 — R5-2 历史 lookup 消歧能力
+- **债务**：旧 lookup 的别名、合称与子串消歧仍未接入独立真源；本轮统一 facts_search 时不恢复这部分历史高级能力。
+- **未来偿还**：建立并核验独立别名/合称真源后，再单独评估是否恢复旧数据调用者的多卡解析能力；不得以当前评测答错或分数变化作为恢复依据。
+
+## 验证记录
+
+### 2026-09-08 — 用户验收及授权单次对比
+- **验收基点**：`cc2b803`。核对六类精确索引、稳定并集去重、全卡输出、结果版本2、schema版本5、旧工具执行拒绝及历史观测分类，未发现阻塞缺陷。RAG和预算/异常主体契约保持，未引入词条解析或相关性检索。
+- **重新验证**：31文件/302项测试、typecheck、build、doc-check通过；五模式各20题内存dry共100题完成，未产生新dry目录。直调核对格拉斯哥帮四名成员集合，以及上一轮schema v4快照保留旧lookup名称可读。
+- **本次授权**：用户要求验收后跑对比，运行一次完整20题Qwen3.7-Flash/off/temperature=0/hybrid，预算5、auto/并行、回馈开启、单题300秒；对照`2026-09-07T14-55-33-663Z-qwen-off-t0`。这不属于未参与设计的留出验证，不追加重跑或以成绩修改harness。
+- **证据用途**：[本次快照](../../bench/results/2026-09-08T03-21-55-405Z-qwen-off-t0.json)与[上次快照](../../bench/results/2026-09-07T14-55-33-663Z-qwen-off-t0.json)用于此次直接比较。新原件`bench-runs/2026-09-08T03-21-55-405Z-qwen-off-t0/`保留用于完整trace和回答复核，共享证据提交可恢复且实验结束后按scripts/INDEX.md清理。本轮未新增临时脚本或dry目录，未设正式质量基线。
+
+| 指标 | 上次双facts入口 | 本次单词条入口 |
+|---|---:|---:|
+| 完成题数（非正确题数） | 20/20 | 20/20 |
+| 模型调用 | 46 | 40 |
+| 工具提出/执行 | 29/29 | 26/26 |
+| RAG / facts执行 | 25 / 4 | 23 / 3 |
+| 全部工具命中 / 空查 | 26 / 3 | 25 / 1 |
+| 工具错误 / 拒绝 | 0 / 0 | 0 / 0 |
+| 输入 / 输出tokens | 100519 / 16559 | 66892 / 15228 |
+| 工具结果字符 | 38944 | 36249 |
+| 总成本（元） | 0.032529 | 0.025563 |
+| 总耗时（秒） | 140.016 | 157.960 |
+
+- **比较边界**：provider/model、温度、思考、预算、超时、回馈/并行、检索参数、价格与完整题目定义逐字段一致；提示指纹从`e7805e9c`变为`d8807538`，输入schema从4变5，facts结果协议从1变2。输入tokens-33.45%、输出tokens-8.04%、成本-21.41%，但端到端耗时+12.82%。这是一组接口/输出/指令改动的单次观察，不隔离纯schema贡献，也不排除跨日服务端波动。
+- **真实facts路径**：S03 facts_search("深海猎人")命中5卡；S07 facts_search("红松林骑士")为空；S08 facts_search("格拉斯哥帮")命中4卡。所有3次结果版本、scope、计数与状态均与trace一致，无旧名称调用。相比上次格拉斯哥帮lookup空查，本次该词可直接作为阵营命中；不代表其它未收录合称会自动解析。
+- **运行与质量**：20题均为2个模型步骤；0重试、0截断、usage完整、未触发无工具回答回馈。S07空查后本次直接作答（已有RAG结果），不把轮数减少或空查减少解释为答案更完整。未重新逐题评分，当前只能确认执行完成和查询契约，不据此宣称正确率或稳定性能提高。
+
+### 2026-09-08 — 当前 HEAD 的实现验证
+- **提交基线**：`7b7cf1aab9910cdb2162059776a7c47477ec8b94`；运行原件的 `source.gitDirty=true` 表示验证时工作树仍有本笔记、其他文档、草稿、spec 与 bench/results 等排除范围内的并行改动，工具实现和测试已包含在该提交。
+- **代码验证**：`pnpm run typecheck` 通过；`pnpm run test` 通过（31 个测试文件、302 个测试）；`pnpm run build` 通过；`node scripts/doc-check.mjs` 通过。
+- **dry 验证**：使用 `node dist/cli.js run --dry --limit 2 --retriever <mode> --thinking off --out dev-temp/work/facts-single-query-validation/<mode>`，bm25、grep、both、facts、hybrid 五种模式各运行 2 题，均成功结束；facts 实际工具为 `facts_search`，hybrid 实际工具为 `rag_search` 与 `facts_search`。
+- **schema 测量**：当前 facts schema 为 v5、JSON 字符数306、指纹 `9ba7685606824268f7f3c4d5bbfa8a57a21a485d1f2aa03db9b43de73a0dfd2f`；hybrid 为 v5、JSON 字符数559、指纹 `25b543f980eacecbd49fb8a6dfacf8e628efa9fb85e15162f0f3c07ce4b9a9c0`。仅作结构负担记录，不推导 token、费用或质量收益。
+- **原件位置**：五种模式的 `meta.json`、`records.jsonl`、`trace.jsonl` 等曾保留在 `dev-temp/work/facts-single-query-validation/<mode>/<run-id>/`；这些是本机验证中间产物，不入库，已在本批文档审查完成且实验停止后按 `scripts/INDEX.md` 通过显式清单清理。
+
+## 意外发现
+
+### 2026-09-08
+- 当前最终 schema JSON.stringify 字符数为：facts 306、hybrid 559；仅记录结构测量，不推导 token、费用或质量收益。
+- 五模式 dry（bm25/grep/both/facts/hybrid）均以2题通过；facts/hybrid 均实际记录 `facts_search`，未进行付费跑测。完整命令和原件目录见“验证记录”。
+
+### 2026-09-08 — 两次完整20题运行的答案逐题记录
+- A（旧双 facts 入口）与 B（新单词条 facts 入口）各有一次完整20题运行，形成共40条 worker 初次逐题记录；这不是本次后续独立复核全部40条回答的结论。两次题目定义逐字段一致，20/20 仅表示完成，不表示正确。
+- 详细的20行判定、正确覆盖/遗漏/错误、真源位置、trace/injected 证据归因、汇总及改善/回退清单见 [`docs/review-facts-single-query-answer-quality.md`](../review-facts-single-query-answer-quality.md)。
+- worker初始定性标签为 A：完整8/20、部分12/20；B：完整10/20、部分10/20。后续复核已撤回原汇总：B/F09不应判完整，B/S03仍有成员错误，A/F07漏记无依据的自动回宿舍扩写；尚未再次全量复核40份回答，因此不提供新的总计或最终改善/退步计数。详细逐题证据见[`docs/review-facts-single-query-answer-quality.md`](../review-facts-single-query-answer-quality.md)；这两次样本不隔离纯schema因果，也不设正式质量基线。
+- 本次核查未修改 harness、知识事实、题集、评分规格或运行提示，未重跑付费模型，未提交/合并/归档；两次运行原件继续保留以支持报告复核。
+
+## 阻塞与解决
+
+### 2026-09-08 — 对逐题评估的主任务分析
+- **统计边界修订**：复核原始答案发现B/F09错误声称新增技能可择一使用，B/S03仍把塞雷娅归为深海猎人；原worker汇总不是最终可信定论。详情已在质量报告前部追加复核说明，原判定留作追溯。仅修正F09时B完整由10降至9，但尚未重新审完全部40份，不能以9代替最终统计。
+- **确定结论**：单词条schema结构负担已经下降，阵营词条可直接精确解析；S08查询路径改善但原报告两份答案均已完整，S07空查而回答仍有RAG支撑。查询成功、答案覆盖及事实忠实度必须分开。
+- **主要瓶颈**：已有证据被改写成错误名称/关系（F01、F07、F09、S03）与必须证据未被当前检索送达（原报告F03/F04/F08/S02）并存。多数题未调用facts，不能把这些质量变化归因于统一facts入口。尤其S03完整成员卡已提供，模型仍扩写错误成员，证明单纯增加事实命中不足以解决输出忠实度。
+- **下一步判断**：保留已验收的单词条接口；先校正评估遗漏，再围绕固定证据下的名称、解锁/并存、设施范围与条件保真开展单独评估。证据未送达的问题单独跟踪，不在facts入口引入自然语言或相关性兜底，也不因本题集结果自动修harness。当前仅分析，未新增跑测或代码变更。
+
+### 2026-09-08
+- 仓库 `.git/config` 受当前权限配置只读，约定的 git 编码配置无法写入；未修改该目录，不影响本轮代码验证。
+
+> ✅ 已完成于 2026-09-08

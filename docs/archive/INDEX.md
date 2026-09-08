@@ -6,6 +6,10 @@
 | 完成日期 | 版本 | 文件 | 摘要 |
 |----------|------|------|------|
 
+| 2026-09-08 | — | [plan-facts-single-query.md](plan-facts-single-query.md) | plan-facts-single-query |
+| 2026-09-08 | — | [plan-facts-tool-optimization.md](plan-facts-tool-optimization.md) | plan-facts-tool-optimization |
+| 2026-09-08 | — | [plan-independent-tools-schema.md](plan-independent-tools-schema.md) | plan-independent-tools-schema |
+| 2026-09-08 | — | [plan-prompt-tool-schema.md](plan-prompt-tool-schema.md) | plan-prompt-tool-schema |
 | 2026-09-07 | — | [plan-agent-auto-tool-budget.md](plan-agent-auto-tool-budget.md) | plan-agent-auto-tool-budget |
 | 2026-09-07 | — | [plan-benchmark-snapshot-lifecycle.md](plan-benchmark-snapshot-lifecycle.md) | plan-benchmark-snapshot-lifecycle |
 | 2026-09-07 | — | [plan-dev-temp-simplification.md](plan-dev-temp-simplification.md) | plan-dev-temp-simplification |

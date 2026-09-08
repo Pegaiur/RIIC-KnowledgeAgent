@@ -1,9 +1,9 @@
 # facts 工具优化与契约测试计划
 
 > 创建日期：2026-09-07
-> 状态：施工中
-> 需求入口：[inbox](inbox.md)
-> 前置：[独立工具计划](plan-independent-tools-schema.md)、[策略评估](draft-harness-performance.md#按设计契约调整策略2026-09-07)
+> 状态：已完成
+> 需求入口：[inbox](../inbox.md)
+> 前置：[独立工具计划](plan-independent-tools-schema.md)、[策略评估](../draft-harness-performance.md#按设计契约调整策略2026-09-07)
 
 ## 目标与边界
 
@@ -80,7 +80,7 @@ lookup 命中后输出整张卡，技能名还可能通过等价组展开多卡�
 
 具体预期：lookup 测试甲→{A}，锻造初式→{A}，锻造进式或锻造同效→{A,B}，锻造进→{}。query_operators 的 room=制造站→{A,B,C}，faction=测试组一→{A,B}，profession=医疗→{A}，termQuery=锻造进→{A,B,C}；room=制造站+faction=测试组一+profession=近卫→{B}；faction=测试组一+excludeIds=[测试乙]→{A}。room=制造站+termQuery=联络/卡级专词→{}；termQuery=联络→{A} 且只展示 a2；termQuery=测试甲→{A} 且展示 a0/a1/a2。T04 的 skillGroups 分支另用 room=办公室+termQuery=测试技能组→{}，防止 B 的单设施回退干扰断言。
 
-合成素材不进入 knowledge 或运行提示。真实 references 样本锁定：[温蒂](../knowledge/references/技能-制造站.md#温蒂)（第92–95行）初始自动化·β、精英2提升仿生海龙及替换关系；[技能等价组](../knowledge/references/技能等价组.md) 第38–40行的手工艺品·β/裁缝·β/鉴定师的手段，lookup 裁缝·β 的预期 canonical 集合为 {卡夫卡,折光,明椒,柏喙}。实施时核对源行和实际标题，expected 不从 serializeCards 输出反推。复用现有 facts-tools/projection/curation 测试，不另建评分台账。
+合成素材不进入 knowledge 或运行提示。真实 references 样本锁定：[温蒂](../../knowledge/references/技能-制造站.md#温蒂)（第92–95行）初始自动化·β、精英2提升仿生海龙及替换关系；[技能等价组](../../knowledge/references/技能等价组.md) 第38–40行的手工艺品·β/裁缝·β/鉴定师的手段，lookup 裁缝·β 的预期 canonical 集合为 {卡夫卡,折光,明椒,柏喙}。实施时核对源行和实际标题，expected 不从 serializeCards 输出反推。复用现有 facts-tools/projection/curation 测试，不另建评分台账。
 
 ### 用例矩阵（第一阶段必做）
 
@@ -124,11 +124,101 @@ T04 不禁止 canonical/aliases 的卡级匹配，T05 专门保护这一路径�
 
 ## 关联 ADR
 
-- [ADR-006](adr/ADR-006-independent-function-tools.md) — 按检索模式暴露独立函数工具与扁平参数
-- [ADR-005](adr/ADR-005-chat-auto-tool-budget.md) — auto 工具循环与每题积分预算（其余契约继续有效）
+- [ADR-006](../adr/ADR-006-independent-function-tools.md) — 按检索模式暴露独立函数工具与扁平参数
+- [ADR-005](../adr/ADR-005-chat-auto-tool-budget.md) — auto 工具循环与每题积分预算（其余契约继续有效）
 
 ## 本轮产物与后续
 
 独立 agent `review_facts_optimization` 完成初审和修订复审，结论为通过、无阻塞问题。已落实：complete 仅指卡集合；termQuery-only 与 canonical 回退覆盖；fatal 不要求继续回写；合成卡字段、预期集合及真源样本具体化。复审的非阻塞措辞意见也已采纳，T06 明确整次查询返回 A/B/C、只在 A 卡内投影为 a1。
 
 本计划承接独立审查通过的草案和前置工具拆分结果。实施仅限第一阶段确定性契约；旧 schema 优化和历史基线文档保持为前置证据，不扩展为泛化 agent 优化计划。
+
+## 实施纪要
+
+# 实施笔记：facts 工具优化与契约测试
+
+> 对应归档计划：docs/archive/plan-facts-tool-optimization.md
+> 开始日期：2026-09-07
+
+## 决策偏离
+> spec 中没有提到，但在实施中做出的重要决策
+
+### 2026-09-07 — 以定稿计划承接已审查草案
+- **背景**：草案已完成独立审查和修订复审，实施前必须按文档生命周期转为正式 plan。
+- **选项**：
+  - A: 保留 draft 作为活跃入口，另建重复 plan。
+  - B: 将 draft 原位重命名为 plan，并建立对应 notes。
+- **决策**：选择 B；正式施工入口为 `docs/archive/plan-facts-tool-optimization.md`，审查结论和测试矩阵继续保留在归档计划中。
+- **影响**：后续进度以计划验收清单为唯一机械信号；归档时由 release 脚本将 notes 合并回 plan。
+
+## 实现调整
+> spec 中有描述，但实际实现方式不同
+
+### 2026-09-07 — 结果元数据在内部结果对象中聚合、序列化时展开
+- **spec 原文**：facts 成功/空查 envelope 顶层增加 `factsResultVersion`、`matchedCount`、`returnedCount`、`complete` 和 `scope`。
+- **实际做法**：执行器内部以 `factsResult` 聚合这组字段，写入 tool message 时展开到现有 envelope 顶层；错误、拒绝和预算耗尽结果不生成该对象。
+- **原因**：避免 facts 元数据散落在内部结果字段，同时保持对模型和 trace 写盘内容的顶层协议不变。
+- **后果**：`writtenContent` 与实际回写 content 继续共用 `serializeToolResult`，旧记录读取无需补字段。
+
+### 2026-09-07 — 兼容未标设施技能的展示标签
+- **spec 原文**：每条输出技能显式标注已有 room；缺 room 的兼容 fixture 显示未知设施，不猜归属。
+- **实际做法**：序列化严格读取 `RecordSkill.room`，缺失或空白时显示“未知设施”，不使用单设施卡的回退推断值。
+- **原因**：store 查询允许兼容旧 fixture 按单设施回退匹配，但展示层不能把推断归属伪装成真源字段。
+- **后果**：新投影技能均显示真实设施；旧 fixture 的技能范围保持兼容，标签显式标为未知。
+
+### 2026-09-07 — 输入 schema 描述变更同步版本
+- **背景**：第一阶段精炼 lookup/query_operators 的匹配语义描述，既有工具 schema 版本为 2。
+- **选项**：
+  - A: 只依赖新的 schema 指纹，保留版本号。
+  - B: 同步递增工具 schema 版本，并单独保留 facts 结果版本。
+- **决策**：选择 B，将 `TOOL_SCHEMA_VERSION` 调为 3；facts envelope 继续使用 `factsResultVersion: 1`。
+- **影响**：运行 meta 可区分输入工具协议与 facts 结果协议，旧快照仍按原有兼容规则读取。
+
+## 债务记录
+> 遗留的技术债、被牺牲的改进与延期偿还事项
+> 可定位到代码的债务须在代码处写 `TODO(tech-debt) <编号>：` 注释；此处只记编号、结论与未来偿还条件
+
+## 意外发现
+> 实施中发现的 spec 未覆盖的依赖/边界/风险
+
+### 2026-09-07 — 用户验收与单次 hybrid 对比
+- **验收基点**：`2e31fa6`；按计划核对两处运行实现，未发现阻塞缺陷。空查以 hitIds 判断，facts 元数据仅在合法执行后生成并展开至模型 envelope；匹配集合、预算和 fatal 路径未被修改。
+- **本轮验证**：重新执行全量 31 文件/286 项测试、typecheck、build、doc-check；通过内存 dry 验证五模式各20题（共100题），未产生 dry 运行目录。额外直调验证 fatal 无伪造元数据、trim 后 scope 与顶层字段、termQuery-only 技能裁剪及 canonical 回退。
+- **覆盖边界**：现有测试通过不等于 T01–T14 每个组合都有独立持久断言。例如 T14 的无 room 技能命中路径由本轮直调补核；本轮不把该直调描述成已新增仓库测试。
+- **对比设计**：用户授权一次完整20题真实 hybrid 运行，Qwen3.7-Flash/off/temperature=0、预算5、auto、允许并行、无工具回馈开启、300秒单题超时。与历史嵌套 hybrid 和拆分后中间样本比较；历史提示与协议有差异，且只有单次观测，不作 facts 改动的因果归因或稳定提升结论。
+- **本次证据**：[共享快照](../../bench/results/2026-09-07T13-47-32-341Z-qwen-off-t0.json)，原件目录 `bench-runs/2026-09-07T13-47-32-341Z-qwen-off-t0/`。用途为本次验收后的直接对比，当前未指定正式质量基线。原件保留用于回答和完整 trace 复核，待共享证据提交可恢复且实验结束后再按清理规范处理。
+
+| 指标 | 嵌套 hybrid：09:55 | 拆分后中间样本：10:39 | facts 验收：13:47 |
+|---|---:|---:|---:|
+| 完成题数（非正确题数） | 20/20 | 20/20 | 20/20 |
+| 模型调用 | 65 | 44 | 45 |
+| 工具执行 | 45 | 33 | 33 |
+| RAG / lookup / query_operators | 28 / 11 / 6 | 32 / 0 / 1 | 32 / 0 / 1 |
+| 工具错误 / 拒绝 | 12 / 1 | 0 / 0 | 0 / 0 |
+| 输入 / 输出 tokens | 151322 / 20516 | 96331 / 16011 | 103948 / 17032 |
+| 工具结果字符 | 45062 | 44045 | 46498 |
+| 总成本（元） | 0.044996 | 0.031748 | 0.034085 |
+| 总耗时（秒） | 213.065 | 125.765 | 168.939 |
+
+- **对照位置**：嵌套样本为 `bench-runs/2026-09-07T09-55-37-752Z-qwen-off-t0/`（共享快照同名）；拆分后中间样本为 `dev-temp/work/independent-tools/after/dev-temp/work/controlled-after/2026-09-07T10-39-20-267Z-qwen-off-t0/`，继续保留为本次直接对照。三次问题定义、provider/model、温度、思考、检索参数、预算、超时和价格配置逐字段一致；指令指纹依次以 `9388e3fe`、`819acb2f`、`11c8039c` 开头，输入工具协议也不同，不能视为严格只改变 facts 的 A/B。
+- **观测结论**：相对拆分后中间样本，本次成本 +7.36%、耗时 +34.33%；相对最早嵌套样本，成本 -24.25%、耗时 -20.71%。单次端到端耗时包含模型服务波动，不代表本地 executor 性能。未因这些变化修改 harness。
+- **facts 实际覆盖**：仅 S08 执行一次 `query_operators({faction:"格拉斯哥帮"})`，命中4卡。已逐字段核对真实 trace 的结果版本、scope、计数和状态一致；lookup、合法空查未被这次真实模型触发，不能从 0 工具错误推断它们的真实成功率提高。回答正确率本轮未重新逐题核查，20/20 仅表示运行完成。
+
+### 2026-09-07 — 空结果占位文本不能作为命中证据
+- **发现**：facts 空查仍需要保留可读的无匹配说明，但该文本不能参与 success/empty 判定；必须以 `hitIds` 的实际卡集合为准。
+- **影响**：已回馈计划 F-01，并验证 RAG/grep 的既有 data 语义未被顺带修改；report 继续沿用明确 `hitIds` 的命中统计。
+
+### 2026-09-07 — 结果范围元数据不扩展到错误 envelope
+- **发现**：`matchedCount=0` 只有在合法查询实际执行且结果为空时有意义；参数错误、拒绝、预算耗尽和系统异常的“缺失”不能回填为零。
+- **影响**：已回馈计划第 1、2、5 点；错误和拒绝结果没有 facts 结果版本或查询范围字段。
+
+## 阻塞与解决
+> 遇到的阻塞问题及解决方案
+
+### 2026-09-07 — doc-check 首次拒绝未完成 plan
+- **症状**：实现和测试完成后直接运行 `node scripts/doc-check.mjs`，D1 报告活动 plan 的验收清单仍含未勾选项。
+- **根因**：文档门禁把活动 plan 的 `[ ]` 作为施工未收束信号。
+- **解决方案**：核对验证记录后将本计划 10 项验收条目逐项标记为 `[x]`，保留未冻结状态，不执行归档。
+- **预防**：后续实施结束时先同步 plan checklist，再运行文档检查；归档仍交由 release 脚本处理。
+
+> ✅ 已完成于 2026-09-08
