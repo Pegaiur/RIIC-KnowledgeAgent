@@ -489,10 +489,10 @@ function buildRagData(
   return { data, injectedIds }
 }
 
+/** 来源头保持既有格式；新增小节信息一律放到正文之后，只用剩余预算，避免挤占原正文送达。 */
 function renderRagHeader(block: RagBlock): string {
   const { chunk } = block
-  const base = `${chunk.file} | ${chunk.heading} | L${chunk.startLine}-${chunk.endLine}`
-  return block.section ? `【${base} | ${block.section.sectionId}】` : `【${base}】`
+  return `【${chunk.file} | ${chunk.heading} | L${chunk.startLine}-${chunk.endLine}】`
 }
 
 function buildSectionContext(sections: SectionDirectory, blocks: RagBlock[]): string[] {
@@ -567,38 +567,52 @@ function readSectionOperation(
       status: 'invalid_params',
     }
   }
+  const remaining = section.body.length - offset
+  const metaLength = sectionMetaLength(section, offset)
+  // 元数据无法容纳，或剩余正文连一个字符都放不下时，明确报错，不静默放宽上限。
+  if (metaLength > config.maxContextChars || (remaining > 0 && metaLength + 1 > config.maxContextChars)) {
+    return {
+      data: `read_section 无法在 maxContextChars=${config.maxContextChars} 内返回正文：分页元数据已占约 ${metaLength} 字符。请提高 maxContextChars 后重试。`,
+      hitIds: [],
+      injectedIds: [],
+      status: 'error',
+    }
+  }
   return { data: renderSectionPage(section, offset, config.maxContextChars), hitIds: [], injectedIds: [], status: 'success' }
+}
+
+/** 分页元数据（含与正文之间的空行）的保守长度，用于先扣除元数据预算。 */
+function sectionMetaLength(section: SectionEntry, offset: number): number {
+  return sectionMetaPrefix(section, offset, '', Number.MAX_SAFE_INTEGER, false).length + 2
+}
+
+/** 固定格式的分页元数据；正文页决定实际行范围。 */
+function sectionMetaPrefix(
+  section: SectionEntry,
+  offset: number,
+  page: string,
+  nextOffset: number | null,
+  complete: boolean,
+): string {
+  const path = section.level === 0 ? '（文档根节点）' : [...section.ancestors, section.heading].join(' > ')
+  const startLine = section.startLine + countNewlines(section.body.slice(0, offset))
+  const endLine = page.length === 0 ? startLine - 1 : startLine + countNewlines(page)
+  return [
+    `【read_section】${section.sectionId}`,
+    `标题路径：${path}`,
+    `行范围：L${startLine}-${endLine}｜offset：${offset}｜next_offset：${nextOffset === null ? 'null' : nextOffset}｜complete：${complete}`,
+  ].join('\n')
 }
 
 /** 渲染一页原文；元数据先占预算，必要时在行边界缩短，保证可续读且不丢中段。 */
 function renderSectionPage(section: SectionEntry, offset: number, maxContextChars: number): string {
-  const path = section.level === 0 ? '（文档根节点）' : [...section.ancestors, section.heading].join(' > ')
-  const build = (page: string, nextOffset: number | null, complete: boolean): string => {
-    const startLine = section.startLine + countNewlines(section.body.slice(0, offset))
-    const endLine = page.length === 0 ? startLine - 1 : startLine + countNewlines(page)
-    return [
-      `【read_section】${section.sectionId}`,
-      `标题路径：${path}`,
-      `行范围：L${startLine}-${endLine}｜offset：${offset}｜next_offset：${nextOffset === null ? 'null' : nextOffset}｜complete：${complete}`,
-      '',
-      page,
-    ].join('\n')
-  }
-
   const remaining = section.body.length - offset
-  // 用最宽的分页元数据估算占用，避免正文把总长度顶出上限。
-  const metaLength = build('', Number.MAX_SAFE_INTEGER, false).length
-  let budget = Math.min(READ_SECTION_PAGE_CHARS, remaining)
-  if (metaLength + budget > maxContextChars) {
-    budget = Math.max(0, maxContextChars - metaLength)
-    if (remaining > 0 && budget < 1) budget = 1
-    budget = Math.min(budget, remaining)
-  }
+  const budget = Math.min(READ_SECTION_PAGE_CHARS, remaining, Math.max(0, maxContextChars - sectionMetaLength(section, offset)))
   let page = section.body.slice(offset, offset + budget)
   if (offset + page.length < section.body.length) page = cutAtLine(page)
   const nextOffset = offset + page.length
   const complete = nextOffset >= section.body.length
-  return build(page, complete ? null : nextOffset, complete)
+  return `${sectionMetaPrefix(section, offset, page, complete ? null : nextOffset, complete)}\n\n${page}`
 }
 
 function countNewlines(text: string): number {
