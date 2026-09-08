@@ -52,7 +52,7 @@ describe('agent：独立函数工具 schema', () => {
   it('hybrid 模式：系统提示同时描述 RAG 与 facts 两个工具', () => {
     const prompt = buildSystemPrompt('hybrid')
     expect(prompt).toContain('明日方舟基建查询 Agent 决策契约')
-    expect(prompt).toContain('技能的解锁与提升')
+    expect(prompt).toContain('保留原文条件与限定')
     expect(prompt).toContain('rag_search')
     expect(prompt).toContain('facts_search')
     expect(prompt).toContain('可用工具：rag_search、facts_search')
@@ -60,8 +60,8 @@ describe('agent：独立函数工具 schema', () => {
 
   it('人工契约保留通用证据边界，不注入基线题号或固定答案', () => {
     const prompt = buildSystemPrompt('bm25')
-    expect(prompt).toContain('具体事实冲突时以更直接、对象更明确的记录为准')
-    expect(prompt).toContain('技能的解锁与提升')
+    expect(prompt).toContain('冲突时以更直接、对象更明确的记录为准')
+    expect(prompt).toContain('保留原文条件与限定')
     expect(prompt).not.toMatch(/\b[FGS]\d{2}\b/)
     expect(prompt).not.toContain('最终答案必须逐项原样出现')
   })
