@@ -4,7 +4,7 @@
 >
 > 定位：基于当前知识库的评测快照（2026-09-08，本地证据核查），不是独立的游戏事实真源。
 >
-> 本版知识源基准提交：`b008f80c00c05097856921da946fe344bcaed600`；修订仅改变核查文档，不声明上游游戏数据已重新核验。独立审查及配套评估见[校正记录](../draft-answer-baseline-calibration.md#独立审查与v4定稿2026-09-08)。
+> 本版知识源基准提交：`b008f80c00c05097856921da946fe344bcaed600`；修订仅改变核查文档，不声明上游游戏数据已重新核验。独立审查及配套评估见[校正记录](../archive/review-answer-baseline-calibration.md#独立审查与v4定稿2026-09-08)。
 >
 > 事实依据：`knowledge/corpus-manifest.json` 当前白名单中的 `base/`、`references/`、`guides/`。题目、gold 和本快照必须保持同一题号集合；下文证据块服务答案核查；gold 是独立的检索相关性标注，不是完整答案的必要检索路径。v4 未变更 gold，不能将 gold 全命中解释为必答项已全部取证。
 
@@ -12,7 +12,7 @@
 
 - 当前正式质量基线：未指定。本 spec 是答案核查口径，不把任何一次运行的完成状态或成绩直接升级为质量结论。
 - 当前保留的共享运行参考：
-  - `bench/results/2026-09-08T03-21-55-405Z-qwen-off-t0.json`：当前单词条 facts 入口的 hybrid 直接运行；schema v5、工具为 `rag_search` 与 `facts_search`，20/20 完成、40 次模型调用、26 次工具执行、¥0.025563、157.960 秒；facts 执行3次（2次命中、1次合法空查）。这是一次协议包观察，不代表质量或稳定性能提升，详见[实施笔记](../archive/plan-facts-single-query.md)与[逐题核查](../review-facts-single-query-answer-quality.md)。
+  - `bench/results/2026-09-08T03-21-55-405Z-qwen-off-t0.json`：当前单词条 facts 入口的 hybrid 直接运行；schema v5、工具为 `rag_search` 与 `facts_search`，20/20 完成、40 次模型调用、26 次工具执行、¥0.025563、157.960 秒；facts 执行3次（2次命中、1次合法空查）。这是一次协议包观察，不代表质量或稳定性能提升，详见[实施笔记](../archive/plan-facts-single-query.md)与[v4 核查草案（待复核）](../reports/draft-answer-baseline-v4.md)。
   - `bench/results/2026-09-07T14-55-33-663Z-qwen-off-t0.json`：上述运行的直接旧对照；schema v4、工具为 `rag_search`、`lookup` 与 `query_operators`，20/20 完成、46 次模型调用、29 次工具执行、¥0.032529、140.016 秒。两次运行的提示、工具协议与 facts 入口并非单变量，不能将差异归因于单词条 schema。
   - `bench/results/2026-09-07T09-55-37-752Z-qwen-off-t0.json`：同版本、hybrid、5 点、off、temperature=0 的直接对照；20/20 完成，¥0.044996，213.065 秒。facts 实际执行 17 次，另有 12 次参数错误、1 次预算拒绝；不据完成率指定质量基线，详情见 [性能评估](../draft-harness-performance.md)。
   - `bench/results/2026-09-07T09-37-50-978Z-qwen-off-t0.json`：当前代码、BM25、5 点、off、temperature=0 的执行/费用参考；20/20 完成，¥0.047745，批次耗时 224.220 秒。用途是下一步优化直接对照；质量只做抽查，仍不指定正式质量基线。测量口径与候选方案见 [性能评估](../draft-harness-performance.md)。
