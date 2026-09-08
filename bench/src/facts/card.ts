@@ -29,7 +29,7 @@ export interface RecordSkill {
   skillCategories?: string[]
   /** `技能等价组.md` 中命中的等价组 */
   equivalenceGroupId?: string
-  /** 等价组内可用于 lookup 展开的技能名 */
+  /** 等价组内可用于 facts_search 展开的技能名 */
   equivalenceSkillNames?: string[]
 }
 

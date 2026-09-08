@@ -1,7 +1,7 @@
 /**
  * 简化版查询 Agent。
  *
- * 真实用户问题只进入 messages 一次；模型可通过固定 auto 的 knowledge 工具循环取证，
+ * 真实用户问题只进入 messages 一次；模型可通过固定 auto 的独立函数工具循环取证，
  * 宿主只负责协议校验、批次预算和结果回写。
  */
 import { readFileSync } from 'node:fs'
@@ -11,12 +11,13 @@ import type { IndexEntry } from './retriever.js'
 import type { DocChunk, BenchQuery, CostRecord, HttpAttempt, LlmUsage, TerminationReason, ThinkingMode, ToolBatchStats, ToolId } from './types.js'
 import { callLLM, type ChatMessage, type ProviderCallLedger, type ProviderOptions } from './provider.js'
 import { aggregateAttemptCosts, aggregateUsages, computeCosts } from './pricing.js'
-import { isRetrievalTool, isFactTool } from './types.js'
+import { isObservedTool } from './types.js'
 import { markTraceFailed, type QueryTrace, type TraceFailure, type TraceLlmEvent, type TraceToolEvent } from './trace.js'
 import {
   createKnowledgeToolExecutor,
-  knowledgeTool,
   serializeToolResult,
+  toolNamesForRetriever,
+  toolsForRetriever,
   type ToolBudgetState,
   type ToolExecutionResult,
 } from './tool-executor.js'
@@ -29,7 +30,7 @@ export interface AgentResult {
   finalAnswer: string | null
   rounds: number
   toolRounds: number
-  /** 每个模型步骤中解析出的 operation 序列。 */
+  /** 每个模型步骤中解析出的独立工具函数序列。 */
   toolTrace: ToolId[][]
   /** 实际注入上下文的 chunk id（按注入顺序去重）。 */
   injectedIds: string[]
@@ -75,23 +76,18 @@ export function loadKnowledgeAgentInstructions(root = process.cwd()): string {
   return instructions
 }
 
-/** 构建系统提示；人工规则只来自 AGENTS.md，模式差异由实际 knowledge schema 描述。 */
+/** 构建系统提示；人工规则只来自 AGENTS.md，模式差异由实际工具 schema 描述。 */
 export function buildSystemPrompt(
   retriever: RetrieverId = 'bm25',
   agentInstructions = loadKnowledgeAgentInstructions(),
   toolBudget = 5,
 ): string {
-  const definition = knowledgeTool(retriever).function as {
-    name: string
-    parameters: { properties: { operation: { enum: string[] } } }
-  }
-  const operations = definition.parameters.properties.operation.enum
+  const toolNames = toolNamesForRetriever(retriever)
   const runtime = [
     '## 本次运行能力',
     `- 检索模式：${retriever}`,
-    `- 可用工具：${definition.name}`,
-    `- knowledge operation：${operations.join('、')}`,
-    `- 工具积分预算：${toolBudget} 点；余额耗尽后仍可调用工具，但宿主会返回预算耗尽提示。`,
+    `- 可用工具：${toolNames.join('、')}`,
+    `- 工具积分预算：${toolBudget} 点；每个准入工具调用占 1 点，参数错误也占点；同批调用分别计费。余额用尽后新增调用不会执行。`,
   ]
   return `${agentInstructions.trim()}\n\n${runtime.join('\n')}`
 }
@@ -134,9 +130,9 @@ export async function runQuery(
     for (;;) {
       if (sessionController.signal.aborted) throw abortErrorForSession(timedOut)
       rounds++
-      const offeredTools = [knowledgeTool(config.retriever)]
+      const offeredTools = toolsForRetriever(config.retriever)
       const llmEvent: TraceLlmEvent | undefined = opts.trace
-        ? { type: 'llm_call', round: rounds, offeredTools: ['knowledge'], elapsedMs: 0 }
+        ? { type: 'llm_call', round: rounds, offeredTools: toolNamesForRetriever(config.retriever), elapsedMs: 0 }
         : undefined
       if (llmEvent) opts.trace?.events.push(llmEvent)
       const llmStarted = Date.now()
@@ -189,8 +185,8 @@ export async function runQuery(
       const usage = accountingUsage(resp.usage, httpAttempts)
       const costs = accountingCosts(resp.usage, httpAttempts, config)
       const requestedTools = resp.toolCalls
-        .map((tc) => operationFromCall(tc))
-        .filter((name): name is ToolId => typeof name === 'string' && (isRetrievalTool(name) || isFactTool(name)))
+        .map((tc) => tc.name)
+        .filter((name): name is ToolId => isObservedTool(name))
       const record: CostRecord = {
         ts: now,
         queryId: query.id,
@@ -238,6 +234,8 @@ export async function runQuery(
             executed: 0,
             denied: 0,
             errors: 1,
+            hitCount: 0,
+            hitUnknown: 0,
             budgetBefore: budgetBefore.remaining,
             budgetAfter: batch.snapshot.remaining,
             resultChars: 0,
@@ -253,6 +251,8 @@ export async function runQuery(
           executed: batch.results.filter((item) => item.executed).length,
           denied: batch.results.filter((item) => item.status === 'budget_exhausted').length,
           errors: batch.results.filter((item) => isToolErrorStatus(item.status)).length,
+          hitCount: batch.results.filter((item) => item.executed && Array.isArray(item.hitIds) && item.hitIds.length > 0).length,
+          hitUnknown: batch.results.filter((item) => item.executed && !Array.isArray(item.hitIds)).length,
           budgetBefore: budgetBefore.remaining,
           budgetAfter: batch.snapshot.remaining,
           resultChars: 0,
@@ -269,7 +269,7 @@ export async function runQuery(
                 type: 'tool_call',
                 round: rounds,
                 callId: item.callId,
-                tool: item.operation ?? tc?.name ?? 'knowledge',
+                tool: item.operation ?? tc?.name ?? 'unknown',
                 rawArguments: tc?.arguments ?? '',
                 elapsedMs: 0,
                 status: item.status,
@@ -293,7 +293,7 @@ export async function runQuery(
         }
         toolTrace.push(batch.results
           .map((item) => item.operation)
-          .filter((name): name is ToolId => typeof name === 'string' && (isRetrievalTool(name) || isFactTool(name))))
+          .filter((name): name is ToolId => typeof name === 'string' && isObservedTool(name)))
         if (fatalResult) throw new AgentExecutionError(fatalResult.message ?? '工具执行失败', 'tool_error', 'tool')
         messages.push(...pendingMessages)
         continue
@@ -430,16 +430,6 @@ function createCostRecord(
 
 function isToolErrorStatus(status: ToolExecutionResult['status']): boolean {
   return status === 'invalid_params' || status === 'unknown_operation' || status === 'error'
-}
-
-function operationFromCall(call: { name: string; arguments: string }): string | undefined {
-  if (call.name !== 'knowledge') return undefined
-  try {
-    const raw = JSON.parse(call.arguments) as Record<string, unknown>
-    return typeof raw.operation === 'string' ? raw.operation : undefined
-  } catch {
-    return undefined
-  }
 }
 
 function abortErrorForSession(timedOut: boolean): AgentExecutionError {

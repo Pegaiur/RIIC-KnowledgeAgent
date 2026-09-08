@@ -58,7 +58,7 @@ export interface TraceFailure {
 }
 
 export interface QueryTrace {
-  schemaVersion: 2
+  schemaVersion: 3
   queryId: string
   question: string
   status: 'completed' | 'failed' | 'cancelled'
@@ -84,7 +84,7 @@ export interface TraceSummary {
 
 export function createQueryTrace(query: BenchQuery): QueryTrace {
   return {
-    schemaVersion: 2 as const,
+    schemaVersion: 3 as const,
     queryId: query.id,
     question: query.question,
     status: 'completed',

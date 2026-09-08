@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { loadConfig } from '../src/config.js'
 import { buildIndex } from '../src/retriever.js'
 import type { DocChunk, ToolCall } from '../src/types.js'
-import { createKnowledgeToolExecutor, knowledgeTool, serializeToolResult } from '../src/tool-executor.js'
+import { createKnowledgeToolExecutor, serializeToolResult, toolSchemaMetadata, toolsForRetriever } from '../src/tool-executor.js'
 
 const chunks: DocChunk[] = [
   {
@@ -15,50 +15,64 @@ const chunks: DocChunk[] = [
   },
 ]
 
-function call(id: string, operation: string, params: Record<string, unknown>): ToolCall {
-  return {
-    id,
-    name: 'knowledge',
-    arguments: JSON.stringify({ operation, params }),
-  }
+function call(id: string, name: string, params: unknown): ToolCall {
+  return { id, name, arguments: JSON.stringify(params) }
 }
 
-describe('knowledge schema', () => {
+describe('独立函数工具 schema', () => {
   it.each([
     ['bm25', ['rag_search']],
     ['grep', ['grep_search']],
     ['both', ['rag_search', 'grep_search']],
-    ['facts', ['lookup', 'query_operators']],
-    ['hybrid', ['rag_search', 'lookup', 'query_operators']],
-  ] as const)('%s 只暴露当前模式允许的 operation', (retriever, operations) => {
-    const fn = knowledgeTool(retriever).function as {
-      name: string
-      parameters: { required: string[]; properties: { operation: { enum: string[] }; params: { oneOf: Array<{ properties?: Record<string, unknown>; required?: string[] }> } } }
+    ['facts', ['facts_search']],
+    ['hybrid', ['rag_search', 'facts_search']],
+  ] as const)('%s 只暴露当前模式允许的函数工具', (retriever, names) => {
+    const tools = toolsForRetriever(retriever)
+    expect(tools.map((tool) => (tool.function as { name: string }).name)).toEqual(names)
+    for (const tool of tools) {
+      const fn = tool.function as { name: string; parameters: Record<string, unknown> }
+      expect(fn.name).not.toBe('knowledge')
+      expect(fn.parameters).toMatchObject({ type: 'object', additionalProperties: false })
     }
-
-    expect(fn.name).toBe('knowledge')
-    expect(fn.parameters.required).toEqual(['operation', 'params'])
-    expect(fn.parameters.properties.operation.enum).toEqual(operations)
-    expect(fn.parameters.properties.params.oneOf.length).toBeGreaterThanOrEqual(operations.length)
   })
 
-  it('分类查询 schema 显式暴露过滤字段与正向条件约束', () => {
-    const fn = knowledgeTool('facts').function as {
-      parameters: { properties: { params: { oneOf: Array<{ properties: Record<string, unknown>; description: string }> } } }
-    }
-    const queryOperators = fn.parameters.properties.params.oneOf.find((branch) => branch.description.includes('query_operators'))
-    expect(queryOperators?.properties).toEqual(expect.objectContaining({
-      room: expect.any(Object),
-      faction: expect.any(Object),
-      profession: expect.any(Object),
-      termQuery: expect.any(Object),
-      excludeIds: expect.any(Object),
-    }))
-    expect(queryOperators?.description).toContain('至少一个正向分类条件')
+  it('facts_search schema 只有 query 一个必填字段，不暴露分类或组合参数', () => {
+    const facts = toolsForRetriever('facts')[0]!
+    const fn = facts.function as { name: string; description: string; parameters: { properties: Record<string, unknown>; required: string[]; additionalProperties: boolean; anyOf?: unknown[] } }
+    expect(fn.name).toBe('facts_search')
+    expect(fn.description).toContain('完整词条')
+    expect(fn.parameters.properties).toEqual({ query: expect.any(Object) })
+    expect(fn.parameters.required).toEqual(['query'])
+    expect(fn.parameters.additionalProperties).toBe(false)
+    expect(fn.parameters.anyOf).toBeUndefined()
+  })
+
+  it('schema 指纹只由当前实际工具数组决定', () => {
+    expect(toolSchemaMetadata('bm25')).toMatchObject({ toolSchemaVersion: 5, toolNames: ['rag_search'] })
+    expect(toolSchemaMetadata('bm25').toolSchemaSha256).toMatch(/^[a-f0-9]{64}$/)
+    expect(toolSchemaMetadata('bm25').toolSchemaSha256).not.toBe(toolSchemaMetadata('hybrid').toolSchemaSha256)
+  })
+
+  it('拼接的多个名称仍是合法 facts_search，未命中时执行为空查并扣点', async () => {
+    const config = loadConfig()
+    config.retriever = 'facts'
+    const executor = createKnowledgeToolExecutor({
+      config,
+      query: { id: 'LOOKUP-CONCAT', category: 'fact', question: '拼接名称边界' },
+      chunks: [],
+      index: buildIndex([]),
+    }, 1)
+
+    const result = await executor.executeBatch([
+      call('concat', 'facts_search', { query: '不存在技能甲＝不存在技能乙' }),
+    ])
+
+    expect(result.results[0]).toMatchObject({ status: 'empty', executed: true, factsResult: { matchedCount: 0, returnedCount: 0 } })
+    expect(result.snapshot).toMatchObject({ used: 1, executed: 1, remaining: 0 })
   })
 })
 
-describe('knowledge executor：按批次预占工具预算', () => {
+describe('独立函数 executor：按批次预占工具预算', () => {
   it('剩余 2 点收到 3 个调用时按响应顺序执行前两个并拒绝第三个', async () => {
     const config = loadConfig()
     config.retriever = 'both'
@@ -82,46 +96,122 @@ describe('knowledge executor：按批次预占工具预算', () => {
     expect(result.snapshot).toMatchObject({ limit: 2, used: 2, requested: 3, denied: 1, executed: 2, remaining: 0 })
   })
 
-  it('一批 7 个调用在初始 5 点时保留第 5 个证据并拒绝其余调用', async () => {
+  it('第五次获准调用仍校验并执行，第六次拒绝', async () => {
     const config = loadConfig()
     const executor = createKnowledgeToolExecutor({ config, query: { id: 'BATCH-5', category: 'fact', question: '查询' }, chunks, index: buildIndex(chunks) }, 5)
-    const calls = Array.from({ length: 7 }, (_, i) => call(`call-${i + 1}`, 'rag_search', { query: `查询 ${i + 1}` }))
+    const calls = Array.from({ length: 6 }, (_, i) => call(`call-${i + 1}`, 'rag_search', { query: `查询 ${i + 1}` }))
 
     const result = await executor.executeBatch(calls)
 
     expect(result.results.slice(0, 5).every((item) => item.executed)).toBe(true)
-    expect(result.results.slice(5).map((item) => item.status)).toEqual(['budget_exhausted', 'budget_exhausted'])
-    expect(result.snapshot.used).toBe(5)
-    expect(result.snapshot.executed).toBe(5)
+    expect(result.results[5]).toMatchObject({ status: 'budget_exhausted', executed: false })
+    expect(result.snapshot).toMatchObject({ used: 5, executed: 5, denied: 1 })
     expect(result.results[4]?.message).toContain('依据已有证据作答')
     expect(JSON.parse(serializeToolResult(result.results[4]!))).toMatchObject({ message: expect.stringContaining('依据已有证据作答') })
   })
 
-  it('未知 operation 和无效参数占用积分但不执行底层检索', async () => {
+  it('facts 第五次合法空查仍执行，第六次才拒绝，并按卡计数', async () => {
     const config = loadConfig()
-    const executor = createKnowledgeToolExecutor({ config, query: { id: 'INVALID', category: 'fact', question: '查询' }, chunks, index: buildIndex(chunks) }, 5)
+    config.retriever = 'facts'
+    const executor = createKnowledgeToolExecutor({ config, query: { id: 'FACTS-BUDGET', category: 'fact', question: '预算边界' }, chunks, index: buildIndex(chunks) }, 5)
+    const calls = [
+      call('fact-1', 'facts_search', { query: '刻俄柏' }),
+      call('fact-2', 'facts_search', { query: '刻俄柏' }),
+      call('fact-3', 'facts_search', { query: '刻俄柏' }),
+      call('fact-4', 'facts_search', { query: '刻俄柏' }),
+      call('fact-5', 'facts_search', { query: '__不存在的规范名_核查__' }),
+      call('fact-6', 'facts_search', { query: '制造站' }),
+    ]
 
-    const result = await executor.executeBatch([
-      call('unknown', 'grep_search', { query: '不可用' }),
-      call('bad', 'rag_search', {}),
-    ])
-
-    expect(result.results.map((item) => item.status)).toEqual(['unknown_operation', 'invalid_params'])
-    expect(result.results.every((item) => !item.executed)).toBe(true)
-    expect(result.snapshot).toMatchObject({ used: 2, executed: 0, denied: 0, remaining: 3 })
+    const result = await executor.executeBatch(calls)
+    expect(result.results.slice(0, 4).every((item) => item.status === 'success' && item.executed)).toBe(true)
+    expect(result.results[4]).toMatchObject({ status: 'empty', executed: true, factsResult: { matchedCount: 0, returnedCount: 0, complete: true }, message: expect.stringContaining('依据已有证据作答') })
+    expect(result.results[5]).toMatchObject({ status: 'budget_exhausted', executed: false })
+    expect(result.results[5]?.factsResult).toBeUndefined()
+    expect(result.snapshot).toMatchObject({ used: 5, requested: 6, executed: 5, denied: 1, remaining: 0 })
   })
 
-  it('未知函数名也占用尝试积分，但不调用底层检索', async () => {
+  it('facts 第五次坏参数消耗准入点但不执行，第六次仍按预算拒绝', async () => {
     const config = loadConfig()
-    const executor = createKnowledgeToolExecutor({ config, query: { id: 'UNKNOWN-FN', category: 'fact', question: '查询' }, chunks, index: buildIndex(chunks) }, 5)
+    config.retriever = 'facts'
+    const executor = createKnowledgeToolExecutor({ config, query: { id: 'FACTS-INVALID-BUDGET', category: 'fact', question: '预算参数边界' }, chunks, index: buildIndex(chunks) }, 5)
+    const calls = [
+      call('invalid-fact-1', 'facts_search', { query: '刻俄柏' }),
+      call('invalid-fact-2', 'facts_search', { query: '刻俄柏' }),
+      call('invalid-fact-3', 'facts_search', { query: '刻俄柏' }),
+      call('invalid-fact-4', 'facts_search', { query: '刻俄柏' }),
+      call('invalid-fact-5', 'facts_search', { query: '   ' }),
+      call('invalid-fact-6', 'facts_search', { query: '刻俄柏' }),
+    ]
 
-    const result = await executor.executeBatch([{ ...call('unknown-fn', 'rag_search', { query: '查询' }), name: 'legacy_search' }])
+    const result = await executor.executeBatch(calls)
+    expect(result.results[4]).toMatchObject({ status: 'invalid_params', executed: false })
+    expect(result.results[4]?.factsResult).toBeUndefined()
+    expect(result.results[5]).toMatchObject({ status: 'budget_exhausted', executed: false })
+    expect(result.snapshot).toMatchObject({ used: 5, requested: 6, executed: 4, denied: 1, remaining: 0 })
+  })
 
-    expect(result.results[0]).toMatchObject({ status: 'unknown_operation', executed: false })
+  it('T12 facts 宽查按完整卡集合返回，计数按卡去重且不套 RAG 字符上限', async () => {
+    const config = loadConfig()
+    config.retriever = 'facts'
+    const executor = createKnowledgeToolExecutor({ config, query: { id: 'FACTS-WIDE', category: 'fact', question: '进驻设施的干员' }, chunks, index: buildIndex(chunks) }, 5)
+    const result = await executor.executeBatch([call('wide', 'facts_search', { query: '制造站' })])
+    const item = result.results[0]!
+    expect(item.status).toBe('success')
+    expect(item.factsResult).toMatchObject({
+      matchedCount: item.hitIds?.length,
+      returnedCount: item.hitIds?.length,
+      complete: true,
+      scope: { query: '制造站' },
+    })
+    expect(new Set(item.hitIds).size).toBe(item.hitIds?.length ?? 0)
+    expect(item.data.length).toBeGreaterThan(config.maxContextChars)
+  })
+
+  it('旧 knowledge 外壳被视为未知工具，不自动解包', async () => {
+    const config = loadConfig()
+    const executor = createKnowledgeToolExecutor({ config, query: { id: 'LEGACY', category: 'fact', question: '查询' }, chunks, index: buildIndex(chunks) }, 5)
+    const result = await executor.executeBatch([call('legacy', 'knowledge', { operation: 'rag_search', params: { query: '查询' } })])
+
+    expect(result.results[0]).toMatchObject({ operation: 'knowledge', status: 'unknown_operation', executed: false })
     expect(result.snapshot).toMatchObject({ used: 1, executed: 0 })
   })
 
-  it('缺失或重复 call ID 作为协议失败，工具不执行且预算不变', async () => {
+  it.each(['facts', 'hybrid'] as const)('%s 模式收到历史 lookup 或 query_operators 名称时拒绝执行，不暗中转译', async (retriever) => {
+    const config = loadConfig()
+    config.retriever = retriever
+    const executor = createKnowledgeToolExecutor({ config, query: { id: 'LEGACY-FACTS', category: 'fact', question: '历史入口' }, chunks, index: buildIndex(chunks) }, 2)
+    const result = await executor.executeBatch([
+      call('old-lookup', 'lookup', { term: '刻俄柏' }),
+      call('old-query', 'query_operators', { room: '制造站' }),
+    ])
+
+    expect(result.results).toMatchObject([
+      { operation: 'lookup', status: 'unknown_operation', executed: false },
+      { operation: 'query_operators', status: 'unknown_operation', executed: false },
+    ])
+    expect(result.results.every((item) => item.factsResult === undefined)).toBe(true)
+    expect(result.snapshot).toMatchObject({ used: 2, requested: 2, executed: 0, remaining: 0 })
+  })
+
+  it('未知字段、空白、错误类型和只有 excludeIds 都拒绝且不执行底层检索', async () => {
+    const config = loadConfig()
+    config.retriever = 'facts'
+    const executor = createKnowledgeToolExecutor({ config, query: { id: 'INVALID', category: 'fact', question: '查询' }, chunks, index: buildIndex(chunks) }, 5)
+    const result = await executor.executeBatch([
+      call('a', 'facts_search', { query: '   ' }),
+      call('b', 'facts_search', { query: '刻俄柏', extra: true }),
+      call('c', 'facts_search', { excludeIds: ['刻俄柏'] }),
+      call('d', 'facts_search', { query: 1 }),
+    ])
+
+    expect(result.results.map((item) => item.status)).toEqual(['invalid_params', 'invalid_params', 'invalid_params', 'invalid_params'])
+    expect(result.results.every((item) => !item.executed)).toBe(true)
+    expect(result.snapshot).toMatchObject({ used: 4, executed: 0, denied: 0, remaining: 1 })
+    expect(result.results[0]?.data).toContain('query')
+  })
+
+  it('重复 call ID 作为协议失败，工具不执行且预算不变', async () => {
     const config = loadConfig()
     const executor = createKnowledgeToolExecutor({ config, query: { id: 'PROTOCOL', category: 'fact', question: '查询' }, chunks, index: buildIndex(chunks) }, 5)
 
@@ -131,6 +221,49 @@ describe('knowledge executor：按批次预占工具预算', () => {
     ])
 
     expect(result.protocolError).toContain('重复')
+    expect(result.results).toEqual([])
+    expect(result.snapshot).toMatchObject({ used: 0, requested: 0, denied: 0, executed: 0 })
+  })
+
+  it.each([
+    ['', '空字符串'],
+    ['   ', '空白字符串'],
+  ])('%s call ID（%s）作为协议失败，工具不执行且预算不变', async (id) => {
+    const config = loadConfig()
+    const executor = createKnowledgeToolExecutor({ config, query: { id: 'PROTOCOL-EMPTY', category: 'fact', question: '查询' }, chunks, index: buildIndex(chunks) }, 5)
+
+    const result = await executor.executeBatch([call(id, 'rag_search', { query: '查询' })])
+
+    expect(result.protocolError).toContain('call ID')
+    expect(result.results).toEqual([])
+    expect(result.snapshot).toMatchObject({ used: 0, requested: 0, denied: 0, executed: 0 })
+  })
+
+  it('缺失 call ID 作为协议失败，工具不执行且预算不变', async () => {
+    const config = loadConfig()
+    const executor = createKnowledgeToolExecutor({ config, query: { id: 'PROTOCOL-MISSING', category: 'fact', question: '查询' }, chunks, index: buildIndex(chunks) }, 5)
+
+    const result = await executor.executeBatch([{
+      name: 'rag_search',
+      arguments: '{"query":"查询"}',
+    } as unknown as ToolCall])
+
+    expect(result.protocolError).toContain('call ID')
+    expect(result.results).toEqual([])
+    expect(result.snapshot).toMatchObject({ used: 0, requested: 0, denied: 0, executed: 0 })
+  })
+
+  it('非字符串 call ID 作为协议失败，工具不执行且预算不变', async () => {
+    const config = loadConfig()
+    const executor = createKnowledgeToolExecutor({ config, query: { id: 'PROTOCOL-TYPE', category: 'fact', question: '查询' }, chunks, index: buildIndex(chunks) }, 5)
+
+    const result = await executor.executeBatch([{
+      id: 123,
+      name: 'rag_search',
+      arguments: '{"query":"查询"}',
+    } as unknown as ToolCall])
+
+    expect(result.protocolError).toContain('必须是字符串')
     expect(result.results).toEqual([])
     expect(result.snapshot).toMatchObject({ used: 0, requested: 0, denied: 0, executed: 0 })
   })

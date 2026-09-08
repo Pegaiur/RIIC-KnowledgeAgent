@@ -25,7 +25,7 @@ import { readSnapshot, snapshotFromRunDir, writeSnapshot } from './snapshot.js'
 
 /**
  * 非 facts 模式的散文 RAG 与 hitrate 均直接使用 knowledge/白名单语料。
- * facts 模式旁路散文加载，使用 lookup/query_operators 读取全量记录卡；
+ * facts 模式旁路散文加载，使用 facts_search 读取全量记录卡；
  * 两种模式共用 questions 的题号和问题定义。
  */
 

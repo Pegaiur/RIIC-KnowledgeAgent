@@ -7,7 +7,7 @@
  *   - retriever.ts：jieba 自定义词典（分词器为 jieba 时 addWord，防领域词切碎）
  * 仅纯数据，无依赖、无副作用。
  *
- * 来源：原 arknights-base-vault/docs/ 散文（已废弃删除，2026-09-03）。散文废弃后本词表随 facts-first 重写（记录卡资产 + lookup 取代 RAG），见 docs/archive/plan-hybrid-facts.md。
+ * 来源：原 arknights-base-vault/docs/ 散文（已废弃删除，2026-09-03）。散文废弃后本词表随 facts-first 重写（记录卡资产 + facts_search 取代 RAG），见 docs/archive/plan-hybrid-facts.md。
  */
 
 /** 语料涉及的干员名 / 体系名 / 机制名 */

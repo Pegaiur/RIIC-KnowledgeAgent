@@ -1,14 +1,18 @@
 /**
- * 统一 knowledge 工具 schema 与按批次预算执行器。
- * 一次 knowledge 调用只承载一个 operation；并行批次由多个带独立 call ID 的调用组成。
+ * 独立函数工具 schema 与按批次预算执行器。
+ * 工具函数名直接完成路由；执行器仍共用一套预算、校验和底层检索门面。
  */
+import { createHash } from 'node:crypto'
 import { loadConfig, type BenchConfig, type RetrieverId } from './config.js'
 import { grepSearch, buildGrepResult } from './grep-retriever.js'
 import { search, type IndexEntry } from './retriever.js'
-import type { BenchQuery, DocChunk, ToolCall, ToolId } from './types.js'
-import { getCardStore, serializeCards, type OperatorFilters } from './facts/store.js'
+import { isFactTool, type BenchQuery, type DocChunk, type ToolCall, type ToolId } from './types.js'
+import { getCardStore, serializeFactsMatches } from './facts/store.js'
 
 export type KnowledgeOperation = ToolId
+
+/** 工具 schema 发生协议变化时递增；快照保留该值供对照分组。 */
+export const TOOL_SCHEMA_VERSION = 5 as const
 
 export interface ToolBudgetState {
   limit: number
@@ -27,6 +31,16 @@ export type ToolResultStatus =
   | 'error'
   | 'budget_exhausted'
 
+export const FACTS_RESULT_VERSION = 2 as const
+
+export interface FactsResultMetadata {
+  factsResultVersion: typeof FACTS_RESULT_VERSION
+  matchedCount: number
+  returnedCount: number
+  complete: true
+  scope: Record<string, unknown>
+}
+
 export interface ToolExecutionResult {
   callId: string
   operation?: string
@@ -37,6 +51,7 @@ export interface ToolExecutionResult {
   actualParams?: unknown
   hitIds?: string[]
   injectedIds?: string[]
+  factsResult?: FactsResultMetadata
   message?: string
   fatal?: boolean
 }
@@ -63,71 +78,92 @@ export interface KnowledgeToolExecutor {
 
 const BUDGET_ANSWER_HINT = '工具预算已用尽，请依据已有证据作答；未覆盖部分明确说明。'
 
-function allowedOperations(retriever: RetrieverId): KnowledgeOperation[] {
-  if (retriever === 'hybrid') return ['rag_search', 'lookup', 'query_operators']
-  if (retriever === 'facts') return ['lookup', 'query_operators']
+type JsonObject = Record<string, unknown>
+type CurrentToolId = Exclude<ToolId, 'lookup' | 'query_operators'>
+
+const TOOL_DEFINITIONS: Record<CurrentToolId, JsonObject> = {
+  rag_search: {
+    type: 'function',
+    function: {
+      name: 'rag_search',
+      description: '查询机制、组合、排班及培养建议的知识库片段。',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', minLength: 1, description: '非空自然语言查询' },
+        },
+        required: ['query'],
+        additionalProperties: false,
+      },
+    },
+  },
+  grep_search: {
+    type: 'function',
+    function: {
+      name: 'grep_search',
+      description: '按关键词查找知识库原文片段。',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', minLength: 1, description: '非空关键词或短语' },
+        },
+        required: ['query'],
+        additionalProperties: false,
+      },
+    },
+  },
+  facts_search: {
+    type: 'function',
+    function: {
+      name: 'facts_search',
+      description: '用一个完整词条精确查询干员事实卡：干员正式名、技能名、已收录技能组词、设施、阵营或职业。不拆词，不解析句子或多个条件。',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', minLength: 1, description: '一个完整名称或分类词条；保留名称内部标点。' },
+        },
+        required: ['query'],
+        additionalProperties: false,
+      },
+    },
+  },
+}
+
+function allowedOperations(retriever: RetrieverId): CurrentToolId[] {
+  if (retriever === 'hybrid') return ['rag_search', 'facts_search']
+  if (retriever === 'facts') return ['facts_search']
   if (retriever === 'both') return ['rag_search', 'grep_search']
   return retriever === 'grep' ? ['grep_search'] : ['rag_search']
 }
 
-/** 生成唯一的 knowledge schema；模式白名单同时用于本地校验。 */
-export function knowledgeTool(retriever: RetrieverId = 'bm25'): Record<string, unknown> {
-  const operations = allowedOperations(retriever)
-  const paramsSchemas = operations.map((operation) => {
-    if (operation === 'rag_search' || operation === 'grep_search') {
-      return {
-        type: 'object',
-        description: `${operation}：使用非空自然语言查询检索语料。`,
-        properties: { query: { type: 'string', minLength: 1, description: '非空检索词或问题' } },
-        required: ['query'],
-        additionalProperties: false,
-      }
-    }
-    if (operation === 'lookup') {
-      return {
-        type: 'object',
-        description: 'lookup：按干员、技能或事实卡名称精确查找。',
-        properties: { term: { type: 'string', minLength: 1, description: '非空干员、技能或事实卡名称' } },
-        required: ['term'],
-        additionalProperties: false,
-      }
-    }
-    return {
-      type: 'object',
-      description: 'query_operators：按至少一个正向分类条件找人，可附带排除 ID。',
-      properties: {
-        room: { type: 'string', minLength: 1, description: '设施/房间分类，例如制造站、贸易站' },
-        faction: { type: 'string', minLength: 1, description: '阵营分类' },
-        profession: { type: 'string', minLength: 1, description: '职业分类' },
-        termQuery: { type: 'string', minLength: 1, description: '名称或技能关键词' },
-        excludeIds: { type: 'array', items: { type: 'string', minLength: 1 }, description: '需要排除的事实卡 canonical ID' },
-      },
-      additionalProperties: false,
-      minProperties: 1,
-    }
-  })
+/** 返回当前模式实际发送的独立函数工具数组。 */
+export function toolsForRetriever(retriever: RetrieverId = 'bm25'): Record<string, unknown>[] {
+  return allowedOperations(retriever).map((name) => cloneJson(TOOL_DEFINITIONS[name]))
+}
+
+export function toolNamesForRetriever(retriever: RetrieverId = 'bm25'): CurrentToolId[] {
+  return allowedOperations(retriever)
+}
+
+/** 供运行 meta 与离线探针使用的稳定 schema 指纹。 */
+export function toolSchemaMetadata(retriever: RetrieverId = 'bm25'): {
+  toolSchemaVersion: number
+  toolSchemaSha256: string
+  toolNames: CurrentToolId[]
+} {
+  const tools = toolsForRetriever(retriever)
+  const serialized = stableJson(tools)
   return {
-    type: 'function',
-    function: {
-      name: 'knowledge',
-      description: '查询明日方舟基建知识库或事实记录卡；一次调用只执行一个 operation，params 必须匹配该 operation 的参数分支。',
-      parameters: {
-        type: 'object',
-        properties: {
-          operation: { type: 'string', enum: operations },
-          params: {
-            type: 'object',
-            description: 'operation 对应的参数对象；按 operation 选择下方唯一匹配的参数分支。query_operators 至少填写一个正向分类字段。',
-            oneOf: paramsSchemas,
-          },
-        },
-        required: ['operation', 'params'],
-        additionalProperties: false,
-      },
-    },
+    toolSchemaVersion: TOOL_SCHEMA_VERSION,
+    toolSchemaSha256: createHash('sha256').update(serialized).digest('hex'),
+    toolNames: toolNamesForRetriever(retriever),
   }
 }
 
+/**
+ * 兼容旧模块名的执行器工厂；新协议不再生成或接受 knowledge 外壳。
+ * 保留导出名称只避免内部迁移时复制预算实现。
+ */
 export function createKnowledgeToolExecutor(
   context: KnowledgeToolContext,
   limit: number,
@@ -143,6 +179,7 @@ export function createKnowledgeToolExecutor(
 
   async function executeBatch(calls: ToolCall[]): Promise<ToolBatchResult> {
     const protocolError = validateCallIds(calls)
+    // 缺失或重复 ID 会让宿主无法安全回写；整批不准入、不扣点、不执行。
     if (protocolError) return { results: [], snapshot: snapshot(), protocolError }
 
     state.requested += calls.length
@@ -155,7 +192,7 @@ export function createKnowledgeToolExecutor(
       if (index >= granted) {
         return Promise.resolve<ToolExecutionResult>({
           callId: call.id,
-          operation: readOperation(call.arguments),
+          operation: call.name,
           status: 'budget_exhausted',
           executed: false,
           data: '请依据已有证据作答，预算已用尽，未覆盖部分明确说明。',
@@ -171,9 +208,12 @@ export function createKnowledgeToolExecutor(
   return { executeBatch, snapshot }
 }
 
+export const createToolExecutor = createKnowledgeToolExecutor
+
 function validateCallIds(calls: ToolCall[]): string | undefined {
   const seen = new Set<string>()
   for (const call of calls) {
+    if (typeof call.id !== 'string') return '工具调用的 call ID 必须是字符串'
     const id = call.id.trim()
     if (!id) return '工具调用缺少可用于结果关联的 call ID'
     if (seen.has(id)) return `工具调用 call ID 重复：${id}`
@@ -189,43 +229,46 @@ async function executeOne(
   config: BenchConfig,
   state: ToolBudgetState,
 ): Promise<ToolExecutionResult> {
-  if (call.name !== 'knowledge') {
-    return result(call, readOperation(call.arguments), 'unknown_operation', false, `未知工具函数：${call.name}`, state)
+  if (!allowed.has(call.name as KnowledgeOperation)) {
+    return result(call, call.name, 'unknown_operation', false, `当前检索模式不开放工具：${call.name}`, state)
   }
-  const envelope = parseEnvelope(call.arguments)
-  if (!envelope.value) {
-    return result(call, undefined, 'invalid_params', false, envelope.reason ?? 'knowledge 参数无效', state)
-  }
-  const { operation, params } = envelope.value
-  if (!allowed.has(operation as KnowledgeOperation)) {
-    return result(call, operation, 'unknown_operation', false, `当前检索模式不开放 operation：${operation}`, state)
-  }
-
-  const parsed = parseOperationParams(operation, params)
+  const parsed = parseToolParams(call.name as KnowledgeOperation, call.arguments)
   if (!parsed.value) {
-    return result(call, operation, 'invalid_params', false, parsed.reason, state)
+    return result(call, call.name, 'invalid_params', false, parsed.reason, state)
   }
 
   state.executed++
   try {
-    const output = runOperation(operation as KnowledgeOperation, parsed.value, context, config)
-    const status: ToolResultStatus = output.data ? 'success' : 'empty'
+    const output = runOperation(call.name as KnowledgeOperation, parsed.value, context, config)
+    const status: ToolResultStatus = isFactTool(call.name)
+      ? output.hitIds.length > 0 ? 'success' : 'empty'
+      : output.data ? 'success' : 'empty'
+    const factsResult = isFactTool(call.name)
+      ? {
+          factsResultVersion: FACTS_RESULT_VERSION,
+          matchedCount: output.hitIds.length,
+          returnedCount: output.hitIds.length,
+          complete: true as const,
+          scope: parsed.value,
+        }
+      : undefined
     return {
       callId: call.id,
-      operation,
+      operation: call.name,
       status,
       executed: true,
-          data: output.data || '（无匹配结果）',
-          budgetRemaining: state.remaining,
-          actualParams: parsed.value,
-          hitIds: output.hitIds,
-          injectedIds: output.injectedIds,
-          message: state.remaining === 0 ? BUDGET_ANSWER_HINT : undefined,
+      data: output.data || '（无匹配结果）',
+      budgetRemaining: state.remaining,
+      actualParams: parsed.value,
+      hitIds: output.hitIds,
+      injectedIds: output.injectedIds,
+      factsResult,
+      message: state.remaining === 0 ? BUDGET_ANSWER_HINT : undefined,
     }
   } catch (error) {
     return result(
       call,
-      operation,
+      call.name,
       'error',
       true,
       error instanceof Error ? error.message : String(error),
@@ -259,62 +302,42 @@ function result(
   }
 }
 
-function parseEnvelope(args: string): { value?: { operation: string; params: Record<string, unknown> }; reason?: string } {
-  try {
-    const raw = JSON.parse(args) as unknown
-    if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return { reason: 'knowledge 参数必须是对象' }
-    const input = raw as Record<string, unknown>
-    if (typeof input.operation !== 'string' || !input.operation.trim()) return { reason: '缺少有效 operation' }
-    if (typeof input.params !== 'object' || input.params === null || Array.isArray(input.params)) return { reason: 'params 必须是对象' }
-    return { value: { operation: input.operation, params: input.params as Record<string, unknown> } }
-  } catch {
-    return { reason: 'knowledge 参数不是有效 JSON' }
-  }
-}
-
-function readOperation(args: string): string | undefined {
-  try {
-    const raw = JSON.parse(args) as Record<string, unknown>
-    return typeof raw?.operation === 'string' ? raw.operation : undefined
-  } catch {
-    return undefined
-  }
-}
-
-function parseOperationParams(
-  operation: string,
-  params: Record<string, unknown>,
+function parseToolParams(
+  tool: KnowledgeOperation,
+  args: string,
 ): { value?: Record<string, unknown>; reason: string } {
-  if (operation === 'rag_search' || operation === 'grep_search') {
-    const query = typeof params.query === 'string' ? params.query.trim() : ''
-    return query ? { value: { query }, reason: '' } : { reason: `${operation} 的 query 必须是非空字符串` }
+  let raw: unknown
+  try {
+    raw = JSON.parse(args)
+  } catch {
+    return { reason: `${tool} 参数不是有效 JSON；参数示例：${exampleFor(tool)}` }
   }
-  if (operation === 'lookup') {
-    const term = typeof params.term === 'string' ? params.term.trim() : ''
-    return term ? { value: { term }, reason: '' } : { reason: 'lookup 的 term 必须是非空字符串' }
+  if (!isObject(raw)) return { reason: `${tool} 参数必须是对象；参数示例：${exampleFor(tool)}` }
+
+  const allowedKeys = ['query']
+  const unknownKey = Object.keys(raw).find((key) => !allowedKeys.includes(key))
+  if (unknownKey) return { reason: `${tool} 不支持参数字段 ${unknownKey}；参数示例：${exampleFor(tool)}` }
+
+  if (tool === 'rag_search' || tool === 'grep_search') {
+    return parseRequiredString(raw, tool, 'query', exampleFor(tool))
   }
-  if (operation === 'query_operators') return parseFilters(params)
-  return { reason: `未知 operation：${operation}` }
+  return parseRequiredString(raw, tool, 'query', exampleFor(tool))
 }
 
-function parseFilters(input: Record<string, unknown>): { value?: Record<string, unknown>; reason: string } {
-  const filters: OperatorFilters = {}
-  const room = typeof input.room === 'string' ? input.room.trim() : ''
-  const faction = typeof input.faction === 'string' ? input.faction.trim() : ''
-  const profession = typeof input.profession === 'string' ? input.profession.trim() : ''
-  const termQuery = typeof input.termQuery === 'string' ? input.termQuery.trim() : ''
-  if (room) filters.room = room
-  if (faction) filters.faction = faction
-  if (profession) filters.profession = profession
-  if (termQuery) filters.termQuery = termQuery
-  if (Array.isArray(input.excludeIds)) {
-    const excludeIds = input.excludeIds.filter((value): value is string => typeof value === 'string').map((value) => value.trim()).filter(Boolean)
-    if (excludeIds.length > 0) filters.excludeIds = excludeIds
+function parseRequiredString(
+  input: JsonObject,
+  tool: string,
+  field: string,
+  example: string,
+): { value?: Record<string, unknown>; reason: string } {
+  if (typeof input[field] !== 'string' || input[field].trim() === '') {
+    return { reason: `${tool} 缺少非空字符串 ${field}；参数示例：${example}` }
   }
-  const hasPositiveCondition = Boolean(filters.room || filters.faction || filters.profession || filters.termQuery)
-  return hasPositiveCondition
-    ? { value: filters as Record<string, unknown>, reason: '' }
-    : { reason: 'query_operators 至少需要一个非空正向条件' }
+  return { value: { [field]: (input[field] as string).trim() }, reason: '' }
+}
+
+function exampleFor(tool: KnowledgeOperation): string {
+  return '{"query":"查询"}'
 }
 
 function runOperation(
@@ -344,13 +367,14 @@ function runOperation(
     return { data, hitIds, injectedIds }
   }
   const store = getCardStore()
-  if (operation === 'lookup') {
-    const hits = store.lookup(params.term as string)
-    return { data: serializeCards(hits), hitIds: hits.map((card) => card.canonical), injectedIds: hits.map((card) => card.canonical) }
+  const query = params.query as string
+  const matches = store.factsSearch(query)
+  const hits = matches.map((match) => match.card)
+  return {
+    data: serializeFactsMatches(query, matches),
+    hitIds: hits.map((card) => card.canonical),
+    injectedIds: hits.map((card) => card.canonical),
   }
-  const filters = params as OperatorFilters
-  const hits = store.queryOperators(filters)
-  return { data: serializeCards(hits, filters), hitIds: hits.map((card) => card.canonical), injectedIds: hits.map((card) => card.canonical) }
 }
 
 function ragInjectedIds(chunks: DocChunk[], hits: number[], maxChars: number): string[] {
@@ -372,6 +396,23 @@ export function serializeToolResult(item: ToolExecutionResult): string {
     executed: item.executed,
     data: item.data,
     budget_remaining: item.budgetRemaining,
+    ...(item.factsResult ?? {}),
     ...(item.message ? { message: item.message } : {}),
   })
+}
+
+function isObject(value: unknown): value is JsonObject {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function cloneJson<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T
+}
+
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`
+  if (isObject(value)) {
+    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableJson(value[key])}`).join(',')}}`
+  }
+  return JSON.stringify(value)
 }
