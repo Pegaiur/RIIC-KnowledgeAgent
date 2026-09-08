@@ -197,7 +197,6 @@ export function runHitrate(
 
 /**
  * 渲染 Markdown 报告：汇总曲线 + 逐题明细 + miss 位次。
- * TODO(tech-debt) D4：逐题 precision/nDCG 已在 QuestionHit 数据中算好，明细表仅渲染 recall 列；需要时补渲染。
  */
 export function renderHitrate(result: HitrateResult): string {
   const lines: string[] = [
@@ -219,9 +218,12 @@ export function renderHitrate(result: HitrateResult): string {
     )
   })
 
-  lines.push('', '## 逐题明细', '', '| 题目 | golden 数 | ' + result.topKs.map((k) => `@${k}`).join(' | ') + ' | 未命中（最大视野最佳位次） |', `|---|---|${result.topKs.map(() => '---').join('|')}|---|`)
+  lines.push('', '## 逐题明细', '', '| 题目 | golden 数 | ' + result.topKs.map((k) => `@${k}（R/P/nDCG）`).join(' | ') + ' | 未命中（最大视野最佳位次） |', `|---|---|${result.topKs.map(() => '---').join('|')}|---|`)
   for (const qh of result.perQuestion) {
-    const cells = qh.hits.map((h) => `${h}/${qh.total}`).join(' | ')
+    const cells = qh.hits.map((h, i) => {
+      const precision = qh.precSlots[i] === 0 ? 0 : qh.precHits[i] / qh.precSlots[i]
+      return `R ${h}/${qh.total}; P ${(precision * 100).toFixed(1)}% (${qh.precHits[i]}/${qh.precSlots[i]}); nDCG ${qh.ndcg[i].toFixed(3)}`
+    }).join(' | ')
     const missStr = qh.misses.length === 0
       ? '—'
       : qh.misses.map((m) => `${m.key}（${m.bestRank === null ? '视野外' : `第 ${m.bestRank} 位`}）`).join('；')

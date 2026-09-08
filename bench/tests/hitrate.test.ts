@@ -6,7 +6,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { buildIndex } from '../src/retriever.js'
-import { checkGold, loadGold, resolveGold, runHitrate } from '../src/hitrate.js'
+import { checkGold, loadGold, renderHitrate, resolveGold, runHitrate } from '../src/hitrate.js'
 import type { BenchQuery, DocChunk } from '../src/types.js'
 
 const chunks: DocChunk[] = [
@@ -129,6 +129,32 @@ describe('runHitrate', () => {
     const index = buildIndex(chunks)
     const gold = { Q2: { golden: ['a.md#幽灵节'] } }
     expect(() => runHitrate(index, chunks, [questions[1]], gold, [3])).toThrow(/幽灵节/)
+  })
+})
+
+describe('renderHitrate', () => {
+  it('逐题展示自定义 topK 的 recall、precision、nDCG，并保留 miss', () => {
+    const markdown = renderHitrate({
+      topKs: [1, 4],
+      recallMacro: [0.5, 1],
+      precisionMacro: [0, 0.25],
+      ndcgMacro: [0, 0.5],
+      perQuestion: [{
+        id: 'Q1',
+        total: 2,
+        hits: [1, 2],
+        precHits: [0, 1],
+        precSlots: [0, 4],
+        ndcg: [0, 0.5],
+        misses: [{ key: 'docs#缺失片段', bestRank: null }],
+      }],
+    })
+
+    expect(markdown).toContain('@1（R/P/nDCG）')
+    expect(markdown).toContain('@4（R/P/nDCG）')
+    expect(markdown).toContain('R 1/2; P 0.0% (0/0); nDCG 0.000')
+    expect(markdown).toContain('R 2/2; P 25.0% (1/4); nDCG 0.500')
+    expect(markdown).toContain('docs#缺失片段（视野外）')
   })
 })
 
