@@ -462,8 +462,8 @@ const PARENT_LEAD_LIMIT = 300
 const NAVIGATION_LIMIT = 8
 
 /**
- * 组装 RAG 命中正文，并在预算允许时附加小节上下文与导航。
- * 正文优先送达；标题路径、父级引导和导航只使用剩余空间，injectedIds 只记录真实送达的 chunk。
+ * 组装 RAG 命中正文，并在预算允许时附加小节上下文、上级范围入口与导航。
+ * 正文优先送达；小节标识、上级范围与导航只使用剩余空间，injectedIds 只记录真实送达的 chunk。
  */
 function buildRagData(
   chunks: DocChunk[],
@@ -484,7 +484,7 @@ function buildRagData(
   }
   let data = body.slice(0, maxChars)
   if (sections && data.length < maxChars && blocks.some((block) => block.section)) {
-    data = appendSectionContext(data, buildSectionContext(sections, blocks), maxChars)
+    data = appendSectionContext(data, buildSectionContext(sections, blocks, new Set(injectedIds)), maxChars)
   }
   return { data, injectedIds }
 }
@@ -495,48 +495,93 @@ function renderRagHeader(block: RagBlock): string {
   return `【${chunk.file} | ${chunk.heading} | L${chunk.startLine}-${chunk.endLine}】`
 }
 
-function buildSectionContext(sections: SectionDirectory, blocks: RagBlock[]): string[] {
-  const lines: string[] = ['【小节上下文】']
+/** 含可调用小节 ID 的行必须整行放入；空间不足时省略，绝不输出被截断的 ID。 */
+interface SectionContextLine {
+  text: string
+  atomic?: boolean
+}
+
+/**
+ * 组装小节上下文，顺序固定为：当前小节标识 → 上级范围入口 → 既有父级引导 → 兄弟导航。
+ * 上级范围入口只针对实际送达的命中小节，复用 parentId/get，不虚造无父级入口。
+ */
+function buildSectionContext(
+  sections: SectionDirectory,
+  blocks: RagBlock[],
+  delivered: Set<string>,
+): SectionContextLine[] {
+  const unique: Array<{ block: RagBlock; section: SectionEntry }> = []
   const seenSections = new Set<string>()
   for (const block of blocks) {
     const section = block.section
     if (!section || seenSections.has(section.sectionId)) continue
     seenSections.add(section.sectionId)
+    unique.push({ block, section })
+  }
+
+  const lines: SectionContextLine[] = [{ text: '【小节上下文】' }]
+  for (const { block, section } of unique) {
     const context = sections.contextFor(section.sectionId)
     const path = context && context.headingPath.length > 0 ? context.headingPath.join(' > ') : '（文档根节点）'
-    lines.push(`- ${section.sectionId}｜${block.chunk.file}｜标题路径：${path}`)
+    lines.push({ text: `- ${section.sectionId}｜${block.chunk.file}｜标题路径：${path}`, atomic: true })
+  }
+
+  const parentLines: SectionContextLine[] = []
+  const seenParents = new Set<string>()
+  for (const { block, section } of unique) {
+    if (!delivered.has(block.chunk.id) || !section.parentId || seenParents.has(section.parentId)) continue
+    const parent = sections.get(section.parentId)
+    if (!parent) continue
+    seenParents.add(parent.sectionId)
+    parentLines.push({ text: renderParentRangeEntry(parent), atomic: true })
+  }
+  if (parentLines.length > 0) {
+    lines.push({ text: '【上级范围入口】以下为包含下级小节的原文范围，不等同于符合问题条件的完整答案集。' })
+    lines.push(...parentLines)
+  }
+
+  for (const { section } of unique) {
+    const context = sections.contextFor(section.sectionId)
     if (context?.parentLead) {
-      lines.push(`  父级引导（L${context.parentLead.startLine}-${context.parentLead.endLine}）：${truncateLead(context.parentLead.text)}`)
+      lines.push({ text: `  父级引导（L${context.parentLead.startLine}-${context.parentLead.endLine}）：${truncateLead(context.parentLead.text)}` })
     }
   }
-  for (const file of [...new Set(blocks.map((block) => block.chunk.file))]) {
-    const first = blocks.find((block) => block.chunk.file === file && block.section)
-    if (!first?.section) continue
+
+  for (const file of [...new Set(unique.map(({ block }) => block.chunk.file))]) {
+    const first = unique.find(({ block }) => block.chunk.file === file)
+    if (!first) continue
     const navigation = sections.navigationFor(first.section.sectionId, NAVIGATION_LIMIT)
-    lines.push(`【小节导航】${file}`)
-    for (const item of navigation.items) lines.push(`- ${item.sectionId}｜${item.heading}`)
-    if (navigation.omitted > 0) lines.push(`（省略 ${navigation.omitted} 项）`)
+    lines.push({ text: `【小节导航】${file}` })
+    for (const item of navigation.items) lines.push({ text: `- ${item.sectionId}｜${item.heading}`, atomic: true })
+    if (navigation.omitted > 0) lines.push({ text: `（省略 ${navigation.omitted} 项）` })
   }
   return lines
+}
+
+/** 上级范围入口行：完整可复制 ID、文件、标题路径与正文 UTF-16 字符数。 */
+function renderParentRangeEntry(parent: SectionEntry): string {
+  const path = parent.level === 0 ? '（文档根节点）' : [...parent.ancestors, parent.heading].join(' > ')
+  return `- ${parent.sectionId}｜${parent.file}｜标题路径：${path}｜正文 ${parent.body.length} 字符`
 }
 
 function truncateLead(text: string): string {
   return text.length <= PARENT_LEAD_LIMIT ? text : `${text.slice(0, PARENT_LEAD_LIMIT)}…（截断）`
 }
 
-/** 按行追加小节上下文；空间不足时截断最后一项并标注。 */
-function appendSectionContext(data: string, lines: string[], maxChars: number): string {
+/** 按行追加小节上下文；含 ID 的行只整行放入或省略，普通引导文字仍按既有方式截断。 */
+function appendSectionContext(data: string, lines: SectionContextLine[], maxChars: number): string {
   let out = data
   lines.forEach((line, index) => {
     if (out.length >= maxChars) return
     const separator = index === 0 ? '\n\n' : '\n'
-    if (out.length + separator.length + line.length <= maxChars) {
-      out += `${separator}${line}`
+    if (out.length + separator.length + line.text.length <= maxChars) {
+      out += `${separator}${line.text}`
       return
     }
+    if (line.atomic) return
     const marker = '…（截断）'
     const room = maxChars - out.length - separator.length - marker.length
-    if (room > 0) out += `${separator}${line.slice(0, room)}${marker}`
+    if (room > 0) out += `${separator}${line.text.slice(0, room)}${marker}`
   })
   return out
 }
@@ -578,7 +623,7 @@ function readSectionOperation(
       status: 'error',
     }
   }
-  return { data: renderSectionPage(section, offset, config.maxContextChars), hitIds: [], injectedIds: [], status: 'success' }
+  return { data: renderSectionPage(section, offset, config.maxContextChars, directory), hitIds: [], injectedIds: [], status: 'success' }
 }
 
 /** 分页元数据（含与正文之间的空行）的保守长度，用于先扣除元数据预算。 */
@@ -605,14 +650,28 @@ function sectionMetaPrefix(
 }
 
 /** 渲染一页原文；元数据先占预算，必要时在行边界缩短，保证可续读且不丢中段。 */
-function renderSectionPage(section: SectionEntry, offset: number, maxContextChars: number): string {
+function renderSectionPage(section: SectionEntry, offset: number, maxContextChars: number, directory?: SectionDirectory): string {
   const remaining = section.body.length - offset
   const budget = Math.min(READ_SECTION_PAGE_CHARS, remaining, Math.max(0, maxContextChars - sectionMetaLength(section, offset)))
   let page = section.body.slice(offset, offset + budget)
   if (offset + page.length < section.body.length) page = cutAtLine(page)
   const nextOffset = offset + page.length
   const complete = nextOffset >= section.body.length
-  return `${sectionMetaPrefix(section, offset, page, complete ? null : nextOffset, complete)}\n\n${page}`
+  const core = `${sectionMetaPrefix(section, offset, page, complete ? null : nextOffset, complete)}\n\n${page}`
+  const parentLine = renderSectionParentLine(section, directory)
+  // 先按原算法确定正文页、next_offset 与 complete；仅在剩余空间足够时附加完整父级行，不重切正文。
+  if (!parentLine || core.length + 1 + parentLine.length > maxContextChars) return core
+  const separator = core.indexOf('\n\n')
+  return separator < 0 ? `${core}\n${parentLine}` : `${core.slice(0, separator)}\n${parentLine}${core.slice(separator)}`
+}
+
+/** 直接父级行：完整 ID、文件、标题路径与正文长度；无父级返回 null，不虚造。 */
+function renderSectionParentLine(section: SectionEntry, directory?: SectionDirectory): string | null {
+  if (!directory || !section.parentId) return null
+  const parent = directory.get(section.parentId)
+  if (!parent) return null
+  const path = parent.level === 0 ? '（文档根节点）' : [...parent.ancestors, parent.heading].join(' > ')
+  return `父级范围：${parent.sectionId}｜${parent.file}｜标题路径：${path}｜正文 ${parent.body.length} 字符（包含下级小节的原文范围）`
 }
 
 function countNewlines(text: string): number {

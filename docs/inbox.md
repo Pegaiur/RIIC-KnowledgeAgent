@@ -26,6 +26,8 @@
 
 ## 待办区
 
+- [x] **增加上级范围阅读入口与无增益搜索停止引导** — 依据引导优化对照（范围枚举题逐个 `read_section`、另一题重复 `rag_search`），复用 `SectionEntry.parentId` 为 RAG 增加「上级范围入口」、为 `read_section` 附加直接父级行，并在 `knowledge/AGENTS.md` 明确优先读取上级范围、不重复相同查询、搜索无新增证据时转向范围入口或按已有证据作答；未新增工具、未改 schema/检索/预算/知识事实。对照材料与 handoff 见 `dev-temp/work/scope-reading-test/`，真实对照待授权后执行。[实施计划](plan-scope-reading.md) — 2026-09-08
+
 - [x] **优化查询 Agent 引导指令的证据忠实度与补读时机** — 依据 4 题实跑观测（3 次 rag_search、1 次 facts_search、0 次 read_section，存在条件改写、初始解锁档位误释、声称人数与列举不一致），将 `knowledge/AGENTS.md` 由抽象决策契约改写为三段短规则（取证/忠实原文/作答），明确条件保留、检索名单与完整名单、read_section 与 next_offset/complete 语义、结论＋关键条件表达；保持唯一人工指令源，未改检索、工具、预算、知识事实或 agent loop。对照材料（改动前后快照、dev 4 题、冻结留出题 4 题、固定配置与 handoff）见 `dev-temp/work/guided-evidence-test/`；两方案各 8 题的真实对照待授权后执行，本轮未发起付费调用。[实施计划](plan-guided-evidence.md) — 2026-09-08
 
 - [x] **完善 harness 标题上下文与按小节读取** — 按用户要求推进实际取证能力；[实施计划](plan-section-navigation.md) 定义原文目录、RAG导航和 read_section，共享现有预算；[ADR-008](adr/ADR-008-section-navigation.md) 记录接口选择。已按 5 个阶段 TDD 实施并全量校验（typecheck/test/build/hitrate/doc-check），未启动真实模型调用，待发版归档。 — 2026-09-08

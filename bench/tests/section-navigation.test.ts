@@ -95,10 +95,12 @@ interface ParsedPage {
 
 function parsePage(data: string): ParsedPage {
   const lines = data.split('\n')
-  const match = /offset：(\d+)｜next_offset：(\d+|null)｜complete：(true|false)/.exec(lines[2] ?? '')
+  const blank = lines.indexOf('')
+  if (blank < 0) throw new Error(`无法解析 read_section 输出：${data}`)
+  const match = /offset：(\d+)｜next_offset：(\d+|null)｜complete：(true|false)/.exec(lines.slice(0, blank).join('\n'))
   if (!match) throw new Error(`无法解析 read_section 输出：${data}`)
   return {
-    page: lines.slice(4).join('\n'),
+    page: lines.slice(blank + 1).join('\n'),
     offset: Number(match[1]),
     nextOffset: match[2] === 'null' ? null : Number(match[2]),
     complete: match[3] === 'true',
@@ -175,6 +177,85 @@ describe('RAG 展示：标题上下文与导航', () => {
     expect(item.data).not.toContain('sec-')
     expect(item.data).not.toContain('【小节上下文】')
     expect(item.data).toContain('命中')
+  })
+
+  it('上级范围入口映射直接父级，同父级按命中顺序去重', async () => {
+    rebuildCorpus({
+      'base/父章.md': [
+        '# 父章',
+        '',
+        '父章正文。',
+        '',
+        '## 子甲',
+        '',
+        '共同关键词 甲。',
+        '',
+        '## 子乙',
+        '',
+        '共同关键词 乙。',
+        '',
+      ].join('\n'),
+    })
+    const parent = directory.sections.find((section) => section.heading === '父章')!
+    const result = await makeExecutor().executeBatch([call('a', 'rag_search', { query: '共同关键词' })])
+    const data = result.results[0]!.data
+
+    expect(data).toContain('【上级范围入口】以下为包含下级小节的原文范围')
+    const entry = `- ${parent.sectionId}｜base/父章.md｜标题路径：父章｜正文 ${parent.body.length} 字符`
+    expect(data).toContain(entry)
+    expect(data.split(entry).length - 1).toBe(1)
+    expect(result.results[0]!.hitIds?.every((id) => !id.startsWith('sec-'))).toBe(true)
+    expect(result.results[0]!.injectedIds?.every((id) => !id.startsWith('sec-'))).toBe(true)
+  })
+
+  it('无父级小节不虚造上级范围入口', async () => {
+    rebuildCorpus({ 'base/顶层.md': ['', '## 顶层', '', '顶层正文，独有关键词。', ''].join('\n') })
+    const top = directory.sections.find((section) => section.heading === '顶层')!
+    expect(top.parentId).toBeUndefined()
+    const result = await makeExecutor().executeBatch([call('a', 'rag_search', { query: '独有关键词' })])
+    const data = result.results[0]!.data
+
+    expect(data).toContain('【小节上下文】')
+    expect(data).toContain(top.sectionId)
+    expect(data).not.toContain('【上级范围入口】')
+  })
+
+  it('上级范围入口只整行送达：空间足够时完整可复制，不足时不挤占正文也不截断 ID', async () => {
+    const full = await makeExecutor().executeBatch([call('a', 'rag_search', { query: '制造站效率' })])
+    const fullData = full.results[0]!.data
+    const station = directory.sections.find((section) => section.heading === '制造站')!
+    const efficiency = directory.sections.find((section) => section.heading === '效率')!
+    expect(fullData).toContain(`- ${station.sectionId}｜base/制造.md｜标题路径：制造体系 > 制造站｜正文 ${station.body.length} 字符`)
+
+    const start = fullData.indexOf('【上级范围入口】')
+    expect(start).toBeGreaterThan(0)
+    const tight = await makeExecutor({ maxContextChars: start - 1 }).executeBatch([
+      call('b', 'rag_search', { query: '制造站效率' }),
+    ])
+    const tightData = tight.results[0]!.data
+
+    expect(tightData).toBe(fullData.slice(0, start - 1))
+    expect(tightData).not.toContain('【上级范围入口】')
+    expect(tightData).not.toContain('…（截断）')
+    expect(tightData).toContain(`- ${efficiency.sectionId}｜base/制造.md｜标题路径：制造体系 > 制造站 > 效率`)
+    expect(tightData.length).toBeLessThanOrEqual(start - 1)
+  })
+
+  it('首个可调用 ID 行放不下时整行省略，不输出截断 ID', async () => {
+    const baseline = baselineFor('制造站效率')
+    const header = '【小节上下文】'
+    const maxChars = baseline.length + 2 + header.length + 1
+    const result = await makeExecutor({ maxContextChars: maxChars }).executeBatch([
+      call('a', 'rag_search', { query: '制造站效率' }),
+    ])
+    const item = result.results[0]!
+
+    expect(item.data.startsWith(baseline)).toBe(true)
+    expect(item.data.endsWith(header)).toBe(true)
+    expect(item.data).not.toContain('sec-')
+    expect(item.data).not.toContain('…（截断）')
+    expect(item.data.length).toBeLessThanOrEqual(maxChars)
+    expect(item.injectedIds?.every((id) => !id.startsWith('sec-'))).toBe(true)
   })
 })
 
@@ -267,5 +348,89 @@ describe('read_section：按小节读取原文', () => {
     const result = await makeExecutor({}, false).executeBatch([call('a', 'read_section', { section_id: 'sec-任意' })])
     expect(result.results[0]).toMatchObject({ status: 'empty', executed: true })
     expect(result.results[0]!.data).toContain('未启用小节阅读')
+  })
+
+  it('读取结果附加直接父级 ID、标题路径与正文长度', async () => {
+    const efficiency = directory.sections.find((section) => section.heading === '效率')!
+    const station = directory.sections.find((section) => section.heading === '制造站')!
+    const result = await makeExecutor().executeBatch([call('a', 'read_section', { section_id: efficiency.sectionId })])
+    const data = result.results[0]!.data
+
+    expect(data).toContain(`父级范围：${station.sectionId}｜base/制造.md｜标题路径：制造体系 > 制造站｜正文 ${station.body.length} 字符（包含下级小节的原文范围）`)
+    expect(parsePage(data)).toMatchObject({ page: efficiency.body, nextOffset: null, complete: true })
+  })
+
+  it('父级行不改变原分页正文、next_offset 与工具计费', async () => {
+    const efficiency = directory.sections.find((section) => section.heading === '效率')!
+    const withParent = await makeExecutor().executeBatch([call('a', 'read_section', { section_id: efficiency.sectionId })])
+    const full = withParent.results[0]!.data
+    const parentLine = /^父级范围：.*$/m.exec(full)![0]!
+    const tightMax = full.length - 1
+
+    const tight = await makeExecutor({ maxContextChars: tightMax }).executeBatch([
+      call('b', 'read_section', { section_id: efficiency.sectionId }),
+    ])
+    const tightData = tight.results[0]!.data
+
+    expect(tightData).not.toContain('父级范围：')
+    expect(tightData).toBe(full.replace(`\n${parentLine}`, ''))
+    expect(parsePage(tightData)).toMatchObject(parsePage(full))
+    expect(parsePage(tightData).page).toBe(efficiency.body)
+    expect(withParent.snapshot).toMatchObject({ used: 1, executed: 1 })
+    expect(tight.snapshot).toMatchObject({ used: 1, executed: 1 })
+  })
+
+  it('通过上级范围入口读取含多个子节的原文并连续续读', async () => {
+    const longLine = '甲'.repeat(100)
+    const bodyLines = Array.from({ length: 70 }, () => longLine)
+    rebuildCorpus({
+      'base/长父章.md': [
+        '# 长父章',
+        '',
+        ...bodyLines,
+        '',
+        '## 子一',
+        '',
+        '子一正文。',
+        '',
+        '## 子二',
+        '',
+        '子二正文。',
+        '',
+      ].join('\n'),
+    })
+    const parent = directory.sections.find((section) => section.heading === '长父章')!
+    expect(parent.body).toContain('子一正文。')
+    expect(parent.body).toContain('子二正文。')
+
+    const rag = await makeExecutor().executeBatch([call('r', 'rag_search', { query: '子一正文' })])
+    const entry = new RegExp(
+      `- (sec-[0-9a-f]{16})｜base/长父章\\.md｜标题路径：长父章｜正文 ${parent.body.length} 字符`,
+    ).exec(rag.results[0]!.data)
+    expect(entry).not.toBeNull()
+    expect(entry![1]).toBe(parent.sectionId)
+
+    const executor = makeExecutor()
+    let offset = 0
+    let collected = ''
+    let pages = 0
+    for (let page = 0; page < 10; page++) {
+      const result = await executor.executeBatch([
+        call(`p${page}`, 'read_section', { section_id: entry![1], offset }),
+      ])
+      expect(result.results[0]!.status).toBe('success')
+      const parsed = parsePage(result.results[0]!.data)
+      expect(parsed.offset).toBe(offset)
+      collected += parsed.page
+      pages++
+      if (parsed.complete) break
+      offset = parsed.nextOffset!
+    }
+
+    expect(pages).toBeGreaterThan(1)
+    expect(collected).toBe(parent.body)
+    expect(collected).toContain('子一正文。')
+    expect(collected).toContain('子二正文。')
+    expect(executor.snapshot().used).toBe(pages)
   })
 })
