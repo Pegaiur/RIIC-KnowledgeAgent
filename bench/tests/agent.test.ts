@@ -20,7 +20,7 @@ vi.mock('../src/provider.js', () => ({ callLLM: mockCall }))
 describe('agent：独立函数工具 schema', () => {
   it('按模式直接暴露独立函数工具', () => {
     expect(toolsForRetriever('hybrid').map((tool) => (tool.function as { name: string }).name))
-      .toEqual(['rag_search', 'lookup', 'query_operators'])
+      .toEqual(['rag_search', 'facts_search'])
   })
 
   it('所有模式注入同一份决策契约，工具名随检索器切换', () => {
@@ -34,8 +34,8 @@ describe('agent：独立函数工具 schema', () => {
     ['bm25', 'rag_search'],
     ['grep', 'grep_search'],
     ['both', 'rag_search、grep_search'],
-    ['facts', 'lookup、query_operators'],
-    ['hybrid', 'rag_search、lookup、query_operators'],
+    ['facts', 'facts_search'],
+    ['hybrid', 'rag_search、facts_search'],
   ] as const)('%s 模式的能力块精确列出工具名', (retriever, expectedTools) => {
     const prompt = buildSystemPrompt(retriever, '唯一规则正文')
     const capabilityBlock = prompt.split('## 本次运行能力\n')[1]
@@ -49,14 +49,13 @@ describe('agent：独立函数工具 schema', () => {
     expect(prompt).toContain('可用工具：rag_search、grep_search')
   })
 
-  it('hybrid 模式：系统提示同时描述 RAG 与 facts 三个工具', () => {
+  it('hybrid 模式：系统提示同时描述 RAG 与 facts 两个工具', () => {
     const prompt = buildSystemPrompt('hybrid')
     expect(prompt).toContain('明日方舟基建查询 Agent 决策契约')
     expect(prompt).toContain('技能的解锁与提升')
     expect(prompt).toContain('rag_search')
-    expect(prompt).toContain('lookup')
-    expect(prompt).toContain('query_operators')
-    expect(prompt).toContain('可用工具：rag_search、lookup、query_operators')
+    expect(prompt).toContain('facts_search')
+    expect(prompt).toContain('可用工具：rag_search、facts_search')
   })
 
   it('人工契约保留通用证据边界，不注入基线题号或固定答案', () => {
@@ -70,7 +69,7 @@ describe('agent：独立函数工具 schema', () => {
   it('人工规则只从调用方提供的 AGENTS 内容注入一次', () => {
     const prompt = buildSystemPrompt('facts', '唯一规则正文')
     expect(prompt.match(/唯一规则正文/g)).toHaveLength(1)
-    expect(prompt).toContain('可用工具：lookup、query_operators')
+    expect(prompt).toContain('可用工具：facts_search')
     expect(prompt).not.toContain('结构化排版')
   })
 

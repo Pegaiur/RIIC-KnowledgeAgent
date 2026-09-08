@@ -206,6 +206,21 @@ describe('report：聚合与渲染', () => {
     expect(renderMarkdown(report)).toContain('工具调用：')
   })
 
+  it('当前与历史事实工具均按原名统计，不误判为 RAG', () => {
+    const report = aggregate([
+      rec({ tools: ['facts_search'] }),
+      rec({ tools: ['lookup'] }),
+      rec({ tools: ['query_operators'] }),
+      rec({ tools: ['rag_search'] }),
+    ])
+    expect(report.toolUsage).toEqual(expect.arrayContaining([
+      { tool: 'facts_search', calls: 1 },
+      { tool: 'lookup', calls: 1 },
+      { tool: 'query_operators', calls: 1 },
+    ]))
+    expect(report.toolUsage).toEqual(expect.arrayContaining([{ tool: 'rag_search', calls: 1 }]))
+  })
+
   it('Markdown 渲染含表头与总数', () => {
     const report = aggregate([rec({})])
     const md = renderMarkdown(report)
