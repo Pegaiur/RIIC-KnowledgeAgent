@@ -2,7 +2,7 @@
  * 语料加载与分块
  *
  * 输入：corpusDir/corpus-manifest.json 显式登记的 Markdown；未登记文件默认不进入检索。
- * 散文语料已废弃（2026-09-03，见 docs/notes-corpus-purge.md），facts-first 重建后本加载器由 lookup/query 取代
+ * 散文语料已废弃（2026-09-03，见 docs/notes-corpus-purge.md），facts-first 重建后 facts 模式由 facts_search 取代
  * 输出：按 ## / ### 标题切分的 DocChunk 数组；超长标题节按段落二次切分。
  */
 import { lstatSync, readFileSync, realpathSync, statSync } from 'node:fs'

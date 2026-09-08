@@ -387,7 +387,7 @@ function dryResult(messages: ChatMessage[], opts: ProviderOptions): ProviderResu
     if (round === 1) {
       return {
         content: null,
-        toolCalls: [{ id: 'call_dry_1', name: 'lookup', arguments: '{"term":"刻俄柏"}' }],
+        toolCalls: [{ id: 'call_dry_1', name: 'facts_search', arguments: '{"query":"刻俄柏"}' }],
         usage: dryUsage(6000, 620),
         model,
         truncated,
@@ -396,7 +396,7 @@ function dryResult(messages: ChatMessage[], opts: ProviderOptions): ProviderResu
     if (round === 2) {
       return {
         content: null,
-        toolCalls: [{ id: 'call_dry_2', name: 'query_operators', arguments: '{"room":"制造站"}' }],
+        toolCalls: [{ id: 'call_dry_2', name: 'facts_search', arguments: '{"query":"制造站"}' }],
         usage: dryUsage(6000 + round * 1800, 700),
         model,
         truncated,
@@ -423,7 +423,7 @@ function dryResult(messages: ChatMessage[], opts: ProviderOptions): ProviderResu
     if (round === 2) {
       return {
         content: null,
-        toolCalls: [{ id: 'call_dry_2', name: 'lookup', arguments: '{"term":"刻俄柏"}' }],
+        toolCalls: [{ id: 'call_dry_2', name: 'facts_search', arguments: '{"query":"刻俄柏"}' }],
         usage: dryUsage(6000 + round * 1800, 700),
         model,
         truncated,

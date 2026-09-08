@@ -8,8 +8,8 @@ export type ThinkingMode = 'off' | 'low' | 'high'
 /** LLM Provider 标识 */
 export type ProviderId = 'hy3' | 'qwen'
 
-/** 工具标识（hybrid 同时使用 rag_search 与 lookup/query_operators） */
-export type ToolId = 'rag_search' | 'grep_search' | 'lookup' | 'query_operators'
+/** 工具标识；lookup/query_operators 仅保留历史记录与内部兼容识别。 */
+export type ToolId = 'rag_search' | 'grep_search' | 'facts_search' | 'lookup' | 'query_operators'
 
 /** 检索分词器标识（bigram 零依赖默认；jieba 见 ADR-001） */
 export type TokenizerId = 'bigram' | 'jieba'
@@ -172,7 +172,17 @@ export function isRetrievalTool(name: string | ToolId): name is ToolId {
   return name === 'rag_search' || name === 'grep_search'
 }
 
-/** 是否为 facts 查询工具（lookup / query_operators）；facts 模式代理统计用 */
+/** 是否为当前 facts 查询工具；旧工具名不应生成新的 facts 结果元数据。 */
 export function isFactTool(name: string | ToolId): boolean {
+  return name === 'facts_search'
+}
+
+/** 是否为 facts 旧工具名；供历史记录、观测统计和旧 trace 兼容读取。 */
+export function isHistoricalFactTool(name: string | ToolId): boolean {
   return name === 'lookup' || name === 'query_operators'
+}
+
+/** 是否为可写入观测记录的当前或历史工具名。 */
+export function isObservedTool(name: string | ToolId): name is ToolId {
+  return isRetrievalTool(name) || isFactTool(name) || isHistoricalFactTool(name)
 }

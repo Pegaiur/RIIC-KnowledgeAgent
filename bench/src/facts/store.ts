@@ -2,16 +2,36 @@
  * 运行时记录卡内存 store + 检索索引（plan 步骤 5）。
  *
  * 运行时以最终门禁通过的全量 RecordCard 为源；fixture 只保留为回归基线。
- * lookup 返回精确 term 的命中卡列表（别名/合称/子串消歧后置）；
- * query_operators 做分类过滤（含 termQuery 字面子串）。不做落盘、不做来源标注。
+ * factsSearch 返回六类规范词条的精确并集；lookup/queryOperators 仅供旧数据调用者和历史回归使用。
+ * 不做落盘、不做自然语言解析、不做模糊或子串兜底。
  */
 import type { RecordCard } from './card.js'
 import { loadValidatedRecordCards } from './final.js'
 
+export type FactsMatchCategory = 'operator' | 'skill' | 'skillGroup' | 'room' | 'faction' | 'class'
+
+export const FACTS_MATCH_CATEGORY_ORDER: readonly FactsMatchCategory[] = [
+  'operator', 'skill', 'skillGroup', 'room', 'faction', 'class',
+]
+
+export const FACTS_MATCH_CATEGORY_LABEL: Record<FactsMatchCategory, string> = {
+  operator: '干员正式名',
+  skill: '技能',
+  skillGroup: '技能组',
+  room: '设施',
+  faction: '阵营',
+  class: '职业',
+}
+
 /**
- * TODO(tech-debt) R5-2：别名、合称与子串消歧仍未接入真实索引，当前只支持已核验的 canonical、技能名、技能组和等价组名精确查询；
- * 待建立独立别名/合称真源并完成歧义核对后，接入多卡 lookup 与交互式消歧。
+ * TODO(tech-debt) R5-2：历史 lookup 的别名、合称与子串消歧仍未接入独立真源；
+ * 待建立别名/合称真源并完成歧义核对后，再决定是否恢复旧数据调用者的多卡解析能力。
  */
+
+export interface FactsMatch {
+  card: RecordCard
+  categories: FactsMatchCategory[]
+}
 
 /** query_operators 过滤条件（正向条件由派发层校验；不含数值 minEff / 效率排序） */
 export interface OperatorFilters {
@@ -33,6 +53,10 @@ export interface CardStore {
   byAlias: Map<string, string[]>
   /** 检索词 → canonical[]（canonical / aliases / skills[].name / skillGroups） */
   byTerm: Map<string, Set<string>>
+  /** 统一 facts 词条 → 各命中类别 → canonical 集合；不含别名、备注或全文。 */
+  byFactTerm: Map<string, Map<FactsMatchCategory, Set<string>>>
+  /** 当前 facts 对外入口：六类词条精确命中后按卡稳定去重。 */
+  factsSearch: (query: string) => FactsMatch[]
   lookup: (term: string) => RecordCard[]
   queryOperators: (filters: OperatorFilters) => RecordCard[]
 }
@@ -54,17 +78,39 @@ function addTerm(byTerm: Map<string, Set<string>>, term: string, canonical: stri
   set.add(canonical)
 }
 
+function addFactTerm(
+  byFactTerm: Map<string, Map<FactsMatchCategory, Set<string>>>,
+  term: string,
+  category: FactsMatchCategory,
+  canonical: string,
+): void {
+  if (!term) return
+  let categories = byFactTerm.get(term)
+  if (!categories) {
+    categories = new Map()
+    byFactTerm.set(term, categories)
+  }
+  let canonicals = categories.get(category)
+  if (!canonicals) {
+    canonicals = new Set()
+    categories.set(category, canonicals)
+  }
+  canonicals.add(canonical)
+}
+
 /** 从记录卡数组构建检索 store（索引 + 查询函数） */
 export function buildCardStore(cards: RecordCard[]): CardStore {
   const byCanonical = new Map<string, RecordCard>()
   const byAlias = new Map<string, string[]>()
   const byTerm = new Map<string, Set<string>>()
+  const byFactTerm = new Map<string, Map<FactsMatchCategory, Set<string>>>()
 
   for (const card of cards) {
     if (!card.canonical) throw new Error('记录卡 canonical 不能为空')
     if (byCanonical.has(card.canonical)) throw new Error(`记录卡 canonical 重复：${card.canonical}`)
     byCanonical.set(card.canonical, card)
     addTerm(byTerm, card.canonical, card.canonical)
+    addFactTerm(byFactTerm, card.canonical, 'operator', card.canonical)
     for (const alias of card.aliases) {
       addTerm(byTerm, alias, card.canonical)
       const list = byAlias.get(alias) ?? []
@@ -73,9 +119,31 @@ export function buildCardStore(cards: RecordCard[]): CardStore {
     }
     for (const skill of card.skills) {
       addTerm(byTerm, skill.name, card.canonical)
-      for (const equivalenceName of skill.equivalenceSkillNames ?? []) addTerm(byTerm, equivalenceName, card.canonical)
+      addFactTerm(byFactTerm, skill.name, 'skill', card.canonical)
+      for (const equivalenceName of skill.equivalenceSkillNames ?? []) {
+        addTerm(byTerm, equivalenceName, card.canonical)
+        addFactTerm(byFactTerm, equivalenceName, 'skill', card.canonical)
+      }
     }
-    for (const group of card.skillGroups) addTerm(byTerm, group, card.canonical)
+    for (const group of card.skillGroups) {
+      addTerm(byTerm, group, card.canonical)
+      addFactTerm(byFactTerm, group, 'skillGroup', card.canonical)
+    }
+    for (const room of card.rooms) addFactTerm(byFactTerm, room, 'room', card.canonical)
+    for (const faction of card.factionGroups) addFactTerm(byFactTerm, faction, 'faction', card.canonical)
+    addFactTerm(byFactTerm, card.class, 'class', card.canonical)
+  }
+
+  /** facts_search：一个完整词条的精确并集；同卡跨类别只返回一次。 */
+  const factsSearch = (query: string): FactsMatch[] => {
+    const term = (query ?? '').trim()
+    if (!term) return []
+    const categories = byFactTerm.get(term)
+    if (!categories) return []
+    return cards.flatMap((card) => {
+      const matched = FACTS_MATCH_CATEGORY_ORDER.filter((category) => categories.get(category)?.has(card.canonical))
+      return matched.length > 0 ? [{ card, categories: matched }] : []
+    })
   }
 
   /** lookup：精确 term → 命中卡列表（canonical/别名/技能名/技能组 均在 byTerm 统一解析） */
@@ -101,7 +169,7 @@ export function buildCardStore(cards: RecordCard[]): CardStore {
     })
   }
 
-  return { cards, byCanonical, byAlias, byTerm, lookup, queryOperators }
+  return { cards, byCanonical, byAlias, byTerm, byFactTerm, factsSearch, lookup, queryOperators }
 }
 
 function skillsInRoom(card: RecordCard, room?: string): RecordCard['skills'] {
@@ -138,11 +206,22 @@ export function serializeCards(cards: RecordCard[], filters: CardSerializationFi
   return filters.queryOperators ? `${operatorScopeNotice()}\n${content}` : content
 }
 
+/** 渲染当前 facts_search 的完整卡结果，并保留每张卡的精确命中依据。 */
+export function serializeFactsMatches(query: string, matches: FactsMatch[]): string {
+  const term = query.trim()
+  if (matches.length === 0) return `未收录精确词条：${term}`
+  const categories = FACTS_MATCH_CATEGORY_ORDER.filter((category) => matches.some((match) => match.categories.includes(category)))
+    .map((category) => FACTS_MATCH_CATEGORY_LABEL[category])
+  const header = `精确词条：${term}\n匹配说明：命中 ${matches.length} 张记录卡；命中类别包括：${categories.join('、')}。以下为完整记录卡。`
+  const content = matches.map((match) => serializeCard(match.card, {}, match.categories)).join('\n\n')
+  return `${header}\n${content}`
+}
+
 function operatorScopeNotice(): string {
   return '查询范围说明：卡头中的设施、阵营、职业，以及技能组和卡级备注属于干员全局属性，不代表当前设施专属；下方技能按本次查询条件投影，未必包含该卡全部技能。'
 }
 
-function serializeCard(card: RecordCard, filters: CardSerializationFilters): string {
+function serializeCard(card: RecordCard, filters: CardSerializationFilters, matchCategories?: FactsMatchCategory[]): string {
   const scopedSkills = skillsInRoom(card, filters.room)
   const q = (filters.termQuery ?? '').trim()
   const matchingSkills = q
@@ -152,6 +231,9 @@ function serializeCard(card: RecordCard, filters: CardSerializationFilters): str
   const lines = [
     `【${card.canonical}】${card.rarity}星·${card.class}｜设施：${card.rooms.join('、')}｜阵营：${card.factionGroups.join('、') || '无'}`,
   ]
+  if (matchCategories && matchCategories.length > 0) {
+    lines.push(`匹配类别：${matchCategories.map((category) => FACTS_MATCH_CATEGORY_LABEL[category]).join('、')}`)
+  }
   for (const skill of skills) {
     const room = skill.room?.trim() || '未知设施'
     const note = skill.notes === undefined ? '' : `；备注：${skill.notes}`

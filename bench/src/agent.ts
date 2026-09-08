@@ -11,7 +11,7 @@ import type { IndexEntry } from './retriever.js'
 import type { DocChunk, BenchQuery, CostRecord, HttpAttempt, LlmUsage, TerminationReason, ThinkingMode, ToolBatchStats, ToolId } from './types.js'
 import { callLLM, type ChatMessage, type ProviderCallLedger, type ProviderOptions } from './provider.js'
 import { aggregateAttemptCosts, aggregateUsages, computeCosts } from './pricing.js'
-import { isRetrievalTool, isFactTool } from './types.js'
+import { isObservedTool } from './types.js'
 import { markTraceFailed, type QueryTrace, type TraceFailure, type TraceLlmEvent, type TraceToolEvent } from './trace.js'
 import {
   createKnowledgeToolExecutor,
@@ -186,7 +186,7 @@ export async function runQuery(
       const costs = accountingCosts(resp.usage, httpAttempts, config)
       const requestedTools = resp.toolCalls
         .map((tc) => tc.name)
-        .filter((name): name is ToolId => isRetrievalTool(name) || isFactTool(name))
+        .filter((name): name is ToolId => isObservedTool(name))
       const record: CostRecord = {
         ts: now,
         queryId: query.id,
@@ -293,7 +293,7 @@ export async function runQuery(
         }
         toolTrace.push(batch.results
           .map((item) => item.operation)
-          .filter((name): name is ToolId => typeof name === 'string' && (isRetrievalTool(name) || isFactTool(name))))
+          .filter((name): name is ToolId => typeof name === 'string' && isObservedTool(name)))
         if (fatalResult) throw new AgentExecutionError(fatalResult.message ?? '工具执行失败', 'tool_error', 'tool')
         messages.push(...pendingMessages)
         continue

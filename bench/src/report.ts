@@ -1,7 +1,7 @@
 /**
  * 报告聚合：JSONL 记录 → Markdown 报告 + CSV
  */
-import { isRetrievalTool, isFactTool, type CostRecord, type LlmUsage } from './types.js'
+import { isObservedTool, type CostRecord, type LlmUsage } from './types.js'
 import { aggregateUsages } from './pricing.js'
 import type { BenchSnapshot } from './snapshot.js'
 
@@ -352,7 +352,7 @@ function aggregateToolUsage(records: CostRecord[]): ToolUsageAgg[] {
   const counter = new Map<string, number>()
   for (const r of records) {
     for (const t of r.tools ?? []) {
-      if (isRetrievalTool(t) || isFactTool(t)) counter.set(t, (counter.get(t) ?? 0) + 1)
+      if (isObservedTool(t)) counter.set(t, (counter.get(t) ?? 0) + 1)
     }
   }
   return [...counter.entries()]
