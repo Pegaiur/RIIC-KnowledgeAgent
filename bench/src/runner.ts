@@ -17,6 +17,7 @@ import {
   createRunInputs,
   markFactsCaptured,
   markFactsLoadFailed,
+  redactSensitiveText,
   writeRunInputs,
 } from './inputs.js'
 
@@ -159,6 +160,7 @@ export async function runBenchmark(
       } else {
         failed++
         const message = result.failure?.message ?? `查询未完成：${result.terminationReason}`
+        const safeMessage = redactSensitiveText(message, [config.apiKey])
         answers.push({
           queryId: q.id,
           category: q.category,
@@ -171,17 +173,18 @@ export async function runBenchmark(
           feedbackUsed: result.feedbackUsed,
           budgetUsed: result.budget.used,
           budgetRemaining: result.budget.remaining,
-          answer: `（查询未完成：${message}）`,
+          answer: `（查询未完成：${safeMessage}）`,
         })
         if (result.failure) markTraceFailed(trace, result.failure)
-        process.stderr.write(`问题 ${q.id} 未完成：${message}\n`)
+        process.stderr.write(`问题 ${q.id} 未完成：${safeMessage}\n`)
       }
     } catch (err) {
       // 单题失败不中断整批：记录失败原因，继续下一题
       failed++
       injectedMap[q.id] = []
       const msg = err instanceof Error ? err.message : String(err)
-      process.stderr.write(`问题 ${q.id} 失败：${msg}\n`)
+      const safeMessage = redactSensitiveText(msg, [config.apiKey])
+      process.stderr.write(`问题 ${q.id} 失败：${safeMessage}\n`)
       answers.push({
         queryId: q.id,
         category: q.category,
@@ -194,7 +197,7 @@ export async function runBenchmark(
         feedbackUsed: false,
         budgetUsed: 0,
         budgetRemaining: config.toolBudget,
-        answer: `（查询失败：${msg}）`,
+        answer: `（查询失败：${safeMessage}）`,
       })
       markTraceFailed(trace, {
         stage: trace.failure?.stage ?? 'runner',
