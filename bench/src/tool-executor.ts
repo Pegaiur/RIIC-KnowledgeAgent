@@ -393,7 +393,7 @@ function parseRequiredString(
 }
 
 function exampleFor(tool: KnowledgeOperation): string {
-  return '{"query":"查询"}'
+  return tool === 'read_section' ? '{"section_id":"检索结果中的小节 ID"}' : '{"query":"查询"}'
 }
 
 function runOperation(

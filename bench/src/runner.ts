@@ -5,12 +5,13 @@ import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join, relative, resolve } from 'node:path'
 import { loadConfig, type BenchConfig } from './config.js'
 import { loadCorpus } from './corpus.js'
+import { buildSectionDirectory } from './sections.js'
 import { buildIndex, currentEntityBoost, currentTokenizer } from './retriever.js'
 import { buildSystemPrompt, loadKnowledgeAgentInstructions, runQuery, type AgentOptions } from './agent.js'
 import type { BenchQuery, CostRecord, TerminationReason, ThinkingMode } from './types.js'
 import { createQueryTrace, markTraceFailed, serializeTrace } from './trace.js'
 import { aggregate } from './report.js'
-import { toolSchemaMetadata, toolsForRetriever } from './tool-executor.js'
+import { supportsReadSection, toolSchemaMetadata, toolsForRetriever } from './tool-executor.js'
 import {
   collectSourceMetadata,
   completeRunInputs,
@@ -72,6 +73,8 @@ export async function runBenchmark(
   // 语料 + 索引（一次构建，全部查询复用；facts 模式不依赖散文语料——语料目录已删除，跳过加载以空占位）
   const chunks = config.retriever === 'facts' ? [] : loadCorpus(config.corpusDir, config.maxContextChars)
   const index = buildIndex(chunks)
+  // 小节目录仅在开放阅读能力的模式（bm25/hybrid/both）加载；与检索同用白名单原文来源。
+  const sections = supportsReadSection(config.retriever) ? buildSectionDirectory(config.corpusDir) : undefined
 
   const temperatureTag = config.temperature === undefined ? 'default' : `t${config.temperature}`
   const runTag = `${new Date().toISOString().replace(/[:.]/g, '-')}-${config.provider}-${opts.thinking}-${temperatureTag}`
@@ -95,6 +98,7 @@ export async function runBenchmark(
     toolDefinitions,
     questions,
     chunks,
+    sections,
     sourceAtStart,
   })
   // inputs.json 必须在首个 provider 调用前存在；之后只更新同一内存快照的 facts 观测状态。
@@ -115,6 +119,7 @@ export async function runBenchmark(
     config,
     agentInstructions,
     systemPrompt,
+    sections,
     onFactsStoreUsed: observeFactsStore,
     onFactsStoreLoadFailed: observeFactsFailure,
     thinking: opts.thinking,

@@ -42,6 +42,18 @@
 - **原因**：固定文本行便于模型与离线样例解析，也避免 JSON 转义原文；越界属参数问题而非执行结果，按既有 invalid_params 语义处理。
 - **后果**：read_section 的 hitIds/injectedIds 恒为空数组，不进入搜索命中统计；`TOOL_SCHEMA_VERSION` 由 5 递增至 6，report 按 `isObservedTool` 计入 read_section 调用次数。
 
+### 2026-09-08 — 运行接入与 inputs 小节指纹
+- **spec 原文**：runner 为使用阅读能力的模式加载目录并传给执行器；inputs 增加可选的小节源内容指纹与目录版本，指纹覆盖本次阅读能返回的原文。
+- **实际做法**：runner 仅对 bm25/hybrid/both 调用 `buildSectionDirectory`，同一实例同时传给 `runQuery`（执行器上下文）与 `createRunInputs`；`inputs.sections` 记录 `version`、`sectionCount`、`sectionsSha256`（覆盖目录内全部原文，含长节与被 clamp 的 chunk 之外的正文）、`orderPreserved`。grep/facts 不加载目录，inputs 不含 `sections` 字段。
+- **原因**：目录与检索共用白名单来源但各自独立读取一次；指纹单独记录，不保存第二份全库副本，也不改变旧字段含义。
+- **后果**：`knowledge/AGENTS.md` 增加一条取证决策；旧 inputs/snapshot 缺少 `sections` 仍可读取。
+
+### 2026-09-08 — 导航生成口径与极端预算兜底
+- **spec 原文**：每个命中文档附一次小节导航；read_section 服从 maxContextChars 对工具 data 的上限。
+- **实际做法**：同一文件多个命中小节时，导航以该文件首个带小节的命中块生成一次（其直接兄弟与子小节）；read_section 在 `maxContextChars` 小于分页元数据长度时强制至少返回 1 个字符，保证 next_offset 前进、不会死循环，该极端配置下 data 可能略超上限。
+- **原因**：导航是「每文档一次」的有限补充，按首个命中小节即可覆盖该文档层级；分页必须保证可续读，避免模型卡死。
+- **后果**：默认 `maxContextChars=12000`、页上限 6000，兜底分支不触发；如需严格不超限，可在后续轮次对元数据自身做截断。
+
 ## 债务记录
 > 遗留的技术债、被牺牲的改进与延期偿还事项
 

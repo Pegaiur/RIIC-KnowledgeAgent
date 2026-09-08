@@ -12,6 +12,7 @@ import type { DocChunk, BenchQuery, CostRecord, HttpAttempt, LlmUsage, Terminati
 import { callLLM, type ChatMessage, type ProviderCallLedger, type ProviderOptions } from './provider.js'
 import { aggregateAttemptCosts, aggregateUsages, computeCosts } from './pricing.js'
 import { isObservedTool } from './types.js'
+import type { SectionDirectory } from './sections.js'
 import { markTraceFailed, type QueryTrace, type TraceFailure, type TraceLlmEvent, type TraceToolEvent } from './trace.js'
 import type { CardStore } from './facts/store.js'
 import {
@@ -53,6 +54,8 @@ export interface AgentOptions {
   onFactsStoreUsed?: (store: CardStore) => void
   /** facts store 加载失败时的观测回调；工具仍返回原有错误。 */
   onFactsStoreLoadFailed?: (error: unknown) => void
+  /** 运行级原文小节目录；由 runner 按开放阅读能力的模式提供。 */
+  sections?: SectionDirectory
   /** 可选的单题执行记录。 */
   trace?: QueryTrace
   thinking: ThinkingMode
@@ -114,6 +117,7 @@ export async function runQuery(
     query,
     chunks,
     index,
+    sections: opts.sections,
     injectedIds,
     onFactsStoreUsed: opts.onFactsStoreUsed,
     onFactsStoreLoadFailed: opts.onFactsStoreLoadFailed,

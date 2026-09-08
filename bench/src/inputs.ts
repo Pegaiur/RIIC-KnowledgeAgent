@@ -8,6 +8,7 @@ import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { BenchConfig } from './config.js'
 import type { CardStore } from './facts/store.js'
+import type { SectionDirectory } from './sections.js'
 import { currentEntityBoost, currentTokenizer } from './retriever.js'
 import type { BenchQuery, DocChunk, ThinkingMode, TokenizerId } from './types.js'
 
@@ -108,6 +109,13 @@ export interface RunInputs {
     fields: string[]
     orderPreserved: true
   }
+  /** 仅在开放阅读能力的模式提供；指纹覆盖本次阅读可返回的原文，而非被 clamp 的 chunks。 */
+  sections?: {
+    version: number
+    sectionCount: number
+    sectionsSha256: string
+    orderPreserved: true
+  }
   facts: FactsInputObservation
 }
 
@@ -125,6 +133,8 @@ export interface RunInputsOptions {
   toolDefinitions: unknown[]
   questions: BenchQuery[]
   chunks: DocChunk[]
+  /** 可选的运行级小节目录；仅开放阅读能力的模式提供。 */
+  sections?: SectionDirectory
   sourceAtStart: SourceMetadata
 }
 
@@ -203,6 +213,16 @@ export function createRunInputs(options: RunInputsOptions): RunInputs {
       fields: ['id', 'file', 'heading', 'text', 'anchor', 'startLine', 'endLine'],
       orderPreserved: true,
     },
+    ...(options.sections
+      ? {
+          sections: {
+            version: options.sections.version,
+            sectionCount: options.sections.sections.length,
+            sectionsSha256: options.sections.fingerprint(),
+            orderPreserved: true as const,
+          },
+        }
+      : {}),
     facts: { status: 'not_used' },
   }
 }
