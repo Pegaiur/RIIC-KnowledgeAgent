@@ -6,6 +6,7 @@ import { createHash } from 'node:crypto'
 import { loadConfig, type BenchConfig, type RetrieverId } from './config.js'
 import { grepSearch, buildGrepResult } from './grep-retriever.js'
 import { search, type IndexEntry } from './retriever.js'
+import type { SectionDirectory, SectionEntry } from './sections.js'
 import { isFactTool, type BenchQuery, type DocChunk, type ToolCall, type ToolId } from './types.js'
 import { getCardStore, serializeFactsMatches, type CardStore } from './facts/store.js'
 
@@ -67,6 +68,8 @@ export interface KnowledgeToolContext {
   query: BenchQuery
   chunks: DocChunk[]
   index: IndexEntry
+  /** 运行级原文小节目录；仅开放阅读能力的模式提供，用于展示上下文与 read_section。 */
+  sections?: SectionDirectory
   /** 由 Agent 共享的全题注入去重列表。 */
   injectedIds?: string[]
   /** 仅在 facts 工具实际取得 store 后通知 runner；不主动触发惰性加载。 */
@@ -356,18 +359,20 @@ function runOperation(
       ? grepSearch(context.chunks, query, config.topK)
       : search(context.index, query, config.topK)
     const hitIds = hits.map((index) => context.chunks[index]?.id).filter((id): id is string => Boolean(id))
-    const injectedIds = operation === 'grep_search'
-      ? hitIds
-      : ragInjectedIds(context.chunks, hits, config.maxContextChars)
+    let data: string
+    let injectedIds: string[]
+    if (operation === 'grep_search') {
+      // grep 结果格式本轮保持原样，不附加小节上下文。
+      data = buildGrepResult(context.chunks, hits, query, config.maxContextChars)
+      injectedIds = hitIds
+    } else {
+      const built = buildRagData(context.chunks, hits, config.maxContextChars, context.sections)
+      data = built.data
+      injectedIds = built.injectedIds
+    }
     for (const id of injectedIds) {
       if (context.injectedIds && !context.injectedIds.includes(id)) context.injectedIds.push(id)
     }
-    const data = operation === 'grep_search'
-      ? buildGrepResult(context.chunks, hits, query, config.maxContextChars)
-      : hits.map((index) => {
-          const chunk = context.chunks[index]
-          return `【${chunk.file} | ${chunk.heading} | L${chunk.startLine}-${chunk.endLine}】\n${chunk.text}`
-        }).join('\n\n').slice(0, config.maxContextChars)
     return { data, hitIds, injectedIds }
   }
   let store: CardStore
@@ -396,16 +401,94 @@ function runOperation(
   }
 }
 
-function ragInjectedIds(chunks: DocChunk[], hits: number[], maxChars: number): string[] {
-  let offset = 0
-  const injected: string[] = []
-  for (const index of hits) {
-    const chunk = chunks[index]
-    const block = `【${chunk.file} | ${chunk.heading} | L${chunk.startLine}-${chunk.endLine}】\n${chunk.text}`
-    if (offset < maxChars) injected.push(chunk.id)
-    offset += block.length + 2
+interface RagBlock {
+  chunk: DocChunk
+  section?: SectionEntry
+}
+
+/** 父级引导展示上限；超出时截断并标注。 */
+const PARENT_LEAD_LIMIT = 300
+/** 每个命中文档的小节导航上限。 */
+const NAVIGATION_LIMIT = 8
+
+/**
+ * 组装 RAG 命中正文，并在预算允许时附加小节上下文与导航。
+ * 正文优先送达；标题路径、父级引导和导航只使用剩余空间，injectedIds 只记录真实送达的 chunk。
+ */
+function buildRagData(
+  chunks: DocChunk[],
+  hits: number[],
+  maxChars: number,
+  sections?: SectionDirectory,
+): { data: string; injectedIds: string[] } {
+  const blocks: RagBlock[] = hits.map((index) => {
+    const chunk = chunks[index]!
+    return { chunk, section: sections?.findByChunk(chunk.file, chunk.heading, chunk.startLine) }
+  })
+
+  let body = ''
+  const injectedIds: string[] = []
+  for (const block of blocks) {
+    if (body.length < maxChars) injectedIds.push(block.chunk.id)
+    body += `${body ? '\n\n' : ''}${renderRagHeader(block)}\n${block.chunk.text}`
   }
-  return injected
+  let data = body.slice(0, maxChars)
+  if (sections && data.length < maxChars && blocks.some((block) => block.section)) {
+    data = appendSectionContext(data, buildSectionContext(sections, blocks), maxChars)
+  }
+  return { data, injectedIds }
+}
+
+function renderRagHeader(block: RagBlock): string {
+  const { chunk } = block
+  const base = `${chunk.file} | ${chunk.heading} | L${chunk.startLine}-${chunk.endLine}`
+  return block.section ? `【${base} | ${block.section.sectionId}】` : `【${base}】`
+}
+
+function buildSectionContext(sections: SectionDirectory, blocks: RagBlock[]): string[] {
+  const lines: string[] = ['【小节上下文】']
+  const seenSections = new Set<string>()
+  for (const block of blocks) {
+    const section = block.section
+    if (!section || seenSections.has(section.sectionId)) continue
+    seenSections.add(section.sectionId)
+    const context = sections.contextFor(section.sectionId)
+    const path = context && context.headingPath.length > 0 ? context.headingPath.join(' > ') : '（文档根节点）'
+    lines.push(`- ${section.sectionId}｜${block.chunk.file}｜标题路径：${path}`)
+    if (context?.parentLead) {
+      lines.push(`  父级引导（L${context.parentLead.startLine}-${context.parentLead.endLine}）：${truncateLead(context.parentLead.text)}`)
+    }
+  }
+  for (const file of [...new Set(blocks.map((block) => block.chunk.file))]) {
+    const first = blocks.find((block) => block.chunk.file === file && block.section)
+    if (!first?.section) continue
+    const navigation = sections.navigationFor(first.section.sectionId, NAVIGATION_LIMIT)
+    lines.push(`【小节导航】${file}`)
+    for (const item of navigation.items) lines.push(`- ${item.sectionId}｜${item.heading}`)
+    if (navigation.omitted > 0) lines.push(`（省略 ${navigation.omitted} 项）`)
+  }
+  return lines
+}
+
+function truncateLead(text: string): string {
+  return text.length <= PARENT_LEAD_LIMIT ? text : `${text.slice(0, PARENT_LEAD_LIMIT)}…（截断）`
+}
+
+/** 按行追加小节上下文；空间不足时截断最后一项并标注。 */
+function appendSectionContext(data: string, lines: string[], maxChars: number): string {
+  let out = data
+  lines.forEach((line, index) => {
+    if (out.length >= maxChars) return
+    const separator = index === 0 ? '\n\n' : '\n'
+    if (out.length + separator.length + line.length <= maxChars) {
+      out += `${separator}${line}`
+      return
+    }
+    const marker = '…（截断）'
+    const room = maxChars - out.length - separator.length - marker.length
+    if (room > 0) out += `${separator}${line.slice(0, room)}${marker}`
+  })
+  return out
 }
 
 /** 将执行结果写成 tool message；同一对象同时用于 trace 的 writtenContent。 */
