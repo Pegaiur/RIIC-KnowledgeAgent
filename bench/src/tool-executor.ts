@@ -7,7 +7,7 @@ import { loadConfig, type BenchConfig, type RetrieverId } from './config.js'
 import { grepSearch, buildGrepResult } from './grep-retriever.js'
 import { search, type IndexEntry } from './retriever.js'
 import { isFactTool, type BenchQuery, type DocChunk, type ToolCall, type ToolId } from './types.js'
-import { getCardStore, serializeFactsMatches } from './facts/store.js'
+import { getCardStore, serializeFactsMatches, type CardStore } from './facts/store.js'
 
 export type KnowledgeOperation = ToolId
 
@@ -69,6 +69,10 @@ export interface KnowledgeToolContext {
   index: IndexEntry
   /** 由 Agent 共享的全题注入去重列表。 */
   injectedIds?: string[]
+  /** 仅在 facts 工具实际取得 store 后通知 runner；不主动触发惰性加载。 */
+  onFactsStoreUsed?: (store: CardStore) => void
+  /** facts store 加载失败时通知 runner，随后继续抛出原错误。 */
+  onFactsStoreLoadFailed?: (error: unknown) => void
 }
 
 export interface KnowledgeToolExecutor {
@@ -366,7 +370,22 @@ function runOperation(
         }).join('\n\n').slice(0, config.maxContextChars)
     return { data, hitIds, injectedIds }
   }
-  const store = getCardStore()
+  let store: CardStore
+  try {
+    store = getCardStore()
+  } catch (error) {
+    try {
+      context.onFactsStoreLoadFailed?.(error)
+    } catch {
+      // 观测回调不得遮蔽原工具错误。
+    }
+    throw error
+  }
+  try {
+    context.onFactsStoreUsed?.(store)
+  } catch {
+    // 观测回调不得改变 facts 工具的执行语义。
+  }
   const query = params.query as string
   const matches = store.factsSearch(query)
   const hits = matches.map((match) => match.card)

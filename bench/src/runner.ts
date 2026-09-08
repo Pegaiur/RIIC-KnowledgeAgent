@@ -1,18 +1,24 @@
 /**
  * 基准运行器：跑问题集 → 写 JSONL 成本记录
  */
-import { createHash } from 'node:crypto'
-import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join, relative, resolve } from 'node:path'
-import { execFileSync } from 'node:child_process'
 import { loadConfig, type BenchConfig } from './config.js'
 import { loadCorpus } from './corpus.js'
-import { buildIndex } from './retriever.js'
-import { loadKnowledgeAgentInstructions, runQuery, type AgentOptions } from './agent.js'
+import { buildIndex, currentEntityBoost, currentTokenizer } from './retriever.js'
+import { buildSystemPrompt, loadKnowledgeAgentInstructions, runQuery, type AgentOptions } from './agent.js'
 import type { BenchQuery, CostRecord, TerminationReason, ThinkingMode } from './types.js'
 import { createQueryTrace, markTraceFailed, serializeTrace } from './trace.js'
 import { aggregate } from './report.js'
-import { toolSchemaMetadata } from './tool-executor.js'
+import { toolSchemaMetadata, toolsForRetriever } from './tool-executor.js'
+import {
+  collectSourceMetadata,
+  completeRunInputs,
+  createRunInputs,
+  markFactsCaptured,
+  markFactsLoadFailed,
+  writeRunInputs,
+} from './inputs.js'
 
 export interface RunOutput {
   records: CostRecord[]
@@ -28,6 +34,8 @@ export interface RunOutput {
   injectedPath: string
   /** 单题执行记录路径（每题一行，可人工复盘） */
   tracePath: string
+  /** 非敏感运行输入记录路径 */
+  inputsPath: string
   elapsedMs: number
 }
 
@@ -55,8 +63,10 @@ export async function runBenchmark(
   const config = opts.config ?? loadConfig()
   const started = Date.now()
   const agentInstructions = loadKnowledgeAgentInstructions()
-  const agentInstructionsSha256 = createHash('sha256').update(agentInstructions).digest('hex')
+  const systemPrompt = buildSystemPrompt(config.retriever, agentInstructions, config.toolBudget)
   const toolSchema = toolSchemaMetadata(config.retriever)
+  const toolDefinitions = toolsForRetriever(config.retriever)
+  const sourceAtStart = collectSourceMetadata()
 
   // 语料 + 索引（一次构建，全部查询复用；facts 模式不依赖散文语料——语料目录已删除，跳过加载以空占位）
   const chunks = config.retriever === 'facts' ? [] : loadCorpus(config.corpusDir, config.maxContextChars)
@@ -71,9 +81,44 @@ export async function runBenchmark(
   const jsonlPath = join(runDir, 'records.jsonl')
   const metaPath = join(runDir, 'meta.json')
   const tracePath = join(runDir, 'trace.jsonl')
+  const inputsPath = join(runDir, 'inputs.json')
   writeFileSync(tracePath, '', 'utf-8')
 
-  const agentOptsBase: Omit<AgentOptions, 'trace'> = { config, agentInstructions, thinking: opts.thinking, dry: opts.dry }
+  const runInputs = createRunInputs({
+    config,
+    thinking: opts.thinking,
+    dry: opts.dry,
+    agentInstructions,
+    systemPrompt,
+    toolSchema,
+    toolDefinitions,
+    questions,
+    chunks,
+    sourceAtStart,
+  })
+  // inputs.json 必须在首个 provider 调用前存在；之后只更新同一内存快照的 facts 观测状态。
+  writeRunInputs(inputsPath, runInputs)
+  let factsObservationFinished = false
+  const observeFactsStore = (store: Parameters<typeof markFactsCaptured>[1]): void => {
+    if (factsObservationFinished) return
+    factsObservationFinished = true
+    markFactsCaptured(runInputs, store)
+  }
+  const observeFactsFailure = (error: unknown): void => {
+    if (factsObservationFinished) return
+    factsObservationFinished = true
+    markFactsLoadFailed(runInputs, error, [config.apiKey])
+  }
+
+  const agentOptsBase: Omit<AgentOptions, 'trace'> = {
+    config,
+    agentInstructions,
+    systemPrompt,
+    onFactsStoreUsed: observeFactsStore,
+    onFactsStoreLoadFailed: observeFactsFailure,
+    thinking: opts.thinking,
+    dry: opts.dry,
+  }
   const lines: string[] = []
   const answers: AnswerRecord[] = []
   /** 每题实际注入上下文的 chunk id（R1 注入覆盖率判定用） */
@@ -187,10 +232,16 @@ export async function runBenchmark(
         feedbackOnNoToolAnswer: config.feedbackOnNoToolAnswer,
         toolChoice: 'auto',
         parallelToolCalls: config.provider === 'qwen',
-        agentInstructionsSha256,
+        agentInstructionsSha256: runInputs.agentInstructions.sha256,
         ...toolSchema,
-        tokenizer: config.tokenizer,
-        entityBoost: config.entityBoost,
+        maxTokens: config.maxTokens,
+        inputsSchemaVersion: runInputs.schemaVersion,
+        inputsFileSha256: (() => {
+          completeRunInputs(runInputs)
+          return writeRunInputs(inputsPath, runInputs)
+        })(),
+        tokenizer: currentTokenizer(),
+        entityBoost: currentEntityBoost(),
         topK: config.topK,
         maxContextChars: config.maxContextChars,
         corpusDir: config.corpusDir,
@@ -244,6 +295,7 @@ export async function runBenchmark(
     answersPath,
     injectedPath,
     tracePath,
+    inputsPath,
     elapsedMs: Date.now() - started,
   }
 }
@@ -255,26 +307,6 @@ function renderAnswers(answers: AnswerRecord[]): string {
     return `## ${a.queryId}（${a.category}）\n\n- 问题：${a.question}\n- 状态：${a.status}｜终止：${a.terminationReason}\n- 模型步骤：${a.rounds}｜工具批次：${a.toolRounds}｜预算：${a.budgetUsed}/${a.budgetUsed + a.budgetRemaining}${toolLine}\n- 宿主回馈：${a.feedbackUsed ? '是' : '否'}\n\n${a.answer ?? '（无最终回答）'}`
   })
   return ['# 查询回答记录', '', '> 供人工抽查答案质量，不参与成本评估。', '', ...blocks].join('\n')
-}
-
-/** 在运行时记录源码版本；失败时保留 null，不用导出时的 HEAD 回填。 */
-function collectSourceMetadata(): Record<string, unknown> {
-  let gitHead: string | null = null
-  let gitDirty: boolean | null = null
-  try {
-    gitHead = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: process.cwd(), encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] }).trim() || null
-    gitDirty = execFileSync('git', ['status', '--porcelain', '--untracked-files=all'], { cwd: process.cwd(), encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] }).trim().length > 0
-  } catch {
-    // 非 Git 副本或 git 不可用时如实保留缺失信息。
-  }
-  let packageVersion: string | null = null
-  try {
-    const packageJson = JSON.parse(readFileSync(join(process.cwd(), 'package.json'), 'utf-8')) as { version?: unknown }
-    packageVersion = typeof packageJson.version === 'string' ? packageJson.version : null
-  } catch {
-    // package.json 缺失时不阻塞运行。
-  }
-  return { nodeVersion: process.version, packageVersion, gitHead, gitDirty, metadataCapturedAt: new Date().toISOString() }
 }
 
 /** 只记录仓库内题集的相对路径；仓库外题集依靠元信息中的嵌入定义导出。 */
