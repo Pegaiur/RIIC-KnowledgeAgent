@@ -5,6 +5,7 @@
 | 分类 | 入口与用途 |
 |---|---|
 | 待决策事项 | [inbox](inbox.md)：仅保留未结束需求 |
+| 下一轮能力迭代 | [标题上下文与小节读取](plan-section-navigation.md)：RAG导航与read_section，待实施 |
 | 施工计划 | [harness 首轮迭代](plan-harness-next-iteration.md)：输入可复核性、既有回答全量复核、离线检索诊断；已通过独立计划审查 |
 | 活跃草案 | [性能评估](draft-harness-performance.md)、[实体标记验证](draft-entity-marking-probe.md)：待确定是否实施，文中旧协议描述属于历史观察 |
 | 长期核查规格 | [spec](spec/rag-answer-baseline.md)：跨运行复用的判定口径 |
