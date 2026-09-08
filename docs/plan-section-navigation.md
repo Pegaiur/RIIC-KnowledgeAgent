@@ -1,7 +1,7 @@
 # 标题上下文与按小节读取优化计划
 
 > 创建日期：2026-09-08
-> 状态：待实施
+> 状态：实施完成，待发版归档
 > 需求入口：[inbox](inbox.md)
 
 ## 目标
@@ -75,12 +75,12 @@ runner 为使用阅读能力的模式加载目录并传给执行器；直接 run
 
 ## 验收清单
 
-- [ ] 运行级原文目录与H1–H6层级可用，现有chunk ID和排序不变
-- [ ] RAG返回真实标题上下文、有限导航，字符限制与送达记录一致
-- [ ] read_section实现连续分页、范围检查、共享预算和明确的搜索统计边界
-- [ ] 工具模式、schema v6、调用方、trace/report、inputs兼容接入
-- [ ] 简短取证指令与4个离线开发样例完成，不新增真实模型请求
-- [ ] typecheck/test/build/hitrate/doc-check/diff检查完成，记录结果并收尾
+- [x] 运行级原文目录与H1–H6层级可用，现有chunk ID和排序不变
+- [x] RAG返回真实标题上下文、有限导航，字符限制与送达记录一致
+- [x] read_section实现连续分页、范围检查、共享预算和明确的搜索统计边界
+- [x] 工具模式、schema v6、调用方、trace/report、inputs兼容接入
+- [x] 简短取证指令与4个离线开发样例完成，不新增真实模型请求
+- [x] typecheck/test/build/hitrate/doc-check/diff检查完成，记录结果并收尾
 
 ## 关联 ADR
 

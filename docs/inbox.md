@@ -26,7 +26,7 @@
 
 ## 待办区
 
-- [ ] **完善 harness 标题上下文与按小节读取** — 按用户要求推进实际取证能力；[实施计划](plan-section-navigation.md) 定义原文目录、RAG导航和 read_section，共享现有预算；[ADR-008](adr/ADR-008-section-navigation.md) 记录接口选择。当前仅提交计划，待实施，不以前轮报告审定作为开发前置。 — 2026-09-08
+- [x] **完善 harness 标题上下文与按小节读取** — 按用户要求推进实际取证能力；[实施计划](plan-section-navigation.md) 定义原文目录、RAG导航和 read_section，共享现有预算；[ADR-008](adr/ADR-008-section-navigation.md) 记录接口选择。已按 5 个阶段 TDD 实施并全量校验（typecheck/test/build/hitrate/doc-check），未启动真实模型调用，待发版归档。 — 2026-09-08
 
 - [x] **完成 v4 重评草案的全量语义复核** — [复核草案](reports/draft-answer-baseline-v4.md) 已按固定 spec v4 完成 40 份原答、144 个必答项、全部额外断言及逐题送达归因核对，并保留 69/59/15/1 状态计数；仍为 draft 待独立审定，不指定正式质量基线，不改 spec、知识事实或追分，不重新请求模型。 — 2026-09-08
 

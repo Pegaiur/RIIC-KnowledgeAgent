@@ -1,10 +1,11 @@
 import { createHash } from 'node:crypto'
-import { readFileSync, readdirSync, mkdtempSync, rmSync } from 'node:fs'
+import { mkdirSync, readFileSync, readdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, afterEach, vi } from 'vitest'
 import { EXPERIMENT, loadConfig } from '../src/config.js'
 import { buildIndex } from '../src/retriever.js'
+import { buildSectionDirectory } from '../src/sections.js'
 import {
   captureJson,
   captureText,
@@ -102,6 +103,40 @@ describe('运行输入记录', () => {
       sourceAtStart: collectSourceMetadata(process.cwd(), () => ''),
     })
     expect(inputs.config).toMatchObject({ tokenizer: 'bigram', entityBoost: 0, declaredTokenizer: 'jieba', declaredEntityBoost: 1.5 })
+  })
+
+  it('可选小节指纹只在提供目录时写入，且与目录指纹一致', () => {
+    const corpusDir = mkdtempSync(join(tmpdir(), 'rag-inputs-sections-'))
+    try {
+      mkdirSync(join(corpusDir, 'base'), { recursive: true })
+      writeFileSync(join(corpusDir, 'base', 'a.md'), '# 总览\n\n## 制造站\n\n制造站正文。\n', 'utf-8')
+      writeFileSync(join(corpusDir, 'corpus-manifest.json'), JSON.stringify({ files: ['base/a.md'] }), 'utf-8')
+      const directory = buildSectionDirectory(corpusDir)
+      const config = loadConfig()
+      const base = {
+        config,
+        thinking: 'off' as const,
+        dry: true,
+        agentInstructions: '规则',
+        systemPrompt: '规则',
+        toolSchema: { toolSchemaVersion: 6, toolSchemaSha256: 'a'.repeat(64), toolNames: ['rag_search'] },
+        toolDefinitions: [],
+        questions: [],
+        chunks: [],
+        sourceAtStart: collectSourceMetadata(process.cwd(), () => ''),
+      }
+      expect(createRunInputs({ ...base, sections: directory }).sections).toEqual({
+        version: 1,
+        sectionCount: 2,
+        sectionsSha256: directory.fingerprint(),
+        orderPreserved: true,
+      })
+      writeFileSync(join(corpusDir, 'base', 'a.md'), '# 总览\n\n## 制造站\n\n制造站正文（改）。\n', 'utf-8')
+      expect(buildSectionDirectory(corpusDir).fingerprint()).not.toBe(directory.fingerprint())
+      expect(createRunInputs(base).sections).toBeUndefined()
+    } finally {
+      rmSync(corpusDir, { recursive: true, force: true })
+    }
   })
 
   it('LF/CRLF 保持原字符串指纹，敏感正文脱敏但保留原始哈希', () => {
