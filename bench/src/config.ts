@@ -8,7 +8,7 @@
  *   - Qwen3.7-Flash：DASHSCOPE_API_KEY（DashScope / 阿里云百炼，OpenAI 兼容端点）
  */
 import type { ProviderId, TokenizerId } from './types.js'
-import { HY3_PRICES, QWEN_PRICES, type Prices } from './pricing.js'
+import { DEEPSEEK_PRICES, GLM_PRICES, HY3_PRICES, QWEN_PRICES, type Prices } from './pricing.js'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
@@ -32,6 +32,26 @@ export interface ProviderSpec {
 
 /** provider 注册表（默认值兜底） */
 export const PROVIDERS: Record<ProviderId, ProviderSpec> = {
+  deepseek: {
+    id: 'deepseek',
+    label: 'DeepSeek-V4-Flash-Vision-Exp',
+    apiKeyEnv: 'DEEPSEEK_API_KEY',
+    secretKey: 'deepseek-api-key',
+    baseUrl: 'https://api.deepseek.com',
+    chatPath: '/chat/completions',
+    model: 'deepseek-v4-flash-vision-exp',
+    prices: DEEPSEEK_PRICES,
+  },
+  glm: {
+    id: 'glm',
+    label: 'GLM-5.3-Flash',
+    apiKeyEnv: 'ZAI_API_KEY',
+    secretKey: 'zai-api-key',
+    baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
+    chatPath: '/chat/completions',
+    model: 'glm-5.3-flash',
+    prices: GLM_PRICES,
+  },
   hy3: {
     id: 'hy3',
     label: '腾讯混元 Hy3',
@@ -150,7 +170,8 @@ export interface BenchConfig {
 export function loadConfig(providerInput?: ProviderId): BenchConfig {
   // 实验开关一律取自 EXPERIMENT（不读 env，防 shell 残留污染）；仅 API Key 走 secret/env 兜底（密钥约定）
   const provider = providerInput ?? EXPERIMENT.provider
-  const spec = PROVIDERS[provider] ?? PROVIDERS.qwen
+  const spec = PROVIDERS[provider]
+  if (!spec) throw new Error(`不支持的 provider：${provider}`)
   return {
     provider: spec.id,
     providerLabel: spec.label,

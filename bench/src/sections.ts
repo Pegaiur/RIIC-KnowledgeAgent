@@ -70,8 +70,6 @@ export interface SectionDirectory {
   contextFor(sectionId: string): SectionContext | undefined
   /** 直接兄弟＋子小节，按原文顺序去重后截断。 */
   navigationFor(sectionId: string, limit?: number): SectionNavigation
-  /** 覆盖本次阅读可返回原文的内容指纹。 */
-  fingerprint(): string
 }
 
 interface ParsedHeading {
@@ -148,7 +146,6 @@ export function buildSectionDirectory(corpusRoot: string): SectionDirectory {
     findByChunk: (file, heading, startLine) => findByChunk(sections, file, heading, startLine),
     contextFor: (sectionId) => contextFor(byId, sectionId),
     navigationFor: (sectionId, limit = 8) => navigationFor(sections, sectionId, limit),
-    fingerprint: () => fingerprintOf(sections),
   }
 }
 
@@ -286,28 +283,4 @@ function navigationFor(sections: SectionEntry[], sectionId: string, limit: numbe
   })
   const items = ordered.slice(0, limit).map((section) => ({ sectionId: section.sectionId, heading: section.heading }))
   return { items, omitted: Math.max(0, ordered.length - items.length) }
-}
-
-function fingerprintOf(sections: SectionEntry[]): string {
-  const payload = sections.map((section) => ({
-    sectionId: section.sectionId,
-    file: section.file,
-    heading: section.heading,
-    level: section.level,
-    ancestors: section.ancestors,
-    headingLine: section.headingLine,
-    startLine: section.startLine,
-    endLine: section.endLine,
-    body: section.body,
-  }))
-  return createHash('sha256').update(stableJson(payload), 'utf-8').digest('hex')
-}
-
-function stableJson(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`
-  if (typeof value === 'object' && value !== null) {
-    const record = value as Record<string, unknown>
-    return `{${Object.keys(record).sort().map((key) => `${JSON.stringify(key)}:${stableJson(record[key])}`).join(',')}}`
-  }
-  return JSON.stringify(value) ?? 'null'
 }

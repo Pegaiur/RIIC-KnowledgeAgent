@@ -13,6 +13,8 @@
 | 2026-09-09 | — | [plan-guided-evidence.md](plan-guided-evidence.md) | plan-guided-evidence |
 | 2026-09-09 | — | [plan-scope-reading.md](plan-scope-reading.md) | plan-scope-reading |
 | 2026-09-09 | — | [plan-answer-format.md](plan-answer-format.md) | plan-answer-format |
+| 2026-09-09 | — | [plan-model-provider-adaptation.md](plan-model-provider-adaptation.md) | GLM-5.3-Flash low、Hy3 off、Qwen3.7-Flash off 显式调用与计量契约适配 |
+| 2026-09-09 | — | [plan-deepseek-provider.md](plan-deepseek-provider.md) | DeepSeek 型号显式 off 调用与缓存计量适配 |
 | 2026-09-08 | — | [plan-facts-single-query.md](plan-facts-single-query.md) | plan-facts-single-query |
 | 2026-09-08 | — | [plan-facts-tool-optimization.md](plan-facts-tool-optimization.md) | plan-facts-tool-optimization |
 | 2026-09-08 | — | [plan-independent-tools-schema.md](plan-independent-tools-schema.md) | plan-independent-tools-schema |

@@ -24,6 +24,7 @@
 7. **答错不自动触发修复**：知识库问答的正确率是观测指标，不是默认固定验收值。跑测答错、分数下降或回答不理想，应如实记录结果与证据；不得自行设定达标线、将其升级为开发缺陷或反复修改直到答对。
 8. **harness 修改须有独立依据**：仅当证据表明实现违反既定需求或契约时，才按当前任务范围修复（如工具协议、计量或数据读取错误）；模型答错本身不构成依据。以提升回答质量为目的修改提示词、检索、工具策略、预算或 agent loop，须有用户明确授权的优化任务；否则只报告问题与建议。
 9. **禁止针对评测题追分**：不得为通过当前题集添加题号、问法或预期答案特判，向运行时注入评测答案，或通过修改评分口径、筛选重跑结果掩盖失败。获授权的质量优化也应采用可泛化方案，并用未参与调优的问题验证；知识库事实修订须依据真源，不能以模型输出或评测分数替代事实证据。
+10. **默认禁止新增哈希/指纹字段**：除非用户明确提出，不得新增 sha256 / fingerprint 等哈希字段；留档或溯源改用可读字段或交给版本控制，不引入本项目并不需要的校验复杂度。
 
 | # | 规则 | 详情 |
 | - | ---- | ---- |
@@ -72,7 +73,7 @@ rag-test/
 │   ├── plan-*.md / draft-*.md      ← 版本计划 / 未定稿工程提案
 │   ├── exp-*.md                   ← 试验过程、结果和结论
 │   ├── spec/                       ← 评测/核查规格（长期复用资产，如 RAG 20 题回答核查基线）
-│   ├── templates/                  ← ADR/plan/notes 机械模板
+│   ├── templates/                  ← ADR/plan/notes/exp 机械模板
 │   ├── rules/                      ← 复杂规则权威目录
 │   ├── adr/                        ← 架构决策记录（INDEX.md 为状态索引）
 │   └── archive/                    ← 已归档计划（INDEX.md）；exp/ 存已结束试验
@@ -125,7 +126,7 @@ node scripts/verify.mjs merge -- --base main   # 合并门禁
 | [`docs/exp-answer-baseline-v4.md`](docs/exp-answer-baseline-v4.md) | 按 spec v4 的核查试验（已完成全量复核，待独立审定） |
 | [`docs/exp-harness-performance.md`](docs/exp-harness-performance.md) | 试验记录：性能测量与后续候选 |
 | [`docs/rules/`](docs/rules/) | 复杂规则权威目录 |
-| [`docs/templates/`](docs/templates/) | ADR/plan/notes 机械模板唯一权威目录 |
+| [`docs/templates/`](docs/templates/) | ADR/plan/notes/exp 机械模板唯一权威目录 |
 | [`docs/adr/INDEX.md`](docs/adr/INDEX.md) | ADR 状态索引 |
 | [`docs/archive/INDEX.md`](docs/archive/INDEX.md) | 已完成计划归档索引 |
 | [`scripts/INDEX.md`](scripts/INDEX.md) | 开发脚本体系导航 |

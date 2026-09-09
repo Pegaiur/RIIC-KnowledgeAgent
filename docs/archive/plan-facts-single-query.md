@@ -202,8 +202,8 @@ facts模式仅暴露facts_search；hybrid暴露rag_search和facts_search。bm25/
 
 ### 2026-09-08 — 两次完整20题运行的答案逐题记录
 - A（旧双 facts 入口）与 B（新单词条 facts 入口）各有一次完整20题运行，形成共40条 worker 初次逐题记录；这不是本次后续独立复核全部40条回答的结论。两次题目定义逐字段一致，20/20 仅表示完成，不表示正确。
-- 详细的20行判定、正确覆盖/遗漏/错误、真源位置、trace/injected 证据归因、汇总及改善/回退清单见 [`docs/review-facts-single-query-answer-quality.md`](exp/exp-facts-single-query-answer-quality.md)。
-- worker初始定性标签为 A：完整8/20、部分12/20；B：完整10/20、部分10/20。后续复核已撤回原汇总：B/F09不应判完整，B/S03仍有成员错误，A/F07漏记无依据的自动回宿舍扩写；尚未再次全量复核40份回答，因此不提供新的总计或最终改善/退步计数。详细逐题证据见[`docs/review-facts-single-query-answer-quality.md`](exp/exp-facts-single-query-answer-quality.md)；这两次样本不隔离纯schema因果，也不设正式质量基线。
+- 详细的20行判定、正确覆盖/遗漏/错误、真源位置、trace/injected 证据归因、汇总及改善/回退清单见 [`docs/archive/exp/exp-facts-single-query-answer-quality.md`](exp/exp-facts-single-query-answer-quality.md)。
+- worker初始定性标签为 A：完整8/20、部分12/20；B：完整10/20、部分10/20。后续复核已撤回原汇总：B/F09不应判完整，B/S03仍有成员错误，A/F07漏记无依据的自动回宿舍扩写；尚未再次全量复核40份回答，因此不提供新的总计或最终改善/退步计数。详细逐题证据见[`docs/archive/exp/exp-facts-single-query-answer-quality.md`](exp/exp-facts-single-query-answer-quality.md)；这两次样本不隔离纯schema因果，也不设正式质量基线。
 - 本次核查未修改 harness、知识事实、题集、评分规格或运行提示，未重跑付费模型，未提交/合并/归档；两次运行原件继续保留以支持报告复核。
 
 ## 阻塞与解决

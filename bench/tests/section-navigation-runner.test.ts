@@ -67,7 +67,6 @@ describe('read_section 运行链路接入', () => {
       expect(inputs.sections).toMatchObject({
         version: 1,
         sectionCount: expect.any(Number),
-        sectionsSha256: expect.stringMatching(/^[0-9a-f]{64}$/),
         orderPreserved: true,
       })
 

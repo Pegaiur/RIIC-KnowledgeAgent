@@ -24,6 +24,13 @@ function rec(partial: Partial<CostRecord>): CostRecord {
 }
 
 describe('report：聚合与渲染', () => {
+  it('缺失思考分项保持未知，不被聚合为零', () => {
+    const report = aggregate([rec({ reasoning: null }), rec({ reasoning: 2 })])
+    expect(report.byQuery[0].reasoningTokens).toBeNull()
+    expect(report.byThinking[0].reasoningTokens).toBeNull()
+    expect(report.byProvider[0].reasoningTokens).toBeNull()
+    expect(renderMarkdown(report)).toContain('未知')
+  })
   it('按查询聚合轮数与 tokens', () => {
     const records = [
       rec({ queryId: 'Q1', round: 1, output: 800 }),

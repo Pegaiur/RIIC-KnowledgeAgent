@@ -6,7 +6,7 @@
 export type ThinkingMode = 'off' | 'low' | 'high'
 
 /** LLM Provider 标识 */
-export type ProviderId = 'hy3' | 'qwen'
+export type ProviderId = 'hy3' | 'qwen' | 'glm' | 'deepseek'
 
 /** 工具标识；lookup/query_operators 仅保留历史记录与内部兼容识别。 */
 export type ToolId = 'rag_search' | 'grep_search' | 'facts_search' | 'read_section' | 'lookup' | 'query_operators'
@@ -51,9 +51,9 @@ export interface LlmUsage {
   input: number | null
   /** completion_tokens（含思考 token 与工具调用参数） */
   output: number | null
-  /** prompt_tokens_details.cached_tokens；接口允许省略时为 0，显式无效时为 null */
+  /** 缓存命中量；有效 usage 且接口允许省略时为 0，未取得用量或必需分项无效时为 null */
   cached: number | null
-  /** completion_tokens_details.reasoning_tokens；接口允许省略时为 0，显式无效时为 null */
+  /** completion_tokens_details.reasoning_tokens；缺失或无效时为 null，不据此推断思考开关 */
   reasoning: number | null
   /** 已观察到的输入 token 小计；exact input 未知时仍可保留非空尝试的小计。 */
   knownInput?: number | null
@@ -98,7 +98,7 @@ export interface CostRecord {
   knownOutput?: number | null
   /** 缓存命中输入 token 数 */
   cached: number | null
-  /** 思考 token 数（reasoning_tokens），无则为 0 */
+  /** 思考 token 数（reasoning_tokens），缺失或无效时为 null */
   reasoning: number | null
   /** 输入费用（元） */
   costIn: number | null

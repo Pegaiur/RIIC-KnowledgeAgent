@@ -32,10 +32,10 @@ import { readSnapshot, snapshotFromRunDir, writeSnapshot } from './snapshot.js'
 function printUsage(): void {
   process.stdout.write(
     [
-      'rag-test bench —— LLM 查询输出成本基准（Hy3 / Qwen3.7-Flash）',
+      'rag-test bench —— LLM 查询输出成本基准（Hy3 / Qwen3.7-Flash / GLM-5.3-Flash / DeepSeek-V4-Flash-Vision-Exp）',
       '',
       '用法：',
-      '  node dist/cli.js run [--provider hy3|qwen] [--thinking off|low|high] [--temperature N] [--retriever bm25|grep|both|facts|hybrid] [--tool-budget N] [--session-timeout-ms N] [--min-rag 0|1] [--limit N] [--dry] [--questions <path>] [--out <dir>]',
+      '  node dist/cli.js run [--provider hy3|qwen|glm|deepseek] [--thinking off|low|high] [--temperature N] [--retriever bm25|grep|both|facts|hybrid] [--tool-budget N] [--session-timeout-ms N] [--min-rag 0|1] [--limit N] [--dry] [--questions <path>] [--out <dir>]',
       '  node dist/cli.js export <runDir> [--questions <path>] [--topic <name>] [--out <path>]',
       '  node dist/cli.js report <runDir|snapshot> [--out <path>]',
       '  node dist/cli.js compare <runDir|snapshot> <runDir|snapshot> [--out <path>]',
