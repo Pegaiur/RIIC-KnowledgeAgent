@@ -72,7 +72,7 @@ rag-test/
 │   ├── plan-*.md / draft-*.md      ← 版本计划 / 未定稿工程提案
 │   ├── exp-*.md                   ← 试验过程、结果和结论
 │   ├── spec/                       ← 评测/核查规格（长期复用资产，如 RAG 20 题回答核查基线）
-│   ├── templates/                  ← ADR/plan/notes 机械模板
+│   ├── templates/                  ← ADR/plan/notes/exp 机械模板
 │   ├── rules/                      ← 复杂规则权威目录
 │   ├── adr/                        ← 架构决策记录（INDEX.md 为状态索引）
 │   └── archive/                    ← 已归档计划（INDEX.md）；exp/ 存已结束试验
@@ -125,7 +125,7 @@ node scripts/verify.mjs merge -- --base main   # 合并门禁
 | [`docs/exp-answer-baseline-v4.md`](docs/exp-answer-baseline-v4.md) | 按 spec v4 的核查试验（已完成全量复核，待独立审定） |
 | [`docs/exp-harness-performance.md`](docs/exp-harness-performance.md) | 试验记录：性能测量与后续候选 |
 | [`docs/rules/`](docs/rules/) | 复杂规则权威目录 |
-| [`docs/templates/`](docs/templates/) | ADR/plan/notes 机械模板唯一权威目录 |
+| [`docs/templates/`](docs/templates/) | ADR/plan/notes/exp 机械模板唯一权威目录 |
 | [`docs/adr/INDEX.md`](docs/adr/INDEX.md) | ADR 状态索引 |
 | [`docs/archive/INDEX.md`](docs/archive/INDEX.md) | 已完成计划归档索引 |
 | [`scripts/INDEX.md`](scripts/INDEX.md) | 开发脚本体系导航 |
