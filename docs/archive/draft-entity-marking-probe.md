@@ -1,8 +1,8 @@
 # 语料实体标记：最小验证草案
 
 > 日期：2026-09-07
-> 状态：待决定是否试验，未实施
-> 需求入口：[inbox](inbox.md)
+> 状态：已归档（2026-09-09）。探针未实施；原设计基于 lookup/query_operators 路由，当前已统一为 facts_search，标记候选由[性能评估](../draft-harness-performance.md#roi-排序与最小验证)承接，重启前需按 schema v5 重估
+> 需求入口：[inbox](../inbox.md)
 
 ## 判断
 

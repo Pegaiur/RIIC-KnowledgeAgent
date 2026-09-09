@@ -56,6 +56,7 @@ rag-test/
 ├── tsconfig.json                   ← TypeScript 严格模式（NodeNext/ESM）
 ├── knowledge/                      ← 明日方舟基建知识库（references 为机械事实真源；base/guides 为人工维护语料）
 │   ├── AGENTS.md                   ← 查询 Agent 唯一人工指令源（所有检索模式注入）
+│   ├── corpus-manifest.json        ← 检索白名单真源（显式登记可检索语料；raw 默认不进入）
 │   ├── references/                 ← 数据层（解包直出：名册 / 技能分片×9 / 类别·技能等价组·歧义 / 数据源）
 │   ├── base/                       ← 机制基线语料（机制-*.md / 基建物流链.md）
 │   ├── guides/                     ← 已审定的 RAG 玩家散文（组合 / 新手 / 散件）
@@ -66,7 +67,7 @@ rag-test/
 │   └── questions.json              ← 基准问题集（20 题，三分类）
 ├── bench-runs/                     ← 基准运行结果（JSONL，不入库；dev 中间结果在 dev-temp/runs）
 ├── scripts/                        ← 过程管理脚本与可复用任务（使用规范见 scripts/INDEX.md）
-├── docs/                           ← 文档入口 README.md（inbox / plan / draft / spec / reports / adr / archive）
+├── docs/                           ← 过程管理文档（inbox / plan / draft / spec / reports / adr / archive）
 │   ├── inbox.md                    ← 需求唯一入口
 │   ├── plan-*.md / draft-*.md      ← 版本计划 / 未定稿提案
 │   ├── spec/                       ← 评测/核查规格（长期复用资产，如 RAG 20 题回答核查基线）
@@ -118,10 +119,10 @@ node scripts/verify.mjs merge -- --base main   # 合并门禁
 
 | 文档 | 用途 |
 | ---- | ---- |
-| [`docs/README.md`](docs/README.md) | 分类导航、当前规格与报告入口 |
-| [`docs/reports/draft-answer-baseline-v4.md`](docs/reports/draft-answer-baseline-v4.md) | 按 spec v4 生成的核查草案（待全量复核） |
 | [`docs/inbox.md`](docs/inbox.md) | 待办事项需求唯一入口 |
-| [`docs/spec/rag-answer-baseline.md`](docs/spec/rag-answer-baseline.md) | 评测/核查规格（RAG 20 题答案核查基线，长期复用资产） |
+| [`docs/spec/rag-answer-baseline.md`](docs/spec/rag-answer-baseline.md) | 评测/核查规格（版本与状态由 spec 自身承载，长期复用资产） |
+| [`docs/reports/draft-answer-baseline-v4.md`](docs/reports/draft-answer-baseline-v4.md) | 按 spec v4 的核查草案（已完成全量复核，待独立审定） |
+| [`docs/draft-harness-performance.md`](docs/draft-harness-performance.md) | 活跃草案：性能基线与待定优化候选 |
 | [`docs/rules/`](docs/rules/) | 复杂规则权威目录 |
 | [`docs/templates/`](docs/templates/) | ADR/plan/notes 机械模板唯一权威目录 |
 | [`docs/adr/INDEX.md`](docs/adr/INDEX.md) | ADR 状态索引 |

@@ -6,6 +6,7 @@
 | 完成日期 | 版本 | 文件 | 摘要 |
 |----------|------|------|------|
 
+| 2026-09-09 | — | [draft-entity-marking-probe.md](draft-entity-marking-probe.md) | 保留已被统一 facts_search 取代的标记探针草案；原评估 2026-09-07，标记候选转由性能评估承接（归档日期） |
 | 2026-09-09 | — | [plan-harness-next-iteration.md](plan-harness-next-iteration.md) | plan-harness-next-iteration |
 | 2026-09-09 | — | [plan-section-navigation.md](plan-section-navigation.md) | plan-section-navigation |
 | 2026-09-09 | — | [plan-guided-evidence.md](plan-guided-evidence.md) | plan-guided-evidence |
