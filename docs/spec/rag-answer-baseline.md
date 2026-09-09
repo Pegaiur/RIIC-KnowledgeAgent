@@ -340,9 +340,9 @@
 
 - 将迷迭香、黑键、絮雨放同站，或让夕在宿舍继续产生其中枢技能资源；用不完整配置推固定总效率。
 
-## S07 红松林骑士组
+## S07 红松骑士团组
 
-**证据块**：`guides/制造站组合.md#红松林骑士组`、`references/技能-控制中枢.md#焰尾 ☆6 · 先锋`、`references/技能-控制中枢.md#薇薇安娜 ☆6 · 近卫`、`references/技能-制造站.md#灰毫 ☆5 · 重装`、`references/技能-制造站.md#远牙 ☆6 · 狙击`、`references/技能-制造站.md#野鬃 ☆5 · 先锋`、`references/类别.md#干员组（28 条）`
+**证据块**：`guides/制造站组合.md#红松骑士团组`、`references/技能-控制中枢.md#焰尾 ☆6 · 先锋`、`references/技能-控制中枢.md#薇薇安娜 ☆6 · 近卫`、`references/技能-制造站.md#灰毫 ☆5 · 重装`、`references/技能-制造站.md#远牙 ☆6 · 狙击`、`references/技能-制造站.md#野鬃 ☆5 · 先锋`、`references/类别.md#干员组（28 条）`
 
 ### 必须覆盖
 
