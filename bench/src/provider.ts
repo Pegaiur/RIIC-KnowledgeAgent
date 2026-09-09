@@ -11,7 +11,7 @@
  */
 import type { BenchConfig } from './config.js'
 import { aggregateUsages } from './pricing.js'
-import type { HttpAttempt, LlmUsage, ProviderResult, ThinkingMode, ToolCall, UsageCompleteness } from './types.js'
+import type { HttpAttempt, LlmUsage, ProviderId, ProviderResult, ThinkingMode, ToolCall, UsageCompleteness } from './types.js'
 import { acquireRateLimitToken } from './rate-limiter.js'
 
 export interface ProviderOptions {
@@ -49,6 +49,12 @@ export function buildChatBody(
   opts: ProviderOptions,
 ): Record<string, unknown> {
   const { config, thinking } = opts
+  if (config.provider === 'deepseek' && thinking !== 'off') {
+    throw new Error('当前 DeepSeek 适配仅支持显式 off，尚未支持思考工具历史协议')
+  }
+  if (config.provider === 'glm' && thinking === 'off') {
+    throw new Error('GLM-5.3-Flash 不支持关闭思考，请显式选择 low 或 high')
+  }
   const body: Record<string, unknown> = {
     model: config.model,
     messages,
@@ -65,9 +71,12 @@ export function buildChatBody(
     body.enable_thinking = thinking !== 'off'
     if (tools && tools.length > 0) body.parallel_tool_calls = true
   } else if (thinking !== 'off') {
-    // Hy3：reasoning_effort + thinking.enabled
+    // Hy3 / GLM：显式推理强度与思考开关。
     body.reasoning_effort = thinking
     body.thinking = { type: 'enabled' }
+  } else {
+    // 显式关闭，避免依赖服务端随版本变化的默认值。
+    body.thinking = { type: 'disabled' }
   }
   return body
 }
@@ -78,11 +87,14 @@ export async function callLLM(
   tools: unknown[] | undefined,
   opts: ProviderOptions,
 ): Promise<ProviderResult> {
-  if (opts.dry) return dryResult(messages, opts)
+  if (opts.dry) {
+    buildChatBody(messages, tools, opts)
+    return dryResult(messages, opts)
+  }
   const { apiKey, baseUrl, chatPath, model } = opts.config
   if (!apiKey) {
     throw new Error(
-      `缺少 ${opts.config.apiKeyEnv}：请在环境变量或 .env 中配置后重试（dry 模式无需密钥）`,
+      `缺少 ${opts.config.apiKeyEnv}：请在根 secret.yaml 或环境变量中配置后重试（dry 模式无需密钥）`,
     )
   }
 
@@ -95,10 +107,10 @@ export async function callLLM(
       Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify(body),
-  }, opts.config.providerLabel, model, opts.signal, opts.ledger)
+  }, opts.config.providerLabel, model, opts.signal, opts.ledger, opts.config.provider)
 
   const data = fetched.data
-  const usage = parseUsage(data.usage)
+  const usage = parseUsage(data.usage, opts.config.provider)
   const accountingUsage = aggregateUsages(fetched.attempts.map((attempt) => attempt.usage))
   if (opts.ledger) {
     opts.ledger.attempts = fetched.attempts
@@ -155,6 +167,7 @@ async function fetchWithRetry(
   model: string,
   signal?: AbortSignal,
   ledger?: ProviderCallLedger,
+  provider?: ProviderId,
 ): Promise<FetchedResponse> {
   let lastErr: unknown
   const attempts: HttpAttempt[] = ledger?.attempts ?? []
@@ -195,7 +208,7 @@ async function fetchWithRetry(
       // Response 返回只代表响应头到达；保持 request signal 到正文消费完成。
       const text = await response.text()
       const data = parseJsonObject(text)
-      const usage = parseUsage(data.usage)
+      const usage = parseUsage(data.usage, provider)
       if (response.ok) {
         currentAttempt.status = response.status
         currentAttempt.outcome = 'accepted'
@@ -269,7 +282,7 @@ function parseJsonObject(text: string): Record<string, any> {
 }
 
 function unknownUsage(): LlmUsage {
-  return { input: null, output: null, cached: 0, reasoning: 0, completeness: 'unknown' }
+  return { input: null, output: null, cached: null, reasoning: null, completeness: 'unknown' }
 }
 
 function errorMessage(error: unknown): string {
@@ -342,30 +355,41 @@ function validToken(value: unknown): number | null {
 }
 
 /** 解析 usage；不把缺失/无效的必需 token 字段静默转成 0。 */
-export function parseUsage(u: unknown): LlmUsage {
+export function parseUsage(u: unknown, provider?: ProviderId): LlmUsage {
   if (typeof u !== 'object' || u === null || Array.isArray(u)) {
-    return { input: null, output: null, cached: 0, reasoning: 0, completeness: 'unknown' }
+    return unknownUsage()
   }
   const usage = u as Record<string, unknown>
   const input = validToken(usage.prompt_tokens)
   const output = validToken(usage.completion_tokens)
+  const hasRequiredFields = Object.prototype.hasOwnProperty.call(usage, 'prompt_tokens')
+    || Object.prototype.hasOwnProperty.call(usage, 'completion_tokens')
   const promptDetails = usage.prompt_tokens_details
   const completionDetails = usage.completion_tokens_details
-  const cachedRaw = typeof promptDetails === 'object' && promptDetails !== null
+  const nestedCachedRaw = typeof promptDetails === 'object' && promptDetails !== null
     ? (promptDetails as Record<string, unknown>).cached_tokens
     : undefined
+  // DeepSeek 将缓存命中量放在 usage 顶层；显式无效的嵌套值仍保留未知。
+  const cachedRaw = nestedCachedRaw === undefined ? usage.prompt_cache_hit_tokens : nestedCachedRaw
   const reasoningRaw = typeof completionDetails === 'object' && completionDetails !== null
     ? (completionDetails as Record<string, unknown>).reasoning_tokens
     : undefined
-  const cached = cachedRaw === undefined ? 0 : validToken(cachedRaw)
-  const reasoning = reasoningRaw === undefined ? 0 : validToken(reasoningRaw)
+  let cached = cachedRaw === undefined ? (hasRequiredFields ? 0 : null) : validToken(cachedRaw)
+  if (provider === 'deepseek') {
+    // 此端点要求命中/未命中分项齐全且与输入总量一致，不能套用可省略字段的零兜底。
+    const hit = validToken(usage.prompt_cache_hit_tokens)
+    const miss = validToken(usage.prompt_cache_miss_tokens)
+    cached = hit !== null && miss !== null && input !== null && hit + miss === input
+      && (nestedCachedRaw === undefined || validToken(nestedCachedRaw) === hit)
+      ? hit : null
+  }
+  const reasoning = validToken(reasoningRaw)
   const requiredComplete = input !== null && output !== null
-  const optionalComplete = cached !== null && reasoning !== null
-  const hasRequiredFields = Object.prototype.hasOwnProperty.call(usage, 'prompt_tokens')
-    || Object.prototype.hasOwnProperty.call(usage, 'completion_tokens')
+  // 思考分项缺失不影响已报告的 completion_tokens 总量及费用，但分项仍标未知。
+  const optionalComplete = cached !== null && (reasoningRaw === undefined || reasoning !== null)
   const completeness: UsageCompleteness = requiredComplete && optionalComplete
     ? 'complete'
-    : !hasRequiredFields && input === null && output === null && cached === 0 && reasoning === 0 && cachedRaw === undefined && reasoningRaw === undefined
+    : !hasRequiredFields && input === null && output === null && cachedRaw === undefined && reasoningRaw === undefined
       ? 'unknown'
       : 'partial'
   return { input, output, cached, reasoning, completeness }

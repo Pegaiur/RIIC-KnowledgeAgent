@@ -17,7 +17,7 @@ export interface QueryAgg {
   rounds: number
   outputTokens: number
   outputTokensExact: number | null
-  reasoningTokens: number
+  reasoningTokens: number | null
   inputTokens: number
   inputTokensExact: number | null
   costOut: number
@@ -34,7 +34,7 @@ export interface ThinkingAgg {
   avgRounds: number
   outputTokens: number
   outputTokensExact: number | null
-  reasoningTokens: number
+  reasoningTokens: number | null
   inputTokens: number
   inputTokensExact: number | null
   costOut: number
@@ -75,7 +75,7 @@ export interface ProviderAgg {
   avgRounds: number
   outputTokens: number
   outputTokensExact: number | null
-  reasoningTokens: number
+  reasoningTokens: number | null
   inputTokens: number
   inputTokensExact: number | null
   costOut: number
@@ -232,7 +232,7 @@ export function aggregate(records: CostRecord[], queryContext: readonly ReportQu
       category: first.category,
       rounds: list.length,
       ...tokenValues(list),
-      reasoningTokens: sum(list.map((r) => accountingValues(r).reasoning)),
+      reasoningTokens: sumExact(list.map((r) => accountingValues(r).reasoning)),
       costOut: sum(list.map((r) => accountingValues(r).costOut)),
       costIn: sum(list.map((r) => accountingValues(r).costIn)),
       costTotal: sum(list.map(knownCost)),
@@ -279,7 +279,7 @@ export function aggregate(records: CostRecord[], queryContext: readonly ReportQu
       calls: list.length,
       avgRounds: mean(perQueryRounds),
       ...tokenValues(list),
-      reasoningTokens: sum(list.map((r) => accountingValues(r).reasoning)),
+      reasoningTokens: sumExact(list.map((r) => accountingValues(r).reasoning)),
       costOut: sum(list.map((r) => accountingValues(r).costOut)),
       costIn: sum(list.map((r) => accountingValues(r).costIn)),
       costTotal: sum(list.map(knownCost)),
@@ -306,7 +306,7 @@ export function aggregate(records: CostRecord[], queryContext: readonly ReportQu
       calls: list.length,
       avgRounds: mean(perQueryRounds),
       ...tokenValues(list),
-      reasoningTokens: sum(list.map((r) => accountingValues(r).reasoning)),
+      reasoningTokens: sumExact(list.map((r) => accountingValues(r).reasoning)),
       costOut: sum(list.map((r) => accountingValues(r).costOut)),
       costIn: sum(list.map((r) => accountingValues(r).costIn)),
       costTotal: sum(list.map(knownCost)),
@@ -409,7 +409,7 @@ export function renderMarkdown(report: BenchReport): string {
     '|------|--------|--------|----------|-------------|-------------|--------------|------------|',
     ...report.byThinking.map(
       (t) =>
-        `| ${t.thinking} | ${t.queries} | ${t.calls} | ${f2(t.avgRounds)} | ${t.outputTokens.toLocaleString()} | ${t.reasoningTokens.toLocaleString()} | ${f4(t.costOut)} | ${f4(t.costTotal)} |`,
+        `| ${t.thinking} | ${t.queries} | ${t.calls} | ${f2(t.avgRounds)} | ${t.outputTokens.toLocaleString()} | ${(t.reasoningTokens?.toLocaleString() ?? '未知')} | ${f4(t.costOut)} | ${f4(t.costTotal)} |`,
     ),
     '',
     '## 按查询',
@@ -418,7 +418,7 @@ export function renderMarkdown(report: BenchReport): string {
     '|---------|------|------|-------------|-------------|--------------|------------|----------|------|',
     ...report.byQuery.map(
       (q) =>
-        `| ${q.queryId} | ${q.category} | ${q.rounds} | ${q.outputTokens} | ${q.reasoningTokens} | ${f4(q.costOut)} | ${f4(q.costTotal)} | ${q.costComplete} | ${q.truncated} |`,
+        `| ${q.queryId} | ${q.category} | ${q.rounds} | ${q.outputTokens} | ${q.reasoningTokens ?? '未知'} | ${f4(q.costOut)} | ${f4(q.costTotal)} | ${q.costComplete} | ${q.truncated} |`,
     ),
     '',
   ]
@@ -430,7 +430,7 @@ export function renderCsv(report: BenchReport): string {
   const header = 'queryId,category,rounds,outputTokens,outputTokensExact,reasoningTokens,inputTokens,inputTokensExact,costOut,costIn,costTotal,costComplete,truncated'
   const rows = report.byQuery.map(
     (q) =>
-      `${q.queryId},${q.category},${q.rounds},${q.outputTokens},${q.outputTokensExact ?? ''},${q.reasoningTokens},${q.inputTokens},${q.inputTokensExact ?? ''},${q.costOut},${q.costIn},${q.costTotal},${q.costComplete},${q.truncated}`,
+      `${q.queryId},${q.category},${q.rounds},${q.outputTokens},${q.outputTokensExact ?? ''},${q.reasoningTokens ?? ''},${q.inputTokens},${q.inputTokensExact ?? ''},${q.costOut},${q.costIn},${q.costTotal},${q.costComplete},${q.truncated}`,
   )
   return [header, ...rows].join('\n')
 }
@@ -444,7 +444,7 @@ export function renderCrossProvider(reports: BenchReport[]): string {
     '|------|--------|--------|----------|--------|--------|-------------|-------------|--------------|',
     ...reports.map((r) => {
       const p = r.byProvider[0]
-      return `| ${p?.provider ?? '?'} | ${r.totalQueries} | ${r.totalCalls} | ${f2(r.byThinking[0]?.avgRounds ?? 0)} | ${r.totalInput.toLocaleString()} | ${r.totalOutput.toLocaleString()} | ${(p?.reasoningTokens ?? 0).toLocaleString()} | ${f4(r.totalCost)} | ${f4(r.totalCostOut)} |`
+      return `| ${p?.provider ?? '?'} | ${r.totalQueries} | ${r.totalCalls} | ${f2(r.byThinking[0]?.avgRounds ?? 0)} | ${r.totalInput.toLocaleString()} | ${r.totalOutput.toLocaleString()} | ${p?.reasoningTokens?.toLocaleString() ?? '未知'} | ${f4(r.totalCost)} | ${f4(r.totalCostOut)} |`
     }),
     '',
   ]

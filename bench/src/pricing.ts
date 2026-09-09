@@ -16,10 +16,23 @@ export interface Prices {
   outPerM: number
   /** 缓存命中输入价（元/M） */
   cachePerM: number
+  /** 按单次请求输入量选择价格档位；按 maxInput 升序排列。 */
+  inputTiers?: Array<{ maxInput: number; inPerM: number; outPerM: number; cachePerM: number }>
 }
 
 export const HY3_PRICES: Prices = { inPerM: 1.0, outPerM: 4.0, cachePerM: 0.25 }
-export const QWEN_PRICES: Prices = { inPerM: 0.2, outPerM: 0.8, cachePerM: 0.04 }
+export const QWEN_PRICES: Prices = {
+  inPerM: 0.2, outPerM: 0.8, cachePerM: 0.04,
+  inputTiers: [
+    { maxInput: 32_768, inPerM: 0.2, outPerM: 0.8, cachePerM: 0.04 },
+    { maxInput: 262_144, inPerM: 0.6, outPerM: 2.4, cachePerM: 0.12 },
+    { maxInput: 1_000_000, inPerM: 1.2, outPerM: 4.8, cachePerM: 0.24 },
+  ],
+}
+/** 智谱国内站标准价；限时折扣由试验配置显式覆盖，避免折扣过期后低估费用。 */
+export const GLM_PRICES: Prices = { inPerM: 0.8, outPerM: 2.8, cachePerM: 0.23 }
+/** DeepSeek 高峰价保守上界；分时折扣由试验依据请求时间另行核算。 */
+export const DEEPSEEK_PRICES: Prices = { inPerM: 3, outPerM: 9, cachePerM: 0.1 }
 
 /** 兼容旧的按名导出（tests 引用） */
 export const PRICE_IN_PER_M = HY3_PRICES.inPerM
@@ -118,6 +131,13 @@ export function computeCosts(
   cached: number | null,
   prices: Prices = HY3_PRICES,
 ): CostBreakdown {
+  const tiers = prices.inputTiers
+  if (tiers?.length) {
+    if (input === null) return { costIn: null, costOut: null, costTotal: null }
+    const tier = tiers.find(item => input <= item.maxInput)
+    if (!tier) return { costIn: null, costOut: null, costTotal: null }
+    prices = tier
+  }
   // 防御：缓存命中数不超过输入总数（异常数据时按输入上限 clamp）
   const costIn = input === null || cached === null
     ? null
