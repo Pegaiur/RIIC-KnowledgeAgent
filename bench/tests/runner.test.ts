@@ -86,7 +86,6 @@ describe('runBenchmark：trace 逐题落盘', () => {
       })
       expect(meta.maxTokens).toBe(4096)
       expect(meta.inputsSchemaVersion).toBe(1)
-      expect(meta.inputsFileSha256).toMatch(/^[a-f0-9]{64}$/)
       const inputs = JSON.parse(readFileSync(output.inputsPath, 'utf-8')) as Record<string, any>
       expect(inputs.captureStatus).toBe('complete')
       expect(inputs.facts).toMatchObject({ status: 'captured', cardCount: expect.any(Number) })

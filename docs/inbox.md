@@ -26,6 +26,8 @@
 
 ## 待办区
 
+- [x] **精简过度防御的 sha256 控制项（两批）** — 第一批 b940453 删除 inputs 留档中只写不读的 sha256 与脱敏双标志；第二批删除自哈希 `inputsFileSha256`（连带快照白名单与格式校验分支），评估后维持 `RUN_INPUTS_SCHEMA_VERSION=1`、保留 facts 实体 ID 与原文指纹耦合。均为单模块内部数据结构精简、无生产消费者，不建 ADR。 — 2026-09-09
+
 - [x] **四模型试验统合与审查** — 240 会话统合报告独立审查通过，DeepSeek 新谷期 0.51524132 元、新峰期 1.03048264 元（均60会话换价、不含预检）；见[统合试验报告](archive/exp/exp-model-capability-consolidated.md)。未重跑或改分。 — 2026-09-09
 
 - [x] **DeepSeek 追加作答对照** — 显式 off、20 题三次及逐项核查完成，完整且有据 10/60；见 [追加试验](archive/exp/exp-deepseek-capability.md)，必要接口/计量适配见 [计划](plan-deepseek-provider.md)。 — 2026-09-09

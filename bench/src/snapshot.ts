@@ -75,7 +75,7 @@ const META_ALLOWED_KEYS = new Set([
   'schemaVersion', 'traceSchemaVersion', 'ts', 'thinking', 'dry', 'provider', 'model',
   'temperature', 'maxTokens', 'baseUrl', 'retriever', 'minRagCalls', 'toolBudget', 'sessionTimeoutMs',
   'feedbackOnNoToolAnswer', 'toolChoice', 'parallelToolCalls', 'agentInstructionsSha256',
-  'inputsSchemaVersion', 'inputsFileSha256',
+  'inputsSchemaVersion',
   'toolSchemaVersion', 'toolSchemaSha256', 'toolNames',
   'tokenizer', 'entityBoost', 'topK', 'maxContextChars', 'corpusDir', 'chunks', 'questions',
   'questionIds', 'questionsPath', 'questionDefinitions', 'topic', 'prices', 'source',
@@ -649,12 +649,6 @@ function validateMetaFieldContract(key: string, value: unknown): void {
   }
   if (key === 'inputsSchemaVersion') {
     if (value !== 1) throw new Error('基准快照格式错误：meta.inputsSchemaVersion 不受支持')
-    return
-  }
-  if (key === 'inputsFileSha256') {
-    if (typeof value !== 'string' || !/^[a-f0-9]{64}$/.test(value)) {
-      throw new Error('基准快照格式错误：meta.inputsFileSha256 必须是 SHA-256')
-    }
     return
   }
   if (key === 'corpusDir' || key === 'questionsPath') {

@@ -57,7 +57,6 @@ describe('共享基准快照', () => {
           unknownExtra: 'drop-me',
           maxTokens: 4096,
           inputsSchemaVersion: 1,
-          inputsFileSha256: 'b'.repeat(64),
           toolSchemaVersion: 2,
           toolSchemaSha256: 'a'.repeat(64),
           toolNames: ['rag_search'],
@@ -96,7 +95,6 @@ describe('共享基准快照', () => {
       expect(readSnapshot(path).meta).toMatchObject({
         maxTokens: 4096,
         inputsSchemaVersion: 1,
-        inputsFileSha256: 'b'.repeat(64),
         toolSchemaVersion: 2,
         toolSchemaSha256: 'a'.repeat(64),
         toolNames: ['rag_search'],
@@ -149,7 +147,6 @@ describe('共享基准快照', () => {
       expect(() => createSnapshot({ ...snapshot, meta: { ...snapshot.meta, maxTokens: 1.5 } })).toThrow('meta.maxTokens')
       expect(() => createSnapshot({ ...snapshot, meta: { ...snapshot.meta, inputsSchemaVersion: 2 } })).toThrow('meta.inputsSchemaVersion')
       expect(() => createSnapshot({ ...snapshot, meta: { ...snapshot.meta, inputsSchemaVersion: '1' } })).toThrow('meta.inputsSchemaVersion')
-      expect(() => createSnapshot({ ...snapshot, meta: { ...snapshot.meta, inputsFileSha256: 'not-a-hash' } })).toThrow('meta.inputsFileSha256')
       expect(() => createSnapshot({
         ...snapshot,
         records: [{

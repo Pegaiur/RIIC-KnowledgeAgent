@@ -231,11 +231,10 @@ export function completeRunInputs(inputs: RunInputs): void {
   inputs.captureStatus = 'complete'
 }
 
-/** 写入最终 UTF-8 字节并返回该文件内容指纹。 */
-export function writeRunInputs(path: string, inputs: RunInputs): string {
+/** 写入最终 UTF-8 字节。 */
+export function writeRunInputs(path: string, inputs: RunInputs): void {
   const content = `${JSON.stringify(inputs, null, 2)}\n`
   writeFileSync(path, content, 'utf-8')
-  return sha256(content)
 }
 
 export function captureText(value: string, sensitiveValues: Array<string | undefined> = []): CapturedText {

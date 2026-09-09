@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto'
 import { mkdirSync, readFileSync, readdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -13,7 +12,6 @@ import {
   createRunInputs,
   markFactsCaptured,
   markFactsLoadFailed,
-  writeRunInputs,
 } from '../src/inputs.js'
 import { runBenchmark } from '../src/runner.js'
 import type { ProviderResult } from '../src/types.js'
@@ -76,8 +74,6 @@ describe('运行输入记录', () => {
       expect(inputs.facts).toEqual({ status: 'not_used' })
       const meta = JSON.parse(readFileSync(output.metaPath, 'utf-8')) as Record<string, unknown>
       expect(meta).toMatchObject({ maxTokens: 4096, inputsSchemaVersion: 1 })
-      expect(meta.inputsFileSha256).toMatch(/^[a-f0-9]{64}$/)
-      expect(meta.inputsFileSha256).toBe(requireHash(output.inputsPath))
     } finally {
       rmSync(outDir, { recursive: true, force: true })
     }
@@ -298,32 +294,4 @@ describe('运行输入记录', () => {
     expect(unavailable.gitHead).toBeNull()
     expect(unavailable.gitDirty).toBeNull()
   })
-
-  it('写入哈希按最终 UTF-8 字节计算', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'rag-inputs-write-'))
-    try {
-      const config = loadConfig()
-      const inputs = createRunInputs({
-        config,
-        thinking: 'off',
-        dry: true,
-        agentInstructions: '规则',
-        systemPrompt: '规则',
-        toolSchema: { toolSchemaVersion: 5, toolNames: ['rag_search'] },
-        toolDefinitions: [],
-        questions: [],
-        chunks: [],
-        sourceAtStart: collectSourceMetadata(process.cwd(), () => ''),
-      })
-      const path = join(dir, 'inputs.json')
-      const hash = writeRunInputs(path, inputs)
-      expect(hash).toBe(requireHash(path))
-    } finally {
-      rmSync(dir, { recursive: true, force: true })
-    }
-  })
 })
-
-function requireHash(path: string): string {
-  return createHash('sha256').update(readFileSync(path)).digest('hex')
-}

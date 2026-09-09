@@ -222,6 +222,9 @@ export async function runBenchmark(
   writeFileSync(injectedPath, JSON.stringify(injectedMap, null, 2) + '\n', 'utf-8')
   const runRecords = lines.map((line) => JSON.parse(line) as CostRecord)
   const runReport = aggregate(runRecords)
+  // 全部题目结束后再落盘最终 inputs.json，保持先于 meta.json 写入的时序。
+  completeRunInputs(runInputs)
+  writeRunInputs(inputsPath, runInputs)
   writeFileSync(
     metaPath,
     JSON.stringify(
@@ -245,10 +248,6 @@ export async function runBenchmark(
         ...toolSchema,
         maxTokens: config.maxTokens,
         inputsSchemaVersion: runInputs.schemaVersion,
-        inputsFileSha256: (() => {
-          completeRunInputs(runInputs)
-          return writeRunInputs(inputsPath, runInputs)
-        })(),
         tokenizer: currentTokenizer(),
         entityBoost: currentEntityBoost(),
         topK: config.topK,
