@@ -1,5 +1,5 @@
 /**
- * 基准运行的非敏感输入记录：只保存可复核的配置、指纹和必要的脱敏文本。
+ * 基准运行的非敏感输入记录：只保存可复核的配置和必要的脱敏文本。
  * 该模块不读取运行时输入，也不在导入时写盘；调用方负责选择写入时机。
  */
 import { createHash } from 'node:crypto'
@@ -16,17 +16,12 @@ export const RUN_INPUTS_SCHEMA_VERSION = 1 as const
 
 export interface CapturedText {
   text: string
-  sha256: string
   redacted: boolean
-  /** 出现脱敏时，脱敏文本不能被当作原文精确恢复。 */
-  exactTextRecoverable: boolean
 }
 
 export interface CapturedJson {
   value: unknown
-  sha256: string
   redacted: boolean
-  exactTextRecoverable: boolean
 }
 
 export interface SourceMetadata {
@@ -40,7 +35,6 @@ export interface SourceMetadata {
 export interface FactsInputObservation {
   status: 'not_used' | 'captured' | 'load_failed'
   cardCount?: number
-  cardsSha256?: string
   error?: string
 }
 
@@ -54,9 +48,7 @@ export interface RunInputs {
     version: number
     names: string[]
     definitions: unknown
-    sha256: string
     redacted: boolean
-    exactTextRecoverable: boolean
   }
   config: {
     provider: BenchConfig['provider']
@@ -98,22 +90,18 @@ export interface RunInputs {
     id: string
     category: BenchQuery['category']
     question: string
-    questionSha256: string
     questionRedacted: boolean
-    questionExactTextRecoverable: boolean
   }>
   sourceAtStart: SourceMetadata
   rag: {
     chunkCount: number
-    chunksSha256: string
     fields: string[]
     orderPreserved: true
   }
-  /** 仅在开放阅读能力的模式提供；指纹覆盖本次阅读可返回的原文，而非被 clamp 的 chunks。 */
+  /** 仅在开放阅读能力的模式提供；记录小节数量与顺序。 */
   sections?: {
     version: number
     sectionCount: number
-    sectionsSha256: string
     orderPreserved: true
   }
   facts: FactsInputObservation
@@ -127,7 +115,6 @@ export interface RunInputsOptions {
   systemPrompt: string
   toolSchema: {
     toolSchemaVersion: number
-    toolSchemaSha256: string
     toolNames: string[]
   }
   toolDefinitions: unknown[]
@@ -161,9 +148,7 @@ export function createRunInputs(options: RunInputsOptions): RunInputs {
       version: options.toolSchema.toolSchemaVersion,
       names: [...options.toolSchema.toolNames],
       definitions: toolSchema.value,
-      sha256: toolSchema.sha256,
       redacted: toolSchema.redacted,
-      exactTextRecoverable: toolSchema.exactTextRecoverable,
     },
     config: {
       provider: options.config.provider,
@@ -201,15 +186,12 @@ export function createRunInputs(options: RunInputsOptions): RunInputs {
         id: redactSensitiveText(question.id, sensitiveValues),
         category: question.category,
         question: captured.text,
-        questionSha256: captured.sha256,
         questionRedacted: captured.redacted,
-        questionExactTextRecoverable: captured.exactTextRecoverable,
       }
     }),
     sourceAtStart: options.sourceAtStart,
     rag: {
       chunkCount: options.chunks.length,
-      chunksSha256: hashCanonical(options.chunks),
       fields: ['id', 'file', 'heading', 'text', 'anchor', 'startLine', 'endLine'],
       orderPreserved: true,
     },
@@ -218,7 +200,6 @@ export function createRunInputs(options: RunInputsOptions): RunInputs {
           sections: {
             version: options.sections.version,
             sectionCount: options.sections.sections.length,
-            sectionsSha256: options.sections.fingerprint(),
             orderPreserved: true as const,
           },
         }
@@ -233,11 +214,10 @@ export function markFactsCaptured(inputs: RunInputs, store: CardStore): void {
   inputs.facts = {
     status: 'captured',
     cardCount: store.cards.length,
-    cardsSha256: hashCanonical(store.cards),
   }
 }
 
-/** 记录 facts 加载失败，但不生成伪造的卡片指纹。 */
+/** 记录 facts 加载失败，不写入卡片观测。 */
 export function markFactsLoadFailed(inputs: RunInputs, error: unknown, sensitiveValues: Array<string | undefined> = []): void {
   if (inputs.facts.status === 'captured') return
   inputs.facts = {
@@ -263,9 +243,7 @@ export function captureText(value: string, sensitiveValues: Array<string | undef
   const redacted = text !== value
   return {
     text,
-    sha256: sha256(value),
     redacted,
-    exactTextRecoverable: !redacted,
   }
 }
 
@@ -274,14 +252,8 @@ export function captureJson(value: unknown, sensitiveValues: Array<string | unde
   const redacted = JSON.stringify(redactedValue) !== JSON.stringify(value)
   return {
     value: redactedValue,
-    sha256: hashCanonical(value),
     redacted,
-    exactTextRecoverable: !redacted,
   }
-}
-
-export function hashCanonical(value: unknown): string {
-  return sha256(stableJson(value))
 }
 
 /**
@@ -332,15 +304,6 @@ function redactJson(value: unknown, sensitiveValues: Array<string | undefined>):
   return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, redactJson(item, sensitiveValues)]))
 }
 
-function sha256(value: string): string {
+export function sha256(value: string): string {
   return createHash('sha256').update(value, 'utf-8').digest('hex')
-}
-
-function stableJson(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`
-  if (typeof value === 'object' && value !== null) {
-    const record = value as Record<string, unknown>
-    return `{${Object.keys(record).sort().map((key) => `${JSON.stringify(key)}:${stableJson(record[key])}`).join(',')}}`
-  }
-  return JSON.stringify(value) ?? 'null'
 }

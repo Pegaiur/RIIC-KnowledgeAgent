@@ -156,13 +156,4 @@ describe('sections：原文小节目录', () => {
     const efficiency = dir.sections.find((s) => s.heading === '效率')!
     expect(dir.navigationFor(efficiency.sectionId).items.map((item) => item.heading)).toEqual(['排班'])
   })
-
-  it('目录指纹随原文变化，且相同内容稳定', () => {
-    setupCorpus()
-    const first = buildSectionDirectory(docsDir).fingerprint()
-    expect(buildSectionDirectory(docsDir).fingerprint()).toBe(first)
-
-    writeDoc('base/a.md', `${DOC_A}\n新增一行。\n`)
-    expect(buildSectionDirectory(docsDir).fingerprint()).not.toBe(first)
-  })
 })

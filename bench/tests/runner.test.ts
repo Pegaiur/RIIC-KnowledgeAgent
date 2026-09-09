@@ -89,7 +89,7 @@ describe('runBenchmark：trace 逐题落盘', () => {
       expect(meta.inputsFileSha256).toMatch(/^[a-f0-9]{64}$/)
       const inputs = JSON.parse(readFileSync(output.inputsPath, 'utf-8')) as Record<string, any>
       expect(inputs.captureStatus).toBe('complete')
-      expect(inputs.facts).toMatchObject({ status: 'captured', cardCount: expect.any(Number), cardsSha256: expect.stringMatching(/^[a-f0-9]{64}$/) })
+      expect(inputs.facts).toMatchObject({ status: 'captured', cardCount: expect.any(Number) })
     } finally {
       rmSync(outDir, { recursive: true, force: true })
     }

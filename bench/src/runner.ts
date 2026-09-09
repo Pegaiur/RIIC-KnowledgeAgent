@@ -19,6 +19,7 @@ import {
   markFactsCaptured,
   markFactsLoadFailed,
   redactSensitiveText,
+  sha256,
   writeRunInputs,
 } from './inputs.js'
 
@@ -240,7 +241,7 @@ export async function runBenchmark(
         feedbackOnNoToolAnswer: config.feedbackOnNoToolAnswer,
         toolChoice: 'auto',
         parallelToolCalls: config.provider === 'qwen',
-        agentInstructionsSha256: runInputs.agentInstructions.sha256,
+        agentInstructionsSha256: sha256(agentInstructions),
         ...toolSchema,
         maxTokens: config.maxTokens,
         inputsSchemaVersion: runInputs.schemaVersion,
