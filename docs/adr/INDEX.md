@@ -14,3 +14,4 @@
 | [006](ADR-006-independent-function-tools.md) | 已实施 | 按检索模式暴露独立函数工具与扁平参数 | 2026-09-07 |
 | [007](ADR-007-single-term-facts-tool.md) | 已实施 | 单词条 facts 统一入口 | 2026-09-07 |
 | [008](ADR-008-section-navigation.md) | 已实施 | 增加原文小节阅读能力 | 2026-09-08 |
+| [009](ADR-009-exp-document-workflow.md) | 已实施 | 试验工作采用 exp 文档并仅保留过程结果结论 | 2026-09-09 |

@@ -3,7 +3,7 @@
 > 创建日期：2026-09-08
 > 状态：已完成
 > 需求入口：[inbox](../inbox.md)
-> 评估依据：[性能与 ROI 评估](../draft-harness-performance.md)
+> 评估依据：[性能与 ROI 评估](../exp-harness-performance.md)
 
 ## 目标
 

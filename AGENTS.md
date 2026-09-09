@@ -30,7 +30,7 @@
 | 1 | 提交必须完整执行 `commit-convention` 技能；禁止绕过其检查、审查和精准暂存流程直接提交 | 见下方「工作流路由」 |
 | 2 | 分支工作流：禁止直接在主分支提交，走 `feature/<描述>` 分支；合并后删除分支 | — |
 | 3 | 合并门槛：合并前一律执行 `node scripts/verify.mjs merge -- --base main`（门禁唯一入口，命令清单见 `scripts/gates.mjs`） | `docs/rules/document-lifecycle.md` |
-| 4 | 文档模板：ADR 参照 `docs/templates/adr.md`，plan 参照 `docs/templates/plan.md`，实施笔记参照 `docs/templates/notes.md` | — |
+| 4 | 文档模板：ADR 参照 `docs/templates/adr.md`，plan 参照 `docs/templates/plan.md`，实施笔记参照 `docs/templates/notes.md`，试验参照 `docs/templates/exp.md` | — |
 | 5 | RAG 散文清洗统一使用玩家侧规范词；references 直出层保留原格式 | `docs/rules/rag-prose-terminology.md` |
 
 ## 工作流路由
@@ -45,7 +45,7 @@
 | 发版 | `skills/release-workflow` + `node scripts/tooling.mjs run release/*` |
 | 技术债治理 | `skills/tech-debt-governance` |
 | 验证（合并前） | `node scripts/verify.mjs merge`（门禁唯一入口） |
-| 文档生命周期 | `docs/rules/document-lifecycle`（ADR/plan/notes 模板见 `docs/templates/`） |
+| 文档生命周期 | `docs/rules/document-lifecycle`（ADR/plan/notes/exp 模板见 `docs/templates/`） |
 
 ## 仓库结构
 
@@ -56,6 +56,7 @@ rag-test/
 ├── tsconfig.json                   ← TypeScript 严格模式（NodeNext/ESM）
 ├── knowledge/                      ← 明日方舟基建知识库（references 为机械事实真源；base/guides 为人工维护语料）
 │   ├── AGENTS.md                   ← 查询 Agent 唯一人工指令源（所有检索模式注入）
+│   ├── corpus-manifest.json        ← 检索白名单真源（显式登记可检索语料；raw 默认不进入）
 │   ├── references/                 ← 数据层（解包直出：名册 / 技能分片×9 / 类别·技能等价组·歧义 / 数据源）
 │   ├── base/                       ← 机制基线语料（机制-*.md / 基建物流链.md）
 │   ├── guides/                     ← 已审定的 RAG 玩家散文（组合 / 新手 / 散件）
@@ -66,14 +67,15 @@ rag-test/
 │   └── questions.json              ← 基准问题集（20 题，三分类）
 ├── bench-runs/                     ← 基准运行结果（JSONL，不入库；dev 中间结果在 dev-temp/runs）
 ├── scripts/                        ← 过程管理脚本与可复用任务（使用规范见 scripts/INDEX.md）
-├── docs/                           ← 文档入口 README.md（inbox / plan / draft / spec / reports / adr / archive）
+├── docs/                           ← 过程管理文档（inbox / plan / draft / exp / spec / adr / archive）
 │   ├── inbox.md                    ← 需求唯一入口
-│   ├── plan-*.md / draft-*.md      ← 版本计划 / 未定稿提案
+│   ├── plan-*.md / draft-*.md      ← 版本计划 / 未定稿工程提案
+│   ├── exp-*.md                   ← 试验过程、结果和结论
 │   ├── spec/                       ← 评测/核查规格（长期复用资产，如 RAG 20 题回答核查基线）
 │   ├── templates/                  ← ADR/plan/notes 机械模板
 │   ├── rules/                      ← 复杂规则权威目录
 │   ├── adr/                        ← 架构决策记录（INDEX.md 为状态索引）
-│   └── archive/                    ← 已归档计划（INDEX.md 按完成日期降序）
+│   └── archive/                    ← 已归档计划（INDEX.md）；exp/ 存已结束试验
 └── dev-temp/                       ← 开发脚本临时区（不入库）
 ```
 
@@ -81,7 +83,7 @@ rag-test/
 
 1. **首先**：阅读本文件，了解全局规则和项目架构
 2. **按需读取复杂规则**：任务涉及文档/ADR/发版/合并 → 读 `docs/rules/document-lifecycle.md`；其余场景按规则索引表从 `docs/rules/` 挑选匹配描述
-3. **新需求入口**：所有新需求/决策从 `docs/inbox.md` 起步，评估后路由到 `docs/plan-*.md`（定稿）或 `docs/adr/ADR-NNN.md`（架构决策）
+3. **新需求入口**：所有新需求/决策从 `docs/inbox.md` 起步，评估后路由到 `docs/plan-*.md`（工程定稿）、`docs/exp-*.md`（试验）或 `docs/adr/ADR-NNN.md`（架构决策）
 4. **确定任务范围**：判断当前任务涉及哪些模块（bench 工具 / 语料 / 过程管理文档）
 5. **阅读代码**：参考同模块内其他实现风格
 
@@ -118,10 +120,10 @@ node scripts/verify.mjs merge -- --base main   # 合并门禁
 
 | 文档 | 用途 |
 | ---- | ---- |
-| [`docs/README.md`](docs/README.md) | 分类导航、当前规格与报告入口 |
-| [`docs/reports/draft-answer-baseline-v4.md`](docs/reports/draft-answer-baseline-v4.md) | 按 spec v4 生成的核查草案（待全量复核） |
 | [`docs/inbox.md`](docs/inbox.md) | 待办事项需求唯一入口 |
-| [`docs/spec/rag-answer-baseline.md`](docs/spec/rag-answer-baseline.md) | 评测/核查规格（RAG 20 题答案核查基线，长期复用资产） |
+| [`docs/spec/rag-answer-baseline.md`](docs/spec/rag-answer-baseline.md) | 评测/核查规格（版本与状态由 spec 自身承载，长期复用资产） |
+| [`docs/exp-answer-baseline-v4.md`](docs/exp-answer-baseline-v4.md) | 按 spec v4 的核查试验（已完成全量复核，待独立审定） |
+| [`docs/exp-harness-performance.md`](docs/exp-harness-performance.md) | 试验记录：性能测量与后续候选 |
 | [`docs/rules/`](docs/rules/) | 复杂规则权威目录 |
 | [`docs/templates/`](docs/templates/) | ADR/plan/notes 机械模板唯一权威目录 |
 | [`docs/adr/INDEX.md`](docs/adr/INDEX.md) | ADR 状态索引 |
