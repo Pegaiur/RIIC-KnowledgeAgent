@@ -1,7 +1,7 @@
 # ADR-008：增加原文小节阅读能力
 
 - 日期：2026-09-08
-- 状态：已决策
+- 状态：已实施
 
 ## 背景
 
@@ -27,5 +27,5 @@
 
 ## 关联
 
-- 规划文档：[实施计划](../plan-section-navigation.md)
+- 规划文档：[实施计划](../archive/plan-section-navigation.md)
 - 扩展需求：[inbox](../inbox.md)

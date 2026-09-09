@@ -6,6 +6,11 @@
 | 完成日期 | 版本 | 文件 | 摘要 |
 |----------|------|------|------|
 
+| 2026-09-09 | — | [plan-harness-next-iteration.md](plan-harness-next-iteration.md) | plan-harness-next-iteration |
+| 2026-09-09 | — | [plan-section-navigation.md](plan-section-navigation.md) | plan-section-navigation |
+| 2026-09-09 | — | [plan-guided-evidence.md](plan-guided-evidence.md) | plan-guided-evidence |
+| 2026-09-09 | — | [plan-scope-reading.md](plan-scope-reading.md) | plan-scope-reading |
+| 2026-09-09 | — | [plan-answer-format.md](plan-answer-format.md) | plan-answer-format |
 | 2026-09-08 | — | [plan-facts-single-query.md](plan-facts-single-query.md) | plan-facts-single-query |
 | 2026-09-08 | — | [plan-facts-tool-optimization.md](plan-facts-tool-optimization.md) | plan-facts-tool-optimization |
 | 2026-09-08 | — | [plan-independent-tools-schema.md](plan-independent-tools-schema.md) | plan-independent-tools-schema |
