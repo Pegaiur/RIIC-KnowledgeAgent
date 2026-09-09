@@ -73,8 +73,9 @@ const META_SUMMARY_KEYS = new Set([
 ])
 const META_ALLOWED_KEYS = new Set([
   'schemaVersion', 'traceSchemaVersion', 'ts', 'thinking', 'dry', 'provider', 'model',
-  'temperature', 'baseUrl', 'retriever', 'minRagCalls', 'toolBudget', 'sessionTimeoutMs',
+  'temperature', 'maxTokens', 'baseUrl', 'retriever', 'minRagCalls', 'toolBudget', 'sessionTimeoutMs',
   'feedbackOnNoToolAnswer', 'toolChoice', 'parallelToolCalls', 'agentInstructionsSha256',
+  'inputsSchemaVersion', 'inputsFileSha256',
   'toolSchemaVersion', 'toolSchemaSha256', 'toolNames',
   'tokenizer', 'entityBoost', 'topK', 'maxContextChars', 'corpusDir', 'chunks', 'questions',
   'questionIds', 'questionsPath', 'questionDefinitions', 'topic', 'prices', 'source',
@@ -637,6 +638,22 @@ function validateMetaFieldContract(key: string, value: unknown): void {
         ? typeof item === 'boolean' || item === null
         : typeof item === 'string' || item === null
       if (!valid) throw new Error(`基准快照格式错误：meta.source.${field} 类型无效`)
+    }
+    return
+  }
+  if (key === 'maxTokens') {
+    if (!Number.isInteger(value) || (value as number) <= 0) {
+      throw new Error('基准快照格式错误：meta.maxTokens 必须是正整数')
+    }
+    return
+  }
+  if (key === 'inputsSchemaVersion') {
+    if (value !== 1) throw new Error('基准快照格式错误：meta.inputsSchemaVersion 不受支持')
+    return
+  }
+  if (key === 'inputsFileSha256') {
+    if (typeof value !== 'string' || !/^[a-f0-9]{64}$/.test(value)) {
+      throw new Error('基准快照格式错误：meta.inputsFileSha256 必须是 SHA-256')
     }
     return
   }

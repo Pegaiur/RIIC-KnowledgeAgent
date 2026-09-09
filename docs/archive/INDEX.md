@@ -6,10 +6,19 @@
 | 完成日期 | 版本 | 文件 | 摘要 |
 |----------|------|------|------|
 
+| 2026-09-09 | — | [plan-harness-next-iteration.md](plan-harness-next-iteration.md) | plan-harness-next-iteration |
+| 2026-09-09 | — | [plan-section-navigation.md](plan-section-navigation.md) | plan-section-navigation |
+| 2026-09-09 | — | [plan-guided-evidence.md](plan-guided-evidence.md) | plan-guided-evidence |
+| 2026-09-09 | — | [plan-scope-reading.md](plan-scope-reading.md) | plan-scope-reading |
+| 2026-09-09 | — | [plan-answer-format.md](plan-answer-format.md) | plan-answer-format |
 | 2026-09-08 | — | [plan-facts-single-query.md](plan-facts-single-query.md) | plan-facts-single-query |
 | 2026-09-08 | — | [plan-facts-tool-optimization.md](plan-facts-tool-optimization.md) | plan-facts-tool-optimization |
 | 2026-09-08 | — | [plan-independent-tools-schema.md](plan-independent-tools-schema.md) | plan-independent-tools-schema |
 | 2026-09-08 | — | [plan-prompt-tool-schema.md](plan-prompt-tool-schema.md) | plan-prompt-tool-schema |
+| 2026-09-08 | — | [review-answer-baseline-calibration.md](review-answer-baseline-calibration.md) | 完成 spec v4 独立审查与配套工程评估 |
+| 2026-09-08 | — | [review-facts-single-query-answer-quality.md](review-facts-single-query-answer-quality.md) | 保留 v3 原判定及撤回说明；当前重评见 reports |
+| 2026-09-08 | — | [draft-independent-tools.md](draft-independent-tools.md) | 保留已被正式工具方案替代的前序审查证据（归档日期） |
+| 2026-09-08 | — | [plan-tech-debt-d4-hitrate-display.md](plan-tech-debt-d4-hitrate-display.md) | 补齐 hitrate 逐题 precision 与 nDCG 展示，保持指标计算口径 |
 | 2026-09-07 | — | [plan-agent-auto-tool-budget.md](plan-agent-auto-tool-budget.md) | plan-agent-auto-tool-budget |
 | 2026-09-07 | — | [plan-benchmark-snapshot-lifecycle.md](plan-benchmark-snapshot-lifecycle.md) | plan-benchmark-snapshot-lifecycle |
 | 2026-09-07 | — | [plan-dev-temp-simplification.md](plan-dev-temp-simplification.md) | plan-dev-temp-simplification |

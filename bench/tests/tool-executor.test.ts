@@ -21,11 +21,11 @@ function call(id: string, name: string, params: unknown): ToolCall {
 
 describe('独立函数工具 schema', () => {
   it.each([
-    ['bm25', ['rag_search']],
+    ['bm25', ['rag_search', 'read_section']],
     ['grep', ['grep_search']],
-    ['both', ['rag_search', 'grep_search']],
+    ['both', ['rag_search', 'grep_search', 'read_section']],
     ['facts', ['facts_search']],
-    ['hybrid', ['rag_search', 'facts_search']],
+    ['hybrid', ['rag_search', 'facts_search', 'read_section']],
   ] as const)('%s 只暴露当前模式允许的函数工具', (retriever, names) => {
     const tools = toolsForRetriever(retriever)
     expect(tools.map((tool) => (tool.function as { name: string }).name)).toEqual(names)
@@ -48,7 +48,7 @@ describe('独立函数工具 schema', () => {
   })
 
   it('schema 指纹只由当前实际工具数组决定', () => {
-    expect(toolSchemaMetadata('bm25')).toMatchObject({ toolSchemaVersion: 5, toolNames: ['rag_search'] })
+    expect(toolSchemaMetadata('bm25')).toMatchObject({ toolSchemaVersion: 6, toolNames: ['rag_search', 'read_section'] })
     expect(toolSchemaMetadata('bm25').toolSchemaSha256).toMatch(/^[a-f0-9]{64}$/)
     expect(toolSchemaMetadata('bm25').toolSchemaSha256).not.toBe(toolSchemaMetadata('hybrid').toolSchemaSha256)
   })
@@ -69,6 +69,46 @@ describe('独立函数工具 schema', () => {
 
     expect(result.results[0]).toMatchObject({ status: 'empty', executed: true, factsResult: { matchedCount: 0, returnedCount: 0 } })
     expect(result.snapshot).toMatchObject({ used: 1, executed: 1, remaining: 0 })
+  })
+
+  it('facts store 只在实际 facts 调用后通知观测回调，RAG 调用不提前加载', async () => {
+    const config = loadConfig()
+    const used: unknown[] = []
+    const failed: unknown[] = []
+    config.retriever = 'bm25'
+    const rag = createKnowledgeToolExecutor({
+      config,
+      query: { id: 'OBSERVE-RAG', category: 'fact', question: '检索' },
+      chunks,
+      index: buildIndex(chunks),
+      onFactsStoreUsed: (store) => used.push(store),
+      onFactsStoreLoadFailed: (error) => failed.push(error),
+    }, 1)
+    await rag.executeBatch([call('rag', 'rag_search', { query: '制造站' })])
+    expect(used).toHaveLength(0)
+    expect(failed).toHaveLength(0)
+
+    config.retriever = 'facts'
+    const baseline = createKnowledgeToolExecutor({
+      config,
+      query: { id: 'OBSERVE-FACTS', category: 'fact', question: '事实' },
+      chunks: [],
+      index: buildIndex([]),
+    }, 1)
+    const baselineResult = await baseline.executeBatch([call('facts', 'facts_search', { query: '刻俄柏' })])
+
+    const facts = createKnowledgeToolExecutor({
+      config,
+      query: { id: 'OBSERVE-FACTS', category: 'fact', question: '事实' },
+      chunks: [],
+      index: buildIndex([]),
+      onFactsStoreUsed: (store) => { used.push(store); throw new Error('观测回调异常') },
+      onFactsStoreLoadFailed: (error) => failed.push(error),
+    }, 1)
+    const observedResult = await facts.executeBatch([call('facts', 'facts_search', { query: '刻俄柏' })])
+    expect(used).toHaveLength(1)
+    expect(failed).toHaveLength(0)
+    expect(observedResult).toEqual(baselineResult)
   })
 })
 

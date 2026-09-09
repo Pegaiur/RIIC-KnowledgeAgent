@@ -12,7 +12,9 @@ import type { DocChunk, BenchQuery, CostRecord, HttpAttempt, LlmUsage, Terminati
 import { callLLM, type ChatMessage, type ProviderCallLedger, type ProviderOptions } from './provider.js'
 import { aggregateAttemptCosts, aggregateUsages, computeCosts } from './pricing.js'
 import { isObservedTool } from './types.js'
+import type { SectionDirectory } from './sections.js'
 import { markTraceFailed, type QueryTrace, type TraceFailure, type TraceLlmEvent, type TraceToolEvent } from './trace.js'
+import type { CardStore } from './facts/store.js'
 import {
   createKnowledgeToolExecutor,
   serializeToolResult,
@@ -46,6 +48,14 @@ export interface AgentOptions {
   config?: BenchConfig
   /** 单次基准运行固定使用的查询契约快照；未提供时按单次查询读取。 */
   agentInstructions?: string
+  /** 由 runner 在首个模型请求前捕获的完整 system prompt；避免中途文件变化改写本轮输入。 */
+  systemPrompt?: string
+  /** facts 工具实际取得 store 后的观测回调；回调失败不应改变工具语义。 */
+  onFactsStoreUsed?: (store: CardStore) => void
+  /** facts store 加载失败时的观测回调；工具仍返回原有错误。 */
+  onFactsStoreLoadFailed?: (error: unknown) => void
+  /** 运行级原文小节目录；由 runner 按开放阅读能力的模式提供。 */
+  sections?: SectionDirectory
   /** 可选的单题执行记录。 */
   trace?: QueryTrace
   thinking: ThinkingMode
@@ -102,9 +112,18 @@ export async function runQuery(
   validateBenchConfig(config)
   const records: CostRecord[] = []
   const injectedIds: string[] = []
-  const executor = createKnowledgeToolExecutor({ config, query, chunks, index, injectedIds }, config.toolBudget)
+  const executor = createKnowledgeToolExecutor({
+    config,
+    query,
+    chunks,
+    index,
+    sections: opts.sections,
+    injectedIds,
+    onFactsStoreUsed: opts.onFactsStoreUsed,
+    onFactsStoreLoadFailed: opts.onFactsStoreLoadFailed,
+  }, config.toolBudget)
   const messages: ChatMessage[] = [
-    { role: 'system', content: buildSystemPrompt(config.retriever, opts.agentInstructions ?? loadKnowledgeAgentInstructions(), config.toolBudget) },
+    { role: 'system', content: opts.systemPrompt ?? buildSystemPrompt(config.retriever, opts.agentInstructions ?? loadKnowledgeAgentInstructions(), config.toolBudget) },
     { role: 'user', content: query.question },
   ]
   const sessionController = new AbortController()

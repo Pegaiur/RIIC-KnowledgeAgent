@@ -66,7 +66,7 @@ rag-test/
 │   └── questions.json              ← 基准问题集（20 题，三分类）
 ├── bench-runs/                     ← 基准运行结果（JSONL，不入库；dev 中间结果在 dev-temp/runs）
 ├── scripts/                        ← 过程管理脚本与可复用任务（使用规范见 scripts/INDEX.md）
-├── docs/                           ← 过程管理文档（inbox / plan / draft / spec / adr / archive）
+├── docs/                           ← 文档入口 README.md（inbox / plan / draft / spec / reports / adr / archive）
 │   ├── inbox.md                    ← 需求唯一入口
 │   ├── plan-*.md / draft-*.md      ← 版本计划 / 未定稿提案
 │   ├── spec/                       ← 评测/核查规格（长期复用资产，如 RAG 20 题回答核查基线）
@@ -118,6 +118,8 @@ node scripts/verify.mjs merge -- --base main   # 合并门禁
 
 | 文档 | 用途 |
 | ---- | ---- |
+| [`docs/README.md`](docs/README.md) | 分类导航、当前规格与报告入口 |
+| [`docs/reports/draft-answer-baseline-v4.md`](docs/reports/draft-answer-baseline-v4.md) | 按 spec v4 生成的核查草案（待全量复核） |
 | [`docs/inbox.md`](docs/inbox.md) | 待办事项需求唯一入口 |
 | [`docs/spec/rag-answer-baseline.md`](docs/spec/rag-answer-baseline.md) | 评测/核查规格（RAG 20 题答案核查基线，长期复用资产） |
 | [`docs/rules/`](docs/rules/) | 复杂规则权威目录 |

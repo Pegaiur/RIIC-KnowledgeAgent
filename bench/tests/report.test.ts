@@ -221,6 +221,28 @@ describe('report：聚合与渲染', () => {
     expect(report.toolUsage).toEqual(expect.arrayContaining([{ tool: 'rag_search', calls: 1 }]))
   })
 
+  it('read_section 计入工具调用统计，但不进入搜索命中口径', () => {
+    const report = aggregate([
+      rec({
+        tools: ['read_section'],
+        toolBatch: {
+          requested: 1,
+          granted: 1,
+          executed: 1,
+          denied: 0,
+          errors: 0,
+          hitCount: 0,
+          hitUnknown: 0,
+          budgetBefore: 5,
+          budgetAfter: 4,
+          resultChars: 120,
+        },
+      }),
+    ])
+    expect(report.toolUsage).toEqual(expect.arrayContaining([{ tool: 'read_section', calls: 1 }]))
+    expect(report.toolStats).toMatchObject({ executed: 1, hitCount: 0, hitUnknown: 0 })
+  })
+
   it('Markdown 渲染含表头与总数', () => {
     const report = aggregate([rec({})])
     const md = renderMarkdown(report)
