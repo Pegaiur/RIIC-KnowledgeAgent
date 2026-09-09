@@ -1,11 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { loadConfig } from '../src/config.js'
+import { aggregateAttemptCosts } from '../src/pricing.js'
 import { buildChatBody, callLLM, type ChatMessage, type ProviderCallLedger, type ProviderOptions } from '../src/provider.js'
 
 const messages: ChatMessage[] = [{ role: 'user', content: '测试' }]
 const tools: unknown[] = [{ type: 'function', function: { name: 'rag_search' } }]
 
-function opts(provider: 'hy3' | 'qwen', thinking: 'off' | 'low' | 'high'): ProviderOptions {
+function opts(provider: 'hy3' | 'qwen' | 'glm' | 'deepseek', thinking: 'off' | 'low' | 'high'): ProviderOptions {
   return { config: loadConfig(provider), thinking, dry: true }
 }
 
@@ -14,9 +15,22 @@ afterEach(() => {
 })
 
 describe('provider：请求体参数映射', () => {
-  it('hy3 off 不传思考参数，其余传 reasoning_effort + thinking.enabled', () => {
+  it('DeepSeek 使用指定型号及显式 off，拒绝未支持的思考历史模式', () => {
+    const body = buildChatBody(messages, tools, opts('deepseek', 'off'))
+    expect(body).toMatchObject({ model: 'deepseek-v4-flash-vision-exp', thinking: { type: 'disabled' }, max_tokens: 4096 })
+    expect(body).not.toHaveProperty('reasoning_effort')
+    expect(body).not.toHaveProperty('temperature')
+    expect(() => buildChatBody(messages, tools, opts('deepseek', 'low'))).toThrow('仅支持显式 off')
+  })
+  it('GLM 显式 low 且拒绝 off，不静默回退', () => {
+    expect(buildChatBody(messages, tools, opts('glm', 'low'))).toMatchObject({
+      model: 'glm-5.3-flash', thinking: { type: 'enabled' }, reasoning_effort: 'low',
+    })
+    expect(() => buildChatBody(messages, tools, opts('glm', 'off'))).toThrow('不支持关闭思考')
+  })
+  it('hy3 off 显式关闭，其余传 reasoning_effort + thinking.enabled', () => {
     expect(buildChatBody(messages, tools, opts('hy3', 'off'))).not.toHaveProperty('reasoning_effort')
-    expect(buildChatBody(messages, tools, opts('hy3', 'off'))).not.toHaveProperty('thinking')
+    expect(buildChatBody(messages, tools, opts('hy3', 'off')).thinking).toEqual({ type: 'disabled' })
 
     const low = buildChatBody(messages, tools, opts('hy3', 'low'))
     expect(low.reasoning_effort).toBe('low')
@@ -68,6 +82,7 @@ describe('provider：请求体参数映射', () => {
     const config = loadConfig('qwen')
     config.apiKey = 'test-key'
     const session = new AbortController()
+    const ledger: ProviderCallLedger = { attempts: [] }
     let requestSignal: AbortSignal | undefined
     let controller: ReadableStreamDefaultController<Uint8Array> | undefined
     vi.stubGlobal('fetch', vi.fn(async (_url: string, init?: RequestInit) => {
@@ -80,8 +95,9 @@ describe('provider：请求体参数映射', () => {
       }))
     }))
 
-    const pending = callLLM(messages, [], { config, thinking: 'off', dry: false, signal: session.signal })
+    const pending = callLLM(messages, [], { config, thinking: 'off', dry: false, signal: session.signal, ledger })
     await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(ledger.usage).toMatchObject({ cached: null, reasoning: null })
     session.abort(new Error('测试取消'))
     const outcome = await Promise.race([
       pending.then(() => 'resolved', () => 'rejected'),
@@ -90,7 +106,28 @@ describe('provider：请求体参数映射', () => {
     expect(outcome).toBe('rejected')
     expect(requestSignal?.aborted).toBe(true)
     if (outcome === 'pending') controller?.error(new Error('测试结束'))
-    await pending.catch(() => undefined)
+    await expect(pending).rejects.toMatchObject({
+      usage: { cached: null, reasoning: null, completeness: 'unknown' },
+      httpAttempts: [{ outcome: 'aborted', usage: { cached: null, reasoning: null } }],
+    })
+    expect(ledger.usage).toMatchObject({ cached: null, reasoning: null })
+  })
+
+  it('DeepSeek 缺失缓存分项经响应与台账传递后总费用仍未知', async () => {
+    const config = loadConfig('deepseek')
+    config.apiKey = 'test-key'
+    const ledger: ProviderCallLedger = { attempts: [] }
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+      model: config.model,
+      choices: [{ message: { content: '答案' }, finish_reason: 'stop' }],
+      usage: { prompt_tokens: 100, completion_tokens: 20 },
+    }), { status: 200 })))
+
+    const result = await callLLM(messages, [], { config, thinking: 'off', dry: false, ledger })
+    expect(result.usage).toMatchObject({ cached: null, completeness: 'partial' })
+    expect(ledger.usage).toMatchObject({ cached: null, completeness: 'partial' })
+    expect(result.httpAttempts).toMatchObject([{ usage: { cached: null, completeness: 'partial' } }])
+    expect(aggregateAttemptCosts(ledger.attempts.map(attempt => attempt.usage), config.prices).costTotal).toBeNull()
   })
 
   it('协议结构错误仍携带已观察 usage 和 HTTP 尝试台账', async () => {

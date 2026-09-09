@@ -2,6 +2,12 @@ import { describe, expect, it } from 'vitest'
 import { aggregateUsages, QWEN_PRICES, computeCosts, PRICE_CACHE_PER_M, PRICE_IN_PER_M, PRICE_OUT_PER_M } from '../src/pricing.js'
 
 describe('pricing：Hy3 费用计算', () => {
+  it('Qwen 按单次输入跨档计价，输入未知时不猜档位', () => {
+    expect(computeCosts(32_768, 1_000, 0, QWEN_PRICES).costOut).toBe(0.0008)
+    expect(computeCosts(32_769, 1_000, 0, QWEN_PRICES).costOut).toBe(0.0024)
+    expect(computeCosts(262_145, 1_000, 0, QWEN_PRICES).costOut).toBe(0.0048)
+    expect(computeCosts(null, 1_000, 0, QWEN_PRICES).costTotal).toBeNull()
+  })
   it('单价常量符合官方定价（输入 1 / 输出 4 / 缓存 0.25 元每百万）', () => {
     expect(PRICE_IN_PER_M).toBe(1.0)
     expect(PRICE_OUT_PER_M).toBe(4.0)
@@ -71,8 +77,8 @@ describe('pricing：Qwen3.7-Flash 费用计算', () => {
     expect(c.costTotal).toBe(0.8)
   })
 
-  it('输入按 0.2 元/M，缓存命中按 0.04 元/M（输入价 20%）', () => {
-    const c = computeCosts(1_000_000, 0, 500_000, QWEN_PRICES)
-    expect(c.costIn).toBeCloseTo(0.5 * 0.04 + 0.5 * 0.2, 6)
+  it('低输入档按 0.2 元/M，缓存命中按 0.04 元/M', () => {
+    const c = computeCosts(20_000, 0, 10_000, QWEN_PRICES)
+    expect(c.costIn).toBeCloseTo(0.01 * 0.04 + 0.01 * 0.2, 6)
   })
 })
