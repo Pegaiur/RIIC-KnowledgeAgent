@@ -26,14 +26,6 @@
 
 ## 待办区
 
-- [x] **精简过度防御的 sha256 控制项（两批）** — 第一批 b940453 删除 inputs 留档中只写不读的 sha256 与脱敏双标志；第二批删除自哈希 `inputsFileSha256`（连带快照白名单与格式校验分支），评估后维持 `RUN_INPUTS_SCHEMA_VERSION=1`、保留 facts 实体 ID 与原文指纹耦合。均为单模块内部数据结构精简、无生产消费者，不建 ADR。 — 2026-09-09
-
-- [x] **四模型试验统合与审查** — 240 会话统合报告独立审查通过，DeepSeek 新谷期 0.51524132 元、新峰期 1.03048264 元（均60会话换价、不含预检）；见[统合试验报告](archive/exp/exp-model-capability-consolidated.md)。未重跑或改分。 — 2026-09-09
-
-- [x] **DeepSeek 追加作答对照** — 显式 off、20 题三次及逐项核查完成，完整且有据 10/60；见 [追加试验](archive/exp/exp-deepseek-capability.md)，必要接口/计量适配见 [计划](plan-deepseek-provider.md)。 — 2026-09-09
-
-- [x] **三模型试验的最小 provider 适配** — 已完成型号注册、显式思考参数及计量契约适配，类型检查、352 项测试与构建通过；见 [provider 适配计划](plan-model-provider-adaptation.md)。 — 2026-09-09
-- [x] **三模型作答能力对比** — GLM-5.3-Flash low、Hy3/Qwen3.7-Flash off，180 会话及匿名核查、争议复核完成；含预检估算 0.660345 元。结果与局限见 [模型能力对比试验](archive/exp/exp-model-capability-comparison.md)，未自动优化或切换默认模型。 — 2026-09-09
 - [ ] **独立审定 spec v4 核查草案** — [v4 核查试验](exp-answer-baseline-v4.md) 已完成全量复核，仍待独立结果审查；审定前不指定正式质量基线。 — 2026-09-09
 - [ ] **选择后续性能试验候选** — [性能试验](exp-harness-performance.md) 已保留测量与候选判断，当前暂缓、尚未选择下一项试验；重启时先明确范围及输入，不沿用已清理的留出题附件，不自动启动优化或付费运行。 — 2026-09-09
 - [ ] **评估语料实体标记的小规模验证** — 针对名称改写与干员/阵营混用，设计固定检索片段的原文、边界标记、类型标记三组对照，见 [实体标记试验（暂缓，未执行）](exp-entity-marking-probe.md)；原设计基于 lookup/query_operators 路由，当前已统一为 facts_search，重启前需按 schema v5 重估。仅评估，不修改正式语料或启动付费调用。 — 2026-09-07
