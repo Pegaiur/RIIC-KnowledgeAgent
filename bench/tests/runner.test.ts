@@ -30,7 +30,7 @@ describe('runBenchmark：trace 逐题落盘', () => {
         toolBudget: 5,
         sessionTimeoutMs: 300000,
         feedbackOnNoToolAnswer: true,
-        toolSchemaVersion: 6,
+        toolSchemaVersion: 7,
         toolNames: ['facts_search'],
         modelSteps: 2,
         toolBatches: 0,

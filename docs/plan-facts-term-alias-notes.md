@@ -29,6 +29,12 @@
 - **原因**：查询级路径必须和卡片数组同时产生，才能保留同卡多归属、零卡拒绝和稳定卡序；旧 `lookup` 不迁移，遵守历史能力非目标。
 - **后果**：phase 4 只需在现有查询结果上接入 executor resolution 元数据、计数和版本，不再改回数组契约。
 
+### 2026-09-10 — phase 4 executor、序列化与版本
+- **spec 原文**：查询级信息进入工具结果元数据；`matchedCount`/`returnedCount` 按去重卡计数，零卡拒绝保持 empty 且 complete=true；`FACTS_RESULT_VERSION` 升为 3，工具 schema 升为 7，描述与能力同步。
+- **实际做法**：executor 将 `FactsSearchResult.paths` 映射到 `factsResult.resolution`，`serializeToolResult` 复用该元数据；工具描述明确别名、阵营/搭配规范名、同名全返和简写合称限制；新增混合路径/拒绝序列化回归。
+- **原因**：路径对象作为唯一结构化来源同时进入正文和 envelope，避免从正文反推解析类型；版本升级与调用链迁移同批完成，消除旧协议状态。
+- **后果**：phase 5 仅需补齐计划收尾、全量维护校验及最终门禁记录，不再修改结果协议。
+
 ## 债务记录
 
 > 遗留的技术债、被牺牲的改进与延期偿还事项

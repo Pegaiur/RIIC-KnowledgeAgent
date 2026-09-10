@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildCardStore } from '../src/facts/store.js'
+import { buildCardStore, serializeFactsMatches } from '../src/facts/store.js'
 import type { RecordCard } from '../src/facts/card.js'
 import type { TermCurations } from '../src/facts/terms.js'
 
@@ -74,5 +74,24 @@ describe('facts 查询级解析', () => {
     expect(result.paths.map((path) => path.kind)).toEqual(['legacy'])
     expect(store.factsSearch('测试甲 共享词').paths).toEqual([])
     expect(store.factsSearch('德狼').paths).toEqual([])
+  })
+
+  it('序列化混合路径、组合条件和纯拒绝时不回退为未知词模板', () => {
+    const mixed = serializeFactsMatches(store.factsSearch('测试甲'))
+    expect(mixed).toContain('词条解析：测试甲')
+    expect(mixed).toContain('精确：干员正式名')
+    expect(mixed).toContain('别名：测试甲 → 测试甲、测试乙')
+    expect(mixed).toContain('【测试乙】')
+    expect(mixed).not.toContain('未收录精确词条')
+
+    const combo = serializeFactsMatches(store.factsSearch('共享词'))
+    expect(combo).toContain('组合：共享词 → 共享词')
+    expect(combo).toContain('条件：测试条件')
+    expect(combo).toContain('测试甲（核心）')
+
+    const rejected = serializeFactsMatches(store.factsSearch('拒绝词'))
+    expect(rejected).toContain('拒绝：拒绝词')
+    expect(rejected).toContain('该名称已明确废弃')
+    expect(rejected).not.toContain('未收录精确词条')
   })
 })
