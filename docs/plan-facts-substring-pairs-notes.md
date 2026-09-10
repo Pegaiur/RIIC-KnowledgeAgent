@@ -33,7 +33,19 @@
 ## 实现调整
 > spec 中有描述，但实际实现方式不同
 
-（尚未开始编码，暂无条目）
+### 2026-09-10 — phase 1 类型与校验（步骤1）
+- **spec 原文**：新增 `SubstringEntry { text; targets; evidence }`，`TermCurations` 增加 `substrings`；同步 `EMPTY_TERM_CURATIONS` 与数组存在性校验；新增 text 命中 canonical、targets 非空且去前缀后为真子串、substrings 内名称唯一、条目内 targets 不重复、evidence 至少一条等校验；允许跨索引同名。
+- **实际做法**：按 TDD 先在 `bench/tests/facts-terms.test.ts` 补 9 条负例与跨索引同名正例（红），再实现 `terms.ts` 校验分支（绿）；`substrings` 定为必填字段后，同批迁移 4 处 `TermCurations` 字面量（`curation/terms.ts`、`facts-search-resolution.test.ts`、`facts-resolution-executor.test.ts`、`facts-terms.test.ts`），生产登记暂以空数组占位。
+- **原因**：必填字段可让后续遗漏登记在编译期暴露；本 phase 只固定数据契约，运行时索引留到 phase 3。
+- **后果**：phase 2 只需填充 `TERM_CURATIONS.substrings`；phase 3 按 `SubstringEntry` 契约建索引与产出条件，不需再改类型。
+- **验证**：`pnpm run typecheck` 通过；`facts-terms.test.ts` 24 通过；相关 5 个测试文件 125 通过。
+
+### 2026-09-10 — phase 2 具名登记 31 条（步骤2）
+- **spec 原文**：在 `curation/terms.ts` 登记核对清单的 31 组，evidence 统一指向 `knowledge/references/歧义.md` 第一节；不录设施列，不录「可判断 / 必须反问」策略文字。
+- **实际做法**：新增 `substring` 构造助手与 `substringSection` 常量，按清单顺序登记 31 条；测试侧固化独立的 `EXPECTED_SUBSTRINGS` 做集合相等断言，并把 `substrings` 纳入既有 evidence 文件/小节核验迭代。
+- **原因**：完整性以测试侧显式清单为准（名册包含关系会误纳 `陈`、`阿`、`红`），来源小节统一为歧义.md 第一节。
+- **后果**：phase 3 的索引直接消费 `TERM_CURATIONS.substrings`，登记数据无需再改。
+- **验证**：`pnpm run typecheck` 通过；`facts-curation.test.ts` 28 通过、`facts-terms.test.ts` 24 通过。
 
 ## 债务记录
 > 遗留的技术债、被牺牲的改进与延期偿还事项

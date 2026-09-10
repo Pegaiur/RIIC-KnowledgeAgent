@@ -33,6 +33,18 @@ const EXPECTED_MEMBERS = [
   ['龙门中枢组', { core: '斩业星熊', important: '诗怀雅', secondary: '陈' }],
 ] as const
 
+// 依据 knowledge/references/歧义.md 第一节的 31 组「短名 ⊂ 长名」逐条核对；预期清单独立于生产登记表。
+const EXPECTED_SUBSTRINGS = [
+  ['临光', '耀骑士临光'], ['克洛丝', '寒芒克洛丝'], ['凛冬', '怒潮凛冬'], ['凯尔希', '凯尔希·思衡托'],
+  ['初雪', '圣聆初雪'], ['嘉维尔', '百炼嘉维尔'], ['夜刀', '麒麟R夜刀'], ['安洁莉娜', '予愿安洁莉娜'],
+  ['幽灵鲨', '归溟幽灵鲨'], ['德克萨斯', '缄默德克萨斯'], ['惊蛰', '司霆惊蛰'], ['拉普兰德', '荒芜拉普兰德'],
+  ['斯卡蒂', '浊心斯卡蒂'], ['星源', '溯光星源'], ['星熊', '斩业星熊'], ['杰西卡', '涤火杰西卡'],
+  ['格雷伊', '承曦格雷伊'], ['梓兰', '焰狐龙梓兰'], ['棘刺', '引星棘刺'], ['炎熔', '炎狱炎熔'],
+  ['空爆', '雷狼龙S空爆'], ['能天使', '新约能天使'], ['艾雅法拉', '纯烬艾雅法拉'], ['芙蓉', '濯尘芙蓉'],
+  ['苇草', '焰影苇草'], ['诗怀雅', '琳琅诗怀雅'], ['调香师', '撷英调香师'], ['赫默', '淬羽赫默'],
+  ['送葬人', '圣约送葬人'], ['银灰', '凛御银灰'], ['黑角', '火龙S黑角'],
+] as const
+
 function sourceSection(path: string, section: string): string {
   const lines = readFileSync(join(process.cwd(), path), 'utf8').split('\n')
   const heading = lines.findIndex((line) => /^#{1,6}\s+/u.test(line) && line.replace(/^#{1,6}\s+/u, '').trim() === section)
@@ -80,6 +92,13 @@ describe('facts 人工词条登记', () => {
     }
   })
 
+  it('登记 31 组子串对且与清单逐条一致', () => {
+    const actual = TERM_CURATIONS.substrings.map((entry) => [
+      entry.text, ...entry.targets.map((target) => target.slice('operator:'.length)),
+    ])
+    expect(actual).toEqual(EXPECTED_SUBSTRINGS.map(([short, long]) => [short, long]))
+  })
+
   it('别名目标按证据登记，推王保留两个目标', () => {
     expect(TERM_CURATIONS.aliases).toEqual(expect.arrayContaining([
       expect.objectContaining({ text: '维娜', targets: ['operator:维娜·维多利亚'] }),
@@ -90,7 +109,7 @@ describe('facts 人工词条登记', () => {
   })
 
   it('每条登记的 evidence 文件和小节均可从仓库核对', () => {
-    for (const entry of [...TERM_CURATIONS.aliases, ...TERM_CURATIONS.combos, ...TERM_CURATIONS.legacyNames]) {
+    for (const entry of [...TERM_CURATIONS.aliases, ...TERM_CURATIONS.combos, ...TERM_CURATIONS.legacyNames, ...TERM_CURATIONS.substrings]) {
       for (const source of entry.evidence) {
         const content = sourceSection(source.path, source.section)
         const entryName = 'text' in entry ? entry.text : entry.name

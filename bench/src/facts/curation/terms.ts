@@ -1,4 +1,4 @@
-import type { ComboEntry, EvidenceRef, MemberRole, OperatorRef, TermCurations } from '../terms.js'
+import type { ComboEntry, EvidenceRef, MemberRole, OperatorRef, SubstringEntry, TermCurations } from '../terms.js'
 
 function source(path: string, section: string): EvidenceRef {
   return { path, section }
@@ -6,6 +6,10 @@ function source(path: string, section: string): EvidenceRef {
 
 function member(canonical: string, role: MemberRole): { target: OperatorRef; role: MemberRole } {
   return { target: `operator:${canonical}`, role }
+}
+
+function substring(shortName: string, longName: string, evidence: EvidenceRef): SubstringEntry {
+  return { text: shortName, targets: [`operator:${longName}`], evidence: [evidence] }
 }
 
 function combo(
@@ -31,6 +35,7 @@ const trade = 'knowledge/guides/贸易站组合.md'
 const manufacturing = 'knowledge/guides/制造站组合.md'
 const crossFacility = 'knowledge/guides/跨设施组合.md'
 const ambiguity = 'knowledge/references/歧义.md'
+const substringSection = '一、子串包含对（31 组，自动生成）'
 
 /** 人工确认的入口词条；不从散文运行时解析，也不回写 RecordCard.aliases。 */
 export const TERM_CURATIONS: TermCurations = {
@@ -40,7 +45,39 @@ export const TERM_CURATIONS: TermCurations = {
     { text: '拉狗', targets: ['operator:拉普兰德'], evidence: [source(ambiguity, '二、简称与合称（人工维护）')] },
     { text: '推王', targets: ['operator:推进之王', 'operator:维娜·维多利亚'], evidence: [source(ambiguity, '二、简称与合称（人工维护）')] },
   ],
-  substrings: [],
+  substrings: [
+    substring('临光', '耀骑士临光', source(ambiguity, substringSection)),
+    substring('克洛丝', '寒芒克洛丝', source(ambiguity, substringSection)),
+    substring('凛冬', '怒潮凛冬', source(ambiguity, substringSection)),
+    substring('凯尔希', '凯尔希·思衡托', source(ambiguity, substringSection)),
+    substring('初雪', '圣聆初雪', source(ambiguity, substringSection)),
+    substring('嘉维尔', '百炼嘉维尔', source(ambiguity, substringSection)),
+    substring('夜刀', '麒麟R夜刀', source(ambiguity, substringSection)),
+    substring('安洁莉娜', '予愿安洁莉娜', source(ambiguity, substringSection)),
+    substring('幽灵鲨', '归溟幽灵鲨', source(ambiguity, substringSection)),
+    substring('德克萨斯', '缄默德克萨斯', source(ambiguity, substringSection)),
+    substring('惊蛰', '司霆惊蛰', source(ambiguity, substringSection)),
+    substring('拉普兰德', '荒芜拉普兰德', source(ambiguity, substringSection)),
+    substring('斯卡蒂', '浊心斯卡蒂', source(ambiguity, substringSection)),
+    substring('星源', '溯光星源', source(ambiguity, substringSection)),
+    substring('星熊', '斩业星熊', source(ambiguity, substringSection)),
+    substring('杰西卡', '涤火杰西卡', source(ambiguity, substringSection)),
+    substring('格雷伊', '承曦格雷伊', source(ambiguity, substringSection)),
+    substring('梓兰', '焰狐龙梓兰', source(ambiguity, substringSection)),
+    substring('棘刺', '引星棘刺', source(ambiguity, substringSection)),
+    substring('炎熔', '炎狱炎熔', source(ambiguity, substringSection)),
+    substring('空爆', '雷狼龙S空爆', source(ambiguity, substringSection)),
+    substring('能天使', '新约能天使', source(ambiguity, substringSection)),
+    substring('艾雅法拉', '纯烬艾雅法拉', source(ambiguity, substringSection)),
+    substring('芙蓉', '濯尘芙蓉', source(ambiguity, substringSection)),
+    substring('苇草', '焰影苇草', source(ambiguity, substringSection)),
+    substring('诗怀雅', '琳琅诗怀雅', source(ambiguity, substringSection)),
+    substring('调香师', '撷英调香师', source(ambiguity, substringSection)),
+    substring('赫默', '淬羽赫默', source(ambiguity, substringSection)),
+    substring('送葬人', '圣约送葬人', source(ambiguity, substringSection)),
+    substring('银灰', '凛御银灰', source(ambiguity, substringSection)),
+    substring('黑角', '火龙S黑角', source(ambiguity, substringSection)),
+  ],
   combos: [
     combo('龙舌兰组', [
       member('巫恋', 'core'), member('龙舌兰', 'core'),
