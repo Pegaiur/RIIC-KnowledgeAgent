@@ -32,3 +32,4 @@
 
 - 规划文档：[单词条facts实施计划](../archive/plan-facts-single-query.md)
 - 需求入口：[inbox](../inbox.md)
+- 后续扩展：[ADR-010](ADR-010-facts-alias-disambiguation.md) — 在精确匹配之上增加别名与集合词条（阶段 1 提议）

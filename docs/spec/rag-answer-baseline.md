@@ -6,6 +6,8 @@
 >
 > 本版知识源基准提交：`b008f80c00c05097856921da946fe344bcaed600`；修订仅改变核查文档，不声明上游游戏数据已重新核验。独立审查及配套评估见[校正记录](../archive/exp/exp-answer-baseline-calibration.md#独立审查与v4定稿2026-09-08)。
 >
+> 命名同步（2026-09-10）：S07 组合名统一为「红松骑士团组」，仅同步证据锚点与 gold/questions，不改判定口径与题号集合。
+>
 > 事实依据：`knowledge/corpus-manifest.json` 当前白名单中的 `base/`、`references/`、`guides/`。题目、gold 和本快照必须保持同一题号集合；下文证据块服务答案核查；gold 是独立的检索相关性标注，不是完整答案的必要检索路径。v4 未变更 gold，不能将 gold 全命中解释为必答项已全部取证。
 
 ## 质量基线

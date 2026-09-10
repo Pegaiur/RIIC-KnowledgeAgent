@@ -31,7 +31,7 @@
 ### 步骤 2：别名与集合词条数据表
 
 - 输入：步骤 1 口径、`facts/curation/types.ts` 现有结构。
-- 产出：`facts/curation` 新增别名条目（`aliasText`、`targets`、`aliasKind`、`disambiguation`、`evidence`）与集合词条（`comboName`、`members` 带分层、`aliases`、`legacyNames`、`evidence`）；31 组子串对 + 简称/合称/俗称/旧称全部登记，19 个组合名登记，5 个合称映射到集合词条；`targets` 用 `operator:<canonical>`。
+- 产出：新增独立文件 `facts/curation/terms.ts`（不并入九设施 room 级 `CurationBatch`，不新增哈希/指纹字段），定义别名条目（`aliasText`、`targets`、`aliasKind`、`disambiguation`、`evidence`）与集合词条（`comboName`、`members` 带分层、`aliases`、`legacyNames`、`evidence`）；31 组子串对 + 简称/合称/俗称/旧称全部登记，19 个组合名登记，5 个合称映射到集合词条；`targets` 用 `operator:<canonical>`。
 - 验收：解析/校验通过；子串对计数断言 31、组合名计数断言 19；`targets`/`members` 全部存在于名册；每条子串对带设施线索；旧称映射无悬空。
 
 ### 步骤 3：store 索引与查询解析
