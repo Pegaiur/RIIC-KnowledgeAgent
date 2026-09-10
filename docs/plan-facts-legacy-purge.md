@@ -1,7 +1,7 @@
 # facts legacy 实现清理计划
 
 > 创建日期：2026-09-10
-> 状态：施工中（方案已收窄，尚未编码）
+> 状态：已完成（待发布元数据收束）
 
 ## 目标
 
@@ -65,18 +65,18 @@
 
 ## 验收清单
 
-- [ ] 旧称登记类型、三条数据、专用索引与校验删除，消费者迁移完成
-- [ ] legacy / rejected 路径与渲染删除，四类路径及子串覆盖规则保持
-- [ ] FACTS_RESULT_VERSION 升为 5，序列化、trace 与版本断言同步
-- [ ] 旧称未收录、同词合法命中、别名／子串／搭配及工具错误回归通过
-- [ ] 改动范围核对完成：语料、搭配名称与条件、ENTITY_WORDS、命名规则和历史评测未改写
-- [ ] `pnpm run typecheck` 全通过
-- [ ] `pnpm run test` 全通过
-- [ ] ADR、INDEX 与 inbox 状态据实际完成情况同步，`node scripts/doc-check.mjs` 全通过
+- [x] 旧称登记类型、三条数据、专用索引与校验删除，消费者迁移完成
+- [x] legacy / rejected 路径与渲染删除，四类路径及子串覆盖规则保持
+- [x] FACTS_RESULT_VERSION 升为 5，序列化、trace 与版本断言同步
+- [x] 旧称未收录、同词合法命中、别名／子串／搭配及工具错误回归通过
+- [x] 改动范围核对完成：语料、搭配名称与条件、ENTITY_WORDS、命名规则和历史评测未改写
+- [x] `pnpm run typecheck` 全通过
+- [x] `pnpm run test` 全通过
+- [x] ADR、INDEX 与 inbox 状态据实际完成情况同步，`node scripts/doc-check.mjs` 全通过
 
 ## 关联 ADR
 
-- [ADR-010](adr/ADR-010-facts-alias-disambiguation.md) — §7 仅清理 facts legacy 实现，待实施
+- [ADR-010](adr/ADR-010-facts-alias-disambiguation.md) — §7 仅清理 facts legacy 实现，已实施
 
 ---
 

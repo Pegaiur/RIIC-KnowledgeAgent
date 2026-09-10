@@ -32,7 +32,7 @@
 - [ ] **独立审定 spec v4 核查草案** — [v4 核查试验](exp-answer-baseline-v4.md) 已完成全量复核，仍待独立结果审查；审定前不指定正式质量基线。 — 2026-09-09
 - [ ] **选择后续性能试验候选** — [性能试验](exp-harness-performance.md) 已保留测量与候选判断，当前暂缓、尚未选择下一项试验；重启时先明确范围及输入，不沿用已清理的留出题附件，不自动启动优化或付费运行。 — 2026-09-09
 - [ ] **评估语料实体标记的小规模验证** — 针对名称改写与干员/阵营混用，设计固定检索片段的原文、边界标记、类型标记三组对照，见 [实体标记试验（暂缓，未执行）](exp-entity-marking-probe.md)；原设计基于 lookup/query_operators 路由，当前已统一为 facts_search，重启前需按 schema v5 重估。仅评估，不修改正式语料或启动付费调用。 — 2026-09-07
-- [ ] **清理 facts legacy 实现** — 仅删除 `legacyNames`（redirect/reject）、`ResolutionPath` 的 legacy/rejected 与专用索引、校验、渲染，保留其余合法查询路径；`FACTS_RESULT_VERSION` 4→5，工具 schema 保持 8。实施见 [facts legacy 实现清理计划](plan-facts-legacy-purge.md)，契约见 [ADR-010](adr/ADR-010-facts-alias-disambiguation.md) §7。本轮只修缮方案，尚未编码；不清理语料、ENTITY_WORDS、搭配条件或历史评测。 — 2026-09-10
+- [x] **清理 facts legacy 实现** — 仅删除 `legacyNames`（redirect/reject）、`ResolutionPath` 的 legacy/rejected 与专用索引、校验、渲染，保留其余合法查询路径；`FACTS_RESULT_VERSION` 4→5，工具 schema 保持 8。实施见 [facts legacy 实现清理计划](plan-facts-legacy-purge.md)，契约见 [ADR-010](adr/ADR-010-facts-alias-disambiguation.md) §7。已按计划完成实现与回归；未清理语料、ENTITY_WORDS、搭配条件或历史评测，组合命名治理保留为独立待办。 — 2026-09-10
 - [ ] **补充组合／搭配名称结构与表达标准（暂缓）** — 以“阿兰娜＋温米”等表达为线索，后续评估正式组合准入、规范名结构、成员关系描述及推荐边界，并核对现有组合、语料旧名和运行时条件的一致性。用户因范围偏大决定本轮不做，仅保留 inbox 待办；重启时先明确范围与命名规则，再决定语料、登记和检索词典的迁移，不把所有具名搭配归为旧称，不改写历史核查结论。 — 2026-09-10
 
 <!-- 格式: - [ ] **简短标题** — 描述 — 提出日期 — 可能路由 -->
