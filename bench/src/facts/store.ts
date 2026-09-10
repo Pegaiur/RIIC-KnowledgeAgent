@@ -2,11 +2,22 @@
  * 运行时记录卡内存 store + 检索索引（plan 步骤 5）。
  *
  * 运行时以最终门禁通过的全量 RecordCard 为源；fixture 只保留为回归基线。
- * factsSearch 返回六类规范词条的精确并集；lookup/queryOperators 仅供旧数据调用者和历史回归使用。
+ * factsSearch 返回六类规范词条与人工登记入口的查询级结果；lookup/queryOperators 仅供旧数据调用者和历史回归使用。
  * 不做落盘、不做自然语言解析、不做模糊或子串兜底。
  */
 import type { RecordCard } from './card.js'
+import { TERM_CURATIONS } from './curation/terms.js'
 import { loadValidatedRecordCards } from './final.js'
+import {
+  EMPTY_TERM_CURATIONS,
+  validateTermCurations,
+  type AliasEntry,
+  type ComboEntry,
+  type EvidenceRef,
+  type LegacyEntry,
+  type OperatorRef,
+  type TermCurations,
+} from './terms.js'
 
 export type FactsMatchCategory = 'operator' | 'skill' | 'skillGroup' | 'room' | 'faction' | 'class'
 
@@ -24,13 +35,26 @@ export const FACTS_MATCH_CATEGORY_LABEL: Record<FactsMatchCategory, string> = {
 }
 
 /**
- * TODO(tech-debt) R5-2：历史 lookup 的别名、合称与子串消歧仍未接入独立真源；
- * 待建立别名/合称真源并完成歧义核对后，再决定是否恢复旧数据调用者的多卡解析能力。
+ * TODO(tech-debt) R5-2：历史 lookup 仍未迁移到 facts 词条登记；
+ * 待另行决策并完成旧调用者兼容核对后，再决定是否恢复其别名、合称与子串解析能力。
  */
 
 export interface FactsMatch {
   card: RecordCard
   categories: FactsMatchCategory[]
+}
+
+export type ResolutionPath =
+  | { kind: 'exact'; category: FactsMatchCategory; term: string; memberIds: string[] }
+  | { kind: 'alias'; term: string; targets: OperatorRef[]; memberIds: string[]; evidence: EvidenceRef[] }
+  | { kind: 'combo'; term: string; combo: ComboEntry; memberIds: string[] }
+  | { kind: 'legacy'; term: string; combo: ComboEntry; memberIds: string[]; evidence: EvidenceRef[] }
+  | { kind: 'rejected'; term: string; reason: string; evidence: EvidenceRef[]; memberIds: [] }
+
+export interface FactsSearchResult {
+  query: string
+  paths: ResolutionPath[]
+  matches: FactsMatch[]
 }
 
 /** query_operators 过滤条件（正向条件由派发层校验；不含数值 minEff / 效率排序） */
@@ -55,8 +79,8 @@ export interface CardStore {
   byTerm: Map<string, Set<string>>
   /** 统一 facts 词条 → 各命中类别 → canonical 集合；不含别名、备注或全文。 */
   byFactTerm: Map<string, Map<FactsMatchCategory, Set<string>>>
-  /** 当前 facts 对外入口：六类词条精确命中后按卡稳定去重。 */
-  factsSearch: (query: string) => FactsMatch[]
+  /** 当前 facts 对外入口：六类词条与人工登记入口全部命中，按卡稳定去重。 */
+  factsSearch: (query: string) => FactsSearchResult
   lookup: (term: string) => RecordCard[]
   queryOperators: (filters: OperatorFilters) => RecordCard[]
 }
@@ -99,11 +123,15 @@ function addFactTerm(
 }
 
 /** 从记录卡数组构建检索 store（索引 + 查询函数） */
-export function buildCardStore(cards: RecordCard[]): CardStore {
+export function buildCardStore(cards: RecordCard[], terms: TermCurations = EMPTY_TERM_CURATIONS): CardStore {
   const byCanonical = new Map<string, RecordCard>()
   const byAlias = new Map<string, string[]>()
   const byTerm = new Map<string, Set<string>>()
   const byFactTerm = new Map<string, Map<FactsMatchCategory, Set<string>>>()
+  const aliasesByTerm = new Map<string, AliasEntry[]>()
+  const combosByTerm = new Map<string, ComboEntry>()
+  const combosById = new Map<string, ComboEntry>()
+  const legacyByTerm = new Map<string, LegacyEntry[]>()
 
   for (const card of cards) {
     if (!card.canonical) throw new Error('记录卡 canonical 不能为空')
@@ -134,16 +162,77 @@ export function buildCardStore(cards: RecordCard[]): CardStore {
     addFactTerm(byFactTerm, card.class, 'class', card.canonical)
   }
 
-  /** facts_search：一个完整词条的精确并集；同卡跨类别只返回一次。 */
-  const factsSearch = (query: string): FactsMatch[] => {
+  const validatedTerms = validateTermCurations(cards, terms)
+  for (const alias of validatedTerms.aliases) aliasesByTerm.set(alias.text, [alias])
+  for (const combo of validatedTerms.combos) {
+    combosByTerm.set(combo.name, combo)
+    combosById.set(combo.id, combo)
+  }
+  for (const legacy of validatedTerms.legacyNames) {
+    const entries = legacyByTerm.get(legacy.text) ?? []
+    entries.push(legacy)
+    legacyByTerm.set(legacy.text, entries)
+  }
+
+  /** facts_search：精确、别名、搭配和旧称路径全部收集；同卡只返回一次。 */
+  const factsSearch = (query: string): FactsSearchResult => {
     const term = (query ?? '').trim()
-    if (!term) return []
+    if (!term) return { query: term, paths: [], matches: [] }
+    const paths: ResolutionPath[] = []
     const categories = byFactTerm.get(term)
-    if (!categories) return []
-    return cards.flatMap((card) => {
-      const matched = FACTS_MATCH_CATEGORY_ORDER.filter((category) => categories.get(category)?.has(card.canonical))
-      return matched.length > 0 ? [{ card, categories: matched }] : []
+    for (const category of FACTS_MATCH_CATEGORY_ORDER) {
+      const memberIds = cards
+        .filter((card) => categories?.get(category)?.has(card.canonical) ?? false)
+        .map((card) => card.canonical)
+      if (memberIds.length > 0) paths.push({ kind: 'exact', category, term, memberIds })
+    }
+
+    const memberIdsForTargets = (targets: readonly OperatorRef[]): string[] => {
+      const targetCanonicals = new Set(targets.map((target) => target.slice('operator:'.length)))
+      return cards.filter((card) => targetCanonicals.has(card.canonical)).map((card) => card.canonical)
+    }
+    for (const alias of aliasesByTerm.get(term) ?? []) {
+      paths.push({
+        kind: 'alias',
+        term,
+        targets: [...alias.targets],
+        memberIds: memberIdsForTargets(alias.targets),
+        evidence: [...alias.evidence],
+      })
+    }
+    const combo = combosByTerm.get(term)
+    if (combo) {
+      paths.push({
+        kind: 'combo',
+        term,
+        combo,
+        memberIds: memberIdsForTargets(combo.members.map((member) => member.target)),
+      })
+    }
+    for (const legacy of legacyByTerm.get(term) ?? []) {
+      if (legacy.action === 'redirect') {
+        const target = combosById.get(legacy.target)
+        if (target !== undefined) {
+          paths.push({
+            kind: 'legacy',
+            term,
+            combo: target,
+            memberIds: memberIdsForTargets(target.members.map((member) => member.target)),
+            evidence: [...legacy.evidence],
+          })
+        }
+      } else {
+        paths.push({ kind: 'rejected', term, reason: legacy.reason, evidence: [...legacy.evidence], memberIds: [] })
+      }
+    }
+
+    const matchedIds = new Set(paths.flatMap((path) => path.memberIds))
+    const matches = cards.flatMap((card) => {
+      if (!matchedIds.has(card.canonical)) return []
+      const exactCategories = FACTS_MATCH_CATEGORY_ORDER.filter((category) => categories?.get(category)?.has(card.canonical) ?? false)
+      return [{ card, categories: exactCategories }]
     })
+    return { query: term, paths, matches }
   }
 
   /** lookup：精确 term → 命中卡列表（canonical/别名/技能名/技能组 均在 byTerm 统一解析） */
@@ -206,15 +295,50 @@ export function serializeCards(cards: RecordCard[], filters: CardSerializationFi
   return filters.queryOperators ? `${operatorScopeNotice()}\n${content}` : content
 }
 
-/** 渲染当前 facts_search 的完整卡结果，并保留每张卡的精确命中依据。 */
-export function serializeFactsMatches(query: string, matches: FactsMatch[]): string {
-  const term = query.trim()
-  if (matches.length === 0) return `未收录精确词条：${term}`
-  const categories = FACTS_MATCH_CATEGORY_ORDER.filter((category) => matches.some((match) => match.categories.includes(category)))
+/** 渲染当前 facts_search 的查询级结果，并保留路径与完整卡片。 */
+export function serializeFactsMatches(result: FactsSearchResult): string {
+  const term = result.query.trim()
+  if (result.paths.length === 0) return `未收录精确词条：${term}`
+  const exactPaths = result.paths.filter((path): path is Extract<ResolutionPath, { kind: 'exact' }> => path.kind === 'exact')
+  const categories = FACTS_MATCH_CATEGORY_ORDER.filter((category) => exactPaths.some((path) => path.category === category))
     .map((category) => FACTS_MATCH_CATEGORY_LABEL[category])
-  const header = `精确词条：${term}\n匹配说明：命中 ${matches.length} 张记录卡；命中类别包括：${categories.join('、')}。以下为完整记录卡。`
-  const content = matches.map((match) => serializeCard(match.card, {}, match.categories)).join('\n\n')
-  return `${header}\n${content}`
+  if (exactPaths.length === result.paths.length) {
+    const header = `精确词条：${term}\n匹配说明：命中 ${result.matches.length} 张记录卡；命中类别包括：${categories.join('、')}。以下为完整记录卡。`
+    const content = result.matches.map((match) => serializeCard(match.card, {}, match.categories)).join('\n\n')
+    return `${header}\n${content}`
+  }
+  const pathText = result.paths.map(renderResolutionPath).join('\n')
+  const summary = result.matches.length === 0
+    ? '匹配说明：本次路径没有可返回的记录卡。'
+    : `匹配说明：命中 ${result.matches.length} 张去重后的记录卡；以下为完整记录卡。`
+  const content = result.matches.map((match) => serializeCard(match.card, {}, match.categories)).join('\n\n')
+  return `词条解析：${term}\n命中路径：\n${pathText}\n${summary}${content ? `\n${content}` : ''}`
+}
+
+function renderResolutionPath(path: ResolutionPath): string {
+  if (path.kind === 'exact') return `- 精确：${FACTS_MATCH_CATEGORY_LABEL[path.category]}；命中 ${path.memberIds.length} 张记录卡`
+  if (path.kind === 'alias') {
+    return `- 别名：${path.term} → ${path.targets.map((target) => target.slice('operator:'.length)).join('、')}；来源：${renderEvidence(path.evidence)}；命中 ${path.memberIds.length} 张记录卡`
+  }
+  if (path.kind === 'combo') return renderComboPath('组合', path.term, path.combo, path.memberIds)
+  if (path.kind === 'legacy') {
+    return `${renderComboPath('旧称', path.term, path.combo, path.memberIds)}；来源：${renderEvidence(path.evidence)}`
+  }
+  return `- 拒绝：${path.term}；理由：${path.reason}；依据：${renderEvidence(path.evidence)}`
+}
+
+function renderComboPath(kind: string, term: string, combo: ComboEntry, memberIds: readonly string[]): string {
+  const members = combo.members.map((member) => `${member.target.slice('operator:'.length)}（${memberRoleLabel(member.role)}）`).join('、')
+  const coverage = combo.coverage === 'open' ? `开放、非穷尽：${combo.openScope}` : '来源列明成员范围'
+  return `- ${kind}：${term} → ${combo.name}；成员：${members}；条件：${combo.conditions.join('；')}；覆盖：${coverage}；来源：${renderEvidence(combo.evidence)}；命中 ${memberIds.length} 张记录卡`
+}
+
+function memberRoleLabel(role: ComboEntry['members'][number]['role']): string {
+  return { core: '核心', important: '重要', secondary: '次级', support: '挂件', optional: '可选' }[role]
+}
+
+function renderEvidence(evidence: readonly EvidenceRef[]): string {
+  return evidence.map((item) => `${item.path}#${item.section}`).join('；')
 }
 
 function operatorScopeNotice(): string {
@@ -252,6 +376,6 @@ let singleton: CardStore | undefined
 
 /** 运行时卡 store 单例（模块级惰性；首次调用时执行全量门禁） */
 export function getCardStore(): CardStore {
-  if (!singleton) singleton = buildCardStore(loadValidatedRecordCards(process.cwd(), 'curated'))
+  if (!singleton) singleton = buildCardStore(loadValidatedRecordCards(process.cwd(), 'curated'), TERM_CURATIONS)
   return singleton
 }

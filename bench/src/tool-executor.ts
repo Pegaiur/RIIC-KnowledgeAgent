@@ -442,10 +442,10 @@ function runOperation(
     // 观测回调不得改变 facts 工具的执行语义。
   }
   const query = params.query as string
-  const matches = store.factsSearch(query)
-  const hits = matches.map((match) => match.card)
+  const searchResult = store.factsSearch(query)
+  const hits = searchResult.matches.map((match) => match.card)
   return {
-    data: serializeFactsMatches(query, matches),
+    data: serializeFactsMatches(searchResult),
     hitIds: hits.map((card) => card.canonical),
     injectedIds: hits.map((card) => card.canonical),
   }
