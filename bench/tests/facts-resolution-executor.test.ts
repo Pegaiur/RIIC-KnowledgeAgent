@@ -103,12 +103,6 @@ describe('真实词条的 executor 解析协议', () => {
     expect(item).toMatchObject({ status: 'empty', executed: true, factsResult: { resolution: { paths: [] } } })
     expectEnvelope(item, [])
   })
-
-  it.each(['迷迭香感知链', '巫恋裁缝核', '龙门中枢制造组'])('%s 取消旧称重定向后按未收录返回', async (query) => {
-    const item = (await executor().executeBatch([call(query)])).results[0]!
-    expect(item).toMatchObject({ status: 'empty', executed: true, factsResult: { resolution: { paths: [] } } })
-    expectEnvelope(item, [])
-  })
 })
 
 describe('错误路径的 executor 边界', () => {

@@ -88,7 +88,7 @@ describe('retriever：jieba 分词（EXPERIMENT.tokenizer=jieba，ADR-001）', (
       { id: 'a', file: 'a.md', heading: '发电站', text: '发电站无人机充能机制。', startLine: 2, endLine: 2 },
     ]
     const index = buildIndex(chunks)
-    expect(search(index, '巫恋裁缝核订单分布', 3)).toEqual([])
+    expect(search(index, '龙舌兰组订单分布', 3)).toEqual([])
   })
 })
 
