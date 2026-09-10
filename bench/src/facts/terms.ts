@@ -38,15 +38,10 @@ export interface ComboEntry {
   evidence: readonly EvidenceRef[]
 }
 
-export type LegacyEntry =
-  | { text: string; action: 'redirect'; target: ComboRef; evidence: readonly EvidenceRef[] }
-  | { text: string; action: 'reject'; reason: string; evidence: readonly EvidenceRef[] }
-
 export interface TermCurations {
   aliases: readonly AliasEntry[]
   substrings: readonly SubstringEntry[]
   combos: readonly ComboEntry[]
-  legacyNames: readonly LegacyEntry[]
 }
 
 /**
@@ -101,10 +96,10 @@ function assertTextEntry(entry: { text: string; evidence: readonly EvidenceRef[]
   assertEvidence(entry.evidence, label)
 }
 
-/** 校验别名、子串对、搭配和旧称登记；不把跨索引同名当作冲突。 */
+/** 校验别名、子串对和搭配登记；不把跨索引同名当作冲突。 */
 export function validateTermCurations(cards: readonly RecordCard[], data: TermCurations): ValidatedTermCurations {
-  if (!Array.isArray(data.aliases) || !Array.isArray(data.substrings) || !Array.isArray(data.combos) || !Array.isArray(data.legacyNames)) {
-    fail('登记数据缺少 aliases、substrings、combos 或 legacyNames 数组')
+  if (!Array.isArray(data.aliases) || !Array.isArray(data.substrings) || !Array.isArray(data.combos)) {
+    fail('登记数据缺少 aliases、substrings 或 combos 数组')
   }
   const cardsByCanonical = new Map<string, RecordCard>()
   for (const card of cards) {
@@ -142,7 +137,6 @@ export function validateTermCurations(cards: readonly RecordCard[], data: TermCu
   const comboIds = data.combos.map((entry) => entry.id)
   assertUnique(comboNames, '搭配名称')
   assertUnique(comboIds, '搭配 ID')
-  const comboById = new Map<ComboRef, ComboEntry>()
   for (const entry of data.combos) {
     assertTrimmedNonEmpty(entry.name, '搭配名称')
     assertTrimmedNonEmpty(entry.id, `搭配 ${entry.name} ID`)
@@ -161,23 +155,6 @@ export function validateTermCurations(cards: readonly RecordCard[], data: TermCu
     if (entry.coverage === 'open') assertTrimmedNonEmpty(entry.openScope, `搭配 ${entry.name}开放范围`)
     if (entry.coverage === 'listed' && entry.openScope !== undefined) fail(`搭配 ${entry.name}为 listed 时不能填写开放范围`)
     assertEvidence(entry.evidence, `搭配 ${entry.name}`)
-    comboById.set(entry.id, entry)
-  }
-
-  const legacyTexts = data.legacyNames.map((entry) => entry.text)
-  assertUnique(legacyTexts, '旧称名称')
-  for (const entry of data.legacyNames) {
-    assertTextEntry(entry, '旧称')
-    if (entry.action === 'redirect') {
-      assertTrimmedNonEmpty(entry.target, `旧称 ${entry.text}目标`)
-      if (!entry.target.startsWith('combo:') || !comboById.has(entry.target)) {
-        fail(`旧称 ${entry.text}必须直接指向已登记搭配`)
-      }
-    } else if (entry.action === 'reject') {
-      assertTrimmedNonEmpty(entry.reason, `旧称 ${entry.text}拒绝理由`)
-    } else {
-      fail(`旧称 ${entry.text}处置动作无效`)
-    }
   }
 
   return data
@@ -187,5 +164,4 @@ export const EMPTY_TERM_CURATIONS: ValidatedTermCurations = {
   aliases: [],
   substrings: [],
   combos: [],
-  legacyNames: [],
 }

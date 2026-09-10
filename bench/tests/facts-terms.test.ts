@@ -27,13 +27,12 @@ function validData(): TermCurations {
       members: [{ target: 'operator:测试甲', role: 'core' }, { target: 'operator:测试乙', role: 'important' }],
       conditions: ['两名干员共同进驻'], coverage: 'listed', evidence: [evidence],
     }],
-    legacyNames: [{ text: '测试旧名', action: 'redirect', target: 'combo:测试组', evidence: [evidence] }],
     substrings: [{ text: '测试甲', targets: ['operator:测试甲乙'], evidence: [evidence] }],
   }
 }
 
 describe('facts 词条登记校验', () => {
-  it('接受合法的多目标别名、具名搭配和旧称直达', () => {
+  it('接受合法的多目标别名、具名搭配和子串对', () => {
     expect(validateTermCurations(cards, validData())).toEqual(validData())
   })
 
@@ -47,11 +46,6 @@ describe('facts 词条登记校验', () => {
     ['悬空干员目标', (data: TermCurations) => ({ ...data, aliases: [{ ...data.aliases[0]!, targets: ['operator:不存在'] }] })],
     ['重复搭配成员', (data: TermCurations) => ({ ...data, combos: [{ ...data.combos[0]!, members: [{ target: 'operator:测试甲', role: 'core' }, { target: 'operator:测试甲', role: 'important' }] }] })],
     ['开放搭配缺少范围', (data: TermCurations) => ({ ...data, combos: [{ ...data.combos[0]!, coverage: 'open', openScope: undefined }] })],
-    ['旧称链式指向', (data: TermCurations) => ({ ...data, legacyNames: [{ text: '链式旧名', action: 'redirect', target: 'combo:另一个旧名', evidence: [evidence] }] })],
-    ['旧称成环', (data: TermCurations) => ({ ...data, legacyNames: [
-      { text: '旧甲', action: 'redirect', target: 'combo:旧乙', evidence: [evidence] },
-      { text: '旧乙', action: 'redirect', target: 'combo:旧甲', evidence: [evidence] },
-    ] })],
     ['封闭登记误填开放范围', (data: TermCurations) => ({ ...data, combos: [{ ...data.combos[0]!, openScope: '其他成员' }] })],
     ['子串短名非规范干员', (data: TermCurations) => ({ ...data, substrings: [{ ...data.substrings[0]!, text: '不存在短名' }] })],
     ['子串目标为空', (data: TermCurations) => ({ ...data, substrings: [{ ...data.substrings[0]!, targets: [] }] })],

@@ -84,12 +84,9 @@ describe('facts 人工词条登记', () => {
   it('登记首批19个具名搭配且不接入简写合称', () => {
     expect(TERM_CURATIONS.combos.map((combo) => combo.name)).toEqual(COMBO_NAMES)
     expect(TERM_CURATIONS.aliases).toHaveLength(4)
-    expect(TERM_CURATIONS.legacyNames).toHaveLength(3)
     const aliases = TERM_CURATIONS.aliases.map((entry) => entry.text)
-    const legacyNames = TERM_CURATIONS.legacyNames.map((entry) => entry.text)
     for (const unsupported of ['德狼', '能蕾', '银崖', '孑拉德']) {
       expect(aliases).not.toContain(unsupported)
-      expect(legacyNames).not.toContain(unsupported)
     }
   })
 
@@ -144,7 +141,7 @@ describe('facts 人工词条登记', () => {
   })
 
   it('每条登记的 evidence 文件和小节均可从仓库核对', () => {
-    for (const entry of [...TERM_CURATIONS.aliases, ...TERM_CURATIONS.combos, ...TERM_CURATIONS.legacyNames, ...TERM_CURATIONS.substrings]) {
+    for (const entry of [...TERM_CURATIONS.aliases, ...TERM_CURATIONS.combos, ...TERM_CURATIONS.substrings]) {
       for (const source of entry.evidence) {
         const content = sourceSection(source.path, source.section)
         const entryName = 'text' in entry ? entry.text : entry.name
@@ -155,7 +152,6 @@ describe('facts 人工词条登记', () => {
         if ('members' in entry) {
           for (const member of entry.members) expect(content).toContain(member.target.slice('operator:'.length))
         }
-        if ('action' in entry && entry.action === 'redirect') expect(content).toContain(entry.target.slice('combo:'.length))
       }
     }
   })
@@ -192,13 +188,5 @@ describe('facts 人工词条登记', () => {
 
     const bubble = TERM_CURATIONS.combos.find((combo) => combo.name === '泡泡组')!
     expect(bubble.conditions.join('；')).toContain('贝娜精零')
-  })
-
-  it('旧称只直接重定向到正式搭配', () => {
-    expect(TERM_CURATIONS.legacyNames).toEqual([
-      expect.objectContaining({ text: '迷迭香感知链', action: 'redirect', target: 'combo:感知信息组' }),
-      expect.objectContaining({ text: '巫恋裁缝核', action: 'redirect', target: 'combo:龙舌兰组' }),
-      expect.objectContaining({ text: '龙门中枢制造组', action: 'redirect', target: 'combo:龙门中枢组' }),
-    ])
   })
 })

@@ -227,9 +227,4 @@ export const TERM_CURATIONS: TermCurations = {
       '本组只描述控制中枢关系，不是制造站组合；不沿用龙门中枢制造组名称',
     ], 'listed', source(crossFacility, '龙门中枢组')),
   ],
-  legacyNames: [
-    { text: '迷迭香感知链', action: 'redirect', target: 'combo:感知信息组', evidence: [source(crossFacility, '感知信息组')] },
-    { text: '巫恋裁缝核', action: 'redirect', target: 'combo:龙舌兰组', evidence: [source(trade, '龙舌兰组')] },
-    { text: '龙门中枢制造组', action: 'redirect', target: 'combo:龙门中枢组', evidence: [source(crossFacility, '龙门中枢组')] },
-  ],
 }

@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { loadConfig } from '../src/config.js'
 import * as stores from '../src/facts/store.js'
-import type { RecordCard } from '../src/facts/card.js'
 import { buildIndex } from '../src/retriever.js'
 import { createKnowledgeToolExecutor, serializeToolResult, type ToolExecutionResult } from '../src/tool-executor.js'
 
@@ -106,29 +105,7 @@ describe('真实词条的 executor 解析协议', () => {
   })
 })
 
-describe('拒绝及错误路径的 executor 边界', () => {
-  it.each([false, true])('旧称拒绝与精确命中共存=%s 时保留路径、状态及真实计数', async (withExact) => {
-    const card: RecordCard = {
-      canonical: '拒绝词', aliases: [], rarity: '4', class: '医疗', rooms: [], factionGroups: [], skillGroups: [], skills: [], notes: '',
-    }
-    const store = stores.buildCardStore(withExact ? [card] : [], {
-      aliases: [], substrings: [], combos: [], legacyNames: [{
-        text: '拒绝词', action: 'reject', reason: '此旧称解释已废弃',
-        evidence: [{ path: 'knowledge/guides/测试.md', section: '测试依据' }],
-      }],
-    })
-    vi.spyOn(stores, 'getCardStore').mockReturnValue(store)
-    const batch = await executor().executeBatch([call('拒绝词')])
-    const item = batch.results[0]!
-    expect(item).toMatchObject({ status: withExact ? 'success' : 'empty', executed: true })
-    expectEnvelope(item, withExact ? ['拒绝词'] : [])
-    expect(item.factsResult?.resolution.paths.map((path) => path.kind)).toEqual(withExact ? ['exact', 'rejected'] : ['rejected'])
-    expect(item.factsResult?.resolution.paths.at(-1)).toMatchObject({ kind: 'rejected', reason: '此旧称解释已废弃', memberIds: [] })
-    expect(item.data).toContain('此旧称解释已废弃')
-    expect(item.data).not.toContain('未收录精确词条')
-    expect(batch.snapshot).toMatchObject({ used: 1, executed: 1, remaining: 0 })
-  })
-
+describe('错误路径的 executor 边界', () => {
   it('store 加载失败、参数无效及预算拒绝不伪造 resolution', async () => {
     const getStore = vi.spyOn(stores, 'getCardStore').mockImplementation(() => { throw new Error('测试 store 加载失败') })
     const batch = await executor(2).executeBatch([call(' ', 'invalid'), call('推王', 'error'), call('维娜', 'denied')])

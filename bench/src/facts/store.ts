@@ -14,7 +14,6 @@ import {
   type AliasEntry,
   type ComboEntry,
   type EvidenceRef,
-  type LegacyEntry,
   type OperatorRef,
   type SubstringEntry,
   type TermCurations,
@@ -51,8 +50,6 @@ export type ResolutionPath =
   | { kind: 'alias'; term: string; targets: OperatorRef[]; memberIds: string[]; evidence: EvidenceRef[] }
   | { kind: 'substring'; term: string; targets: OperatorRef[]; memberIds: string[]; evidence: EvidenceRef[] }
   | { kind: 'combo'; term: string; combo: ComboEntry; memberIds: string[] }
-  | { kind: 'legacy'; term: string; combo: ComboEntry; memberIds: string[]; evidence: EvidenceRef[] }
-  | { kind: 'rejected'; term: string; reason: string; evidence: EvidenceRef[]; memberIds: [] }
 
 export interface FactsSearchResult {
   query: string
@@ -134,8 +131,6 @@ export function buildCardStore(cards: RecordCard[], terms: TermCurations = EMPTY
   const aliasesByTerm = new Map<string, AliasEntry[]>()
   const substringsByTerm = new Map<string, SubstringEntry>()
   const combosByTerm = new Map<string, ComboEntry>()
-  const combosById = new Map<string, ComboEntry>()
-  const legacyByTerm = new Map<string, LegacyEntry[]>()
 
   for (const card of cards) {
     if (!card.canonical) throw new Error('记录卡 canonical 不能为空')
@@ -169,17 +164,9 @@ export function buildCardStore(cards: RecordCard[], terms: TermCurations = EMPTY
   const validatedTerms = validateTermCurations(cards, terms)
   for (const alias of validatedTerms.aliases) aliasesByTerm.set(alias.text, [alias])
   for (const substring of validatedTerms.substrings) substringsByTerm.set(substring.text, substring)
-  for (const combo of validatedTerms.combos) {
-    combosByTerm.set(combo.name, combo)
-    combosById.set(combo.id, combo)
-  }
-  for (const legacy of validatedTerms.legacyNames) {
-    const entries = legacyByTerm.get(legacy.text) ?? []
-    entries.push(legacy)
-    legacyByTerm.set(legacy.text, entries)
-  }
+  for (const combo of validatedTerms.combos) combosByTerm.set(combo.name, combo)
 
-  /** facts_search：精确、别名、子串、搭配和旧称路径全部收集；同卡只返回一次。 */
+  /** facts_search：精确、别名、子串和搭配路径全部收集；同卡只返回一次。 */
   const factsSearch = (query: string): FactsSearchResult => {
     const term = (query ?? '').trim()
     if (!term) return { query: term, paths: [], matches: [] }
@@ -219,27 +206,8 @@ export function buildCardStore(cards: RecordCard[], terms: TermCurations = EMPTY
       })
     }
 
-    const legacyPaths: ResolutionPath[] = []
-    const rejectedPaths: ResolutionPath[] = []
-    for (const legacy of legacyByTerm.get(term) ?? []) {
-      if (legacy.action === 'redirect') {
-        const target = combosById.get(legacy.target)
-        if (target !== undefined) {
-          legacyPaths.push({
-            kind: 'legacy',
-            term,
-            combo: target,
-            memberIds: memberIdsForTargets(target.members.map((member) => member.target)),
-            evidence: [...legacy.evidence],
-          })
-        }
-      } else {
-        rejectedPaths.push({ kind: 'rejected', term, reason: legacy.reason, evidence: [...legacy.evidence], memberIds: [] })
-      }
-    }
-
     // 子串路径是否产出取决于同查询其它路径的成员并集，因此最后判定，再按固定顺序并入。
-    const nonSubstringPaths = [...exactPaths, ...aliasPaths, ...comboPaths, ...legacyPaths, ...rejectedPaths]
+    const nonSubstringPaths = [...exactPaths, ...aliasPaths, ...comboPaths]
     const substringPaths: ResolutionPath[] = []
     const substring = substringsByTerm.get(term)
     if (substring) {
@@ -256,7 +224,7 @@ export function buildCardStore(cards: RecordCard[], terms: TermCurations = EMPTY
       }
     }
 
-    const paths = [...exactPaths, ...aliasPaths, ...substringPaths, ...comboPaths, ...legacyPaths, ...rejectedPaths]
+    const paths = [...exactPaths, ...aliasPaths, ...substringPaths, ...comboPaths]
     const matchedIds = new Set(paths.flatMap((path) => path.memberIds))
     const matches = cards.flatMap((card) => {
       if (!matchedIds.has(card.canonical)) return []
@@ -356,10 +324,6 @@ function renderResolutionPath(path: ResolutionPath): string {
       return renderNamedTargetPath('子串', path.term, path.targets, path.evidence, path.memberIds)
     case 'combo':
       return renderComboPath('组合', path.term, path.combo, path.memberIds)
-    case 'legacy':
-      return `${renderComboPath('旧称', path.term, path.combo, path.memberIds)}；来源：${renderEvidence(path.evidence)}`
-    case 'rejected':
-      return `- 拒绝：${path.term}；理由：${path.reason}；依据：${renderEvidence(path.evidence)}`
     default: {
       const exhaustive: never = path
       throw new Error(`未处理的事实解析路径：${(exhaustive as { kind: string }).kind}`)
