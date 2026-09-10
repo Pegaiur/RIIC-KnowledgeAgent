@@ -21,6 +21,8 @@
 
 `facts_search` 现有的 `ResolutionPath` 已有 exact / alias / combo / legacy / rejected 五类；[store](../bench/src/facts/store.ts) 顶部明确「不做模糊或子串兜底」。子串对需要一个显式的、可校验的登记入口作为新路径类别接入，而不是放宽为任意子串匹配。同时，部分长名可能已被既有阵营精确命中覆盖（`能天使`、`嘉维尔` 的官方术语组包含其长名），需要产出条件避免冗余路径。
 
+> 注（2026-09-10）：`legacy` / `rejected` 两类路径已由 [facts legacy 实现清理计划](plan-facts-legacy-purge.md) 删除，当前 `ResolutionPath` 为 exact / alias / substring / combo 四类；本文其余处对旧路径顺序的描述保留当时实施记录。
+
 ## 实施方案
 
 按依赖顺序执行；每步写清输入、输出与验收。
