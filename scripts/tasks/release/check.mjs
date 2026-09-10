@@ -5,8 +5,8 @@
  * 用法：
  *   node scripts/tasks/release/check.mjs [--json] [--root <dir>]
  *
- * 检查项（不改变 doc-check D1-D4 语义，仅调用并叠加发版准备态）：
- *   D 检查：调用 node scripts/doc-check.mjs --json（D1-D4 原样展示）
+ * 检查项（不改变 doc-check D1-D5 语义，仅调用并叠加发版准备态）：
+ *   D 检查：调用 node scripts/doc-check.mjs --json（D1-D5 原样展示）
  *   P1 活动 plan：docs/plan-*.md 施工中条目数与冻结待归档状态
  *   P2 notes：docs/*-notes.md 待合并清单（发版前应经 archive-plan 合并归档）
  *   P3 inbox：已勾选 [x] 条目数（发版时应清理）
@@ -32,7 +32,7 @@ function usage() {
   node scripts/tasks/release/check.mjs [--json] [--root <dir>]
 
 检查项：
-  D  调用 node scripts/doc-check.mjs --json（D1-D4 原样展示，作用于真实仓库）
+  D  调用 node scripts/doc-check.mjs --json（D1-D5 原样展示，作用于真实仓库）
   P1 活动 plan：施工中条目与冻结待归档状态
   P2 docs/*-notes.md 待合并清单
   P3 inbox 已勾选条目

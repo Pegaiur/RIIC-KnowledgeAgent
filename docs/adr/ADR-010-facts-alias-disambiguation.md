@@ -111,5 +111,4 @@ query仍为唯一输入，trim后精确查索引。一次查询收集六类规�
 
 - [实施计划](../plan-facts-term-alias.md)
 - [子串对实施计划](../plan-facts-substring-pairs.md)
-- [需求入口](../inbox.md)
 - [ADR-002](ADR-002-facts-record-card-source.md)、[ADR-007](ADR-007-single-term-facts-tool.md)

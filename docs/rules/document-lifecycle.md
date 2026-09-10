@@ -51,6 +51,9 @@ Bug 修复、向后兼容的可选字段、单模块内部重构、配置值调�
 1. 从 `docs/adr/INDEX.md` 获取最大编号并递增，文件名使用 `ADR-NNN-<kebab-case>.md`。
 2. 复制 `docs/templates/adr.md` 填写，不在规则或技能中维护模板副本。
 3. 同步更新 `docs/adr/INDEX.md`；状态变更时 ADR 文件与 INDEX 必须保持一致。
+4. 只引用编号更小的 ADR，不写指向 `docs/inbox.md` 等易失效入口的关联。
+
+ADR 之间的引用方向必须单一：只允许编号更大（后写）的 ADR 引用编号更小的 ADR，禁止前向引用与循环引用，避免被引用 ADR 的状态或结论变更时回改早期文档。关联只保留前置决策、替代范围、实施计划等有信息量的引用，不登记 `docs/inbox.md` 这类随收束清理而失效的入口。既有 ADR 在维护时同步修正违反方向的前向引用；方向由 doc-check D5 机械校验。
 
 ## 实施笔记维护
 
@@ -90,6 +93,7 @@ notes 中发现的重大架构决策应升级为正式 ADR（见上「ADR 判定
 | 活动 plan 冻结归档 | ❌ 阻塞 | 活动 plan 含冻结标记（`已完成于`）即应已移入 `docs/archive/`（发版 checklist 原子动作，doc-check D1）；已冻结未归档阻塞合并/发版 |
 | ADR 状态与 INDEX.md 一致 | ❌ 阻塞 | 两处状态字段必须相同（doc-check D2） |
 | 脚本引用路径有效（D4） | ❌ 阻塞 | package scripts / 源码静态 import / spawn 字符串 / docs/rules、docs/templates 引用的 `.mjs` 必须存在 |
+| ADR 引用方向单一（D5） | ❌ 阻塞 | ADR 文件只引用编号更小的 ADR，禁止前向/循环引用（doc-check D5） |
 
 **plan 归档判定依据**：验收清单全部 `[x]`（实施完成）的 plan 应在待合并 feature 分支的发布元数据收束阶段，经 `release/archive-plan --apply` 移入 `docs/archive/`，与版本信息一并提交后再执行合并门禁。判定链：施工中（存在 `[ ]`）→ D1 error，阻塞合并与发版（doc-check 规定活动 plan 不得有未勾选条目；release/check P1 对应 warning 不阻塞退出码）；全勾选且含「已完成于」冻结标记 → D1 强制已归档；全勾选未冻结 → P1「已勾选全部条目但未冻结归档」，发版收束时必须归档消解。
 

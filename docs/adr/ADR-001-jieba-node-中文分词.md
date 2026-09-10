@@ -45,4 +45,3 @@ bigram 将中文串切成两字词元 + 边界单字，词元碎片化使「词�
 ## 关联
 
 - 规划文档：`docs/archive/plan-retrieval-tuning.md`「R3 中文分词 jieba」章节
-- 扩展需求：`docs/inbox.md`「检索质量与成本收敛」条目

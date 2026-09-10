@@ -28,4 +28,3 @@
 ## 关联
 
 - 规划文档：[实施计划](../archive/plan-section-navigation.md)
-- 扩展需求：[inbox](../inbox.md)

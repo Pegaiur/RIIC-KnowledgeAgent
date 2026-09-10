@@ -11,6 +11,7 @@
  *   D2: ADR 状态与 INDEX.md 一致
  *   D3: 文档交叉引用有效（docs/ 下引用的 ADR-NNN 存在）
  *   D4: 脚本引用路径有效（package scripts / 源码静态 import / spawn 字符串 / rules/templates）
+ *   D5: ADR 引用方向单一（ADR-NNN 只引用编号更小的 ADR，禁止前向/循环引用）
  *   S:  skills/ 技能结构（目录名 / YAML name/description / 名称一致性 / 相对引用 / 禁用宿主措辞）
  *
  * 扩展点：monorepo 子包约定文档校验（如 PACKAGE.md 路径）、spec↔rule 双向引用等，
@@ -281,6 +282,40 @@ function checkD4() {
 }
 
 // ══════════════════════════════════════════════════════════════
+// D5: ADR 引用方向单一（ADR-NNN 只引用编号更小的 ADR，禁止前向/循环引用）
+// ══════════════════════════════════════════════════════════════
+function checkD5() {
+  const adrDir = resolve(root, 'docs/adr')
+  if (!existsSync(adrDir)) {
+    ok('D5 ADR 引用方向 — 无 docs/adr 目录')
+    return
+  }
+  // 只检查 ADR 正文（ADR-NNN-*.md），实施笔记不参与方向约束。
+  const adrFiles = readdirSync(adrDir).filter(f => /^ADR-\d+-.*\.md$/.test(f) && !f.endsWith('-notes.md'))
+
+  for (const file of adrFiles) {
+    const selfMatch = /^ADR-(\d+)-/.exec(file)
+    if (!selfMatch) continue
+    const self = Number(selfMatch[1])
+    const content = readFile(`docs/adr/${file}`)
+    if (!content) continue
+
+    const lines = content.split('\n')
+    for (let i = 0; i < lines.length; i++) {
+      // 同一行可能多次出现同一 ADR（链接文本 + 文件名），按目标去重后再报错。
+      const targets = new Set()
+      for (const ref of lines[i].matchAll(/ADR-(\d+)/g)) targets.add(Number(ref[1]))
+      for (const target of targets) {
+        if (target > self) {
+          error('D5', `${file}:${i + 1} 前向引用 ADR-${String(target).padStart(3, '0')}；ADR 只允许新号引用旧号，禁止前向/循环引用`)
+        }
+      }
+    }
+  }
+  ok(`D5 ADR 引用方向 — ${adrFiles.length} 个文件已检查`)
+}
+
+// ══════════════════════════════════════════════════════════════
 // S: skills/ 技能结构（契约唯一实现于 lib/skill-check.mjs）
 // ══════════════════════════════════════════════════════════════
 function checkS() {
@@ -302,6 +337,7 @@ checkD1()
 checkD2()
 checkD3()
 checkD4()
+checkD5()
 checkS()
 
 if (!jsonOut) console.log()
