@@ -1,0 +1,2 @@
+# 统一行尾：仓库内容一律 LF，避免 core.autocrlf 在 Windows 检出 CRLF 造成行尾 churn 与提交警告
+* text=auto eol=lf
