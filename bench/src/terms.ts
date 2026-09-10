@@ -10,6 +10,11 @@
  * 来源：原 arknights-base-vault/docs/ 散文（已废弃删除，2026-09-03）。散文废弃后本词表随 facts-first 重写（记录卡资产 + facts_search 取代 RAG），见 docs/archive/plan-hybrid-facts.md。
  */
 
+/**
+ * TODO(tech-debt) R5-4：ENTITY_WORDS 同时驱动 grep 字面模式、jieba 自定义词典与 BM25 实体加权，
+ * 三处消费方无独立开关；后续若需按检索策略分别裁剪词表，应引入消费者隔离，避免改一处波及三处。
+ */
+
 /** 语料涉及的干员名 / 体系名 / 机制名 */
 export const ENTITY_WORDS: readonly string[] = [
   // 干员名——散件工具人（速查表）

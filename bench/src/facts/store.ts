@@ -68,13 +68,15 @@ export interface OperatorFilters {
   termQuery?: string
 }
 
+/**
+ * TODO(tech-debt) R5-3：CardStore 与校验、查询、渲染同处一文件，且对外暴露 byCanonical/byTerm/byFactTerm
+ * 等内部索引 Map（当前无外部消费者）。收紧接口或拆分模块需评估调用方，待 facts 入口稳定后另行收敛。
+ */
 /** 记录卡检索 store */
 export interface CardStore {
   cards: RecordCard[]
   /** canonical → 卡 */
   byCanonical: Map<string, RecordCard>
-  /** 单目标别名 → canonical[]（当前 fixtures aliases=[]，结构就绪） */
-  byAlias: Map<string, string[]>
   /** 检索词 → canonical[]（canonical / aliases / skills[].name / skillGroups） */
   byTerm: Map<string, Set<string>>
   /** 统一 facts 词条 → 各命中类别 → canonical 集合；不含别名、备注或全文。 */
@@ -122,10 +124,19 @@ function addFactTerm(
   canonicals.add(canonical)
 }
 
-/** 从记录卡数组构建检索 store（索引 + 查询函数） */
-export function buildCardStore(cards: RecordCard[], terms: TermCurations = EMPTY_TERM_CURATIONS): CardStore {
+/** 检索索引集合：记录卡六类词条与人工登记入口，不含查询闭包。 */
+interface TermIndexes {
+  byCanonical: Map<string, RecordCard>
+  byTerm: Map<string, Set<string>>
+  byFactTerm: Map<string, Map<FactsMatchCategory, Set<string>>>
+  aliasesByTerm: Map<string, AliasEntry[]>
+  substringsByTerm: Map<string, SubstringEntry>
+  combosByTerm: Map<string, ComboEntry>
+}
+
+/** 构建检索索引并执行人工登记校验。 */
+function buildTermIndexes(cards: RecordCard[], terms: TermCurations): TermIndexes {
   const byCanonical = new Map<string, RecordCard>()
-  const byAlias = new Map<string, string[]>()
   const byTerm = new Map<string, Set<string>>()
   const byFactTerm = new Map<string, Map<FactsMatchCategory, Set<string>>>()
   const aliasesByTerm = new Map<string, AliasEntry[]>()
@@ -138,12 +149,7 @@ export function buildCardStore(cards: RecordCard[], terms: TermCurations = EMPTY
     byCanonical.set(card.canonical, card)
     addTerm(byTerm, card.canonical, card.canonical)
     addFactTerm(byFactTerm, card.canonical, 'operator', card.canonical)
-    for (const alias of card.aliases) {
-      addTerm(byTerm, alias, card.canonical)
-      const list = byAlias.get(alias) ?? []
-      list.push(card.canonical)
-      byAlias.set(alias, list)
-    }
+    for (const alias of card.aliases) addTerm(byTerm, alias, card.canonical)
     for (const skill of card.skills) {
       addTerm(byTerm, skill.name, card.canonical)
       addFactTerm(byFactTerm, skill.name, 'skill', card.canonical)
@@ -165,6 +171,13 @@ export function buildCardStore(cards: RecordCard[], terms: TermCurations = EMPTY
   for (const alias of validatedTerms.aliases) aliasesByTerm.set(alias.text, [alias])
   for (const substring of validatedTerms.substrings) substringsByTerm.set(substring.text, substring)
   for (const combo of validatedTerms.combos) combosByTerm.set(combo.name, combo)
+
+  return { byCanonical, byTerm, byFactTerm, aliasesByTerm, substringsByTerm, combosByTerm }
+}
+
+/** 从记录卡数组构建检索 store（索引 + 查询函数） */
+export function buildCardStore(cards: RecordCard[], terms: TermCurations = EMPTY_TERM_CURATIONS): CardStore {
+  const { byCanonical, byTerm, byFactTerm, aliasesByTerm, substringsByTerm, combosByTerm } = buildTermIndexes(cards, terms)
 
   /** facts_search：精确、别名、子串和搭配路径全部收集；同卡只返回一次。 */
   const factsSearch = (query: string): FactsSearchResult => {
@@ -257,7 +270,7 @@ export function buildCardStore(cards: RecordCard[], terms: TermCurations = EMPTY
     })
   }
 
-  return { cards, byCanonical, byAlias, byTerm, byFactTerm, factsSearch, lookup, queryOperators }
+  return { cards, byCanonical, byTerm, byFactTerm, factsSearch, lookup, queryOperators }
 }
 
 function skillsInRoom(card: RecordCard, room?: string): RecordCard['skills'] {

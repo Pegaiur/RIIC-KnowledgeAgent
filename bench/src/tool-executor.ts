@@ -34,6 +34,10 @@ export type ToolResultStatus =
 
 export const FACTS_RESULT_VERSION = 5 as const
 
+/**
+ * TODO(tech-debt) R5-5：协议层直接内嵌 store 的 ResolutionPath 联合类型，路径种类变更会牵动 wire 契约；
+ * 待协议与领域类型分层后把该类型下沉到共享 terms 模块（只沉 wire 契约，不沉内部行形状）。
+ */
 export interface FactsResultMetadata {
   factsResultVersion: typeof FACTS_RESULT_VERSION
   matchedCount: number
@@ -354,9 +358,6 @@ function parseToolParams(
   const unknownKey = Object.keys(raw).find((key) => !allowedKeys.includes(key))
   if (unknownKey) return { reason: `${tool} 不支持参数字段 ${unknownKey}；参数示例：${exampleFor(tool)}` }
 
-  if (tool === 'rag_search' || tool === 'grep_search') {
-    return parseRequiredString(raw, tool, 'query', exampleFor(tool))
-  }
   return parseRequiredString(raw, tool, 'query', exampleFor(tool))
 }
 
