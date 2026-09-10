@@ -16,6 +16,7 @@ import {
   type EvidenceRef,
   type LegacyEntry,
   type OperatorRef,
+  type SubstringEntry,
   type TermCurations,
 } from './terms.js'
 
@@ -47,6 +48,7 @@ export interface FactsMatch {
 export type ResolutionPath =
   | { kind: 'exact'; category: FactsMatchCategory; term: string; memberIds: string[] }
   | { kind: 'alias'; term: string; targets: OperatorRef[]; memberIds: string[]; evidence: EvidenceRef[] }
+  | { kind: 'substring'; term: string; targets: OperatorRef[]; memberIds: string[]; evidence: EvidenceRef[] }
   | { kind: 'combo'; term: string; combo: ComboEntry; memberIds: string[] }
   | { kind: 'legacy'; term: string; combo: ComboEntry; memberIds: string[]; evidence: EvidenceRef[] }
   | { kind: 'rejected'; term: string; reason: string; evidence: EvidenceRef[]; memberIds: [] }
@@ -129,6 +131,7 @@ export function buildCardStore(cards: RecordCard[], terms: TermCurations = EMPTY
   const byTerm = new Map<string, Set<string>>()
   const byFactTerm = new Map<string, Map<FactsMatchCategory, Set<string>>>()
   const aliasesByTerm = new Map<string, AliasEntry[]>()
+  const substringsByTerm = new Map<string, SubstringEntry>()
   const combosByTerm = new Map<string, ComboEntry>()
   const combosById = new Map<string, ComboEntry>()
   const legacyByTerm = new Map<string, LegacyEntry[]>()
@@ -164,6 +167,7 @@ export function buildCardStore(cards: RecordCard[], terms: TermCurations = EMPTY
 
   const validatedTerms = validateTermCurations(cards, terms)
   for (const alias of validatedTerms.aliases) aliasesByTerm.set(alias.text, [alias])
+  for (const substring of validatedTerms.substrings) substringsByTerm.set(substring.text, substring)
   for (const combo of validatedTerms.combos) {
     combosByTerm.set(combo.name, combo)
     combosById.set(combo.id, combo)
@@ -174,25 +178,27 @@ export function buildCardStore(cards: RecordCard[], terms: TermCurations = EMPTY
     legacyByTerm.set(legacy.text, entries)
   }
 
-  /** facts_search：精确、别名、搭配和旧称路径全部收集；同卡只返回一次。 */
+  /** facts_search：精确、别名、子串、搭配和旧称路径全部收集；同卡只返回一次。 */
   const factsSearch = (query: string): FactsSearchResult => {
     const term = (query ?? '').trim()
     if (!term) return { query: term, paths: [], matches: [] }
-    const paths: ResolutionPath[] = []
     const categories = byFactTerm.get(term)
-    for (const category of FACTS_MATCH_CATEGORY_ORDER) {
-      const memberIds = cards
-        .filter((card) => categories?.get(category)?.has(card.canonical) ?? false)
-        .map((card) => card.canonical)
-      if (memberIds.length > 0) paths.push({ kind: 'exact', category, term, memberIds })
-    }
-
     const memberIdsForTargets = (targets: readonly OperatorRef[]): string[] => {
       const targetCanonicals = new Set(targets.map((target) => target.slice('operator:'.length)))
       return cards.filter((card) => targetCanonicals.has(card.canonical)).map((card) => card.canonical)
     }
+
+    const exactPaths: ResolutionPath[] = []
+    for (const category of FACTS_MATCH_CATEGORY_ORDER) {
+      const memberIds = cards
+        .filter((card) => categories?.get(category)?.has(card.canonical) ?? false)
+        .map((card) => card.canonical)
+      if (memberIds.length > 0) exactPaths.push({ kind: 'exact', category, term, memberIds })
+    }
+
+    const aliasPaths: ResolutionPath[] = []
     for (const alias of aliasesByTerm.get(term) ?? []) {
-      paths.push({
+      aliasPaths.push({
         kind: 'alias',
         term,
         targets: [...alias.targets],
@@ -200,20 +206,25 @@ export function buildCardStore(cards: RecordCard[], terms: TermCurations = EMPTY
         evidence: [...alias.evidence],
       })
     }
+
+    const comboPaths: ResolutionPath[] = []
     const combo = combosByTerm.get(term)
     if (combo) {
-      paths.push({
+      comboPaths.push({
         kind: 'combo',
         term,
         combo,
         memberIds: memberIdsForTargets(combo.members.map((member) => member.target)),
       })
     }
+
+    const legacyPaths: ResolutionPath[] = []
+    const rejectedPaths: ResolutionPath[] = []
     for (const legacy of legacyByTerm.get(term) ?? []) {
       if (legacy.action === 'redirect') {
         const target = combosById.get(legacy.target)
         if (target !== undefined) {
-          paths.push({
+          legacyPaths.push({
             kind: 'legacy',
             term,
             combo: target,
@@ -222,10 +233,29 @@ export function buildCardStore(cards: RecordCard[], terms: TermCurations = EMPTY
           })
         }
       } else {
-        paths.push({ kind: 'rejected', term, reason: legacy.reason, evidence: [...legacy.evidence], memberIds: [] })
+        rejectedPaths.push({ kind: 'rejected', term, reason: legacy.reason, evidence: [...legacy.evidence], memberIds: [] })
       }
     }
 
+    // 子串路径是否产出取决于同查询其它路径的成员并集，因此最后判定，再按固定顺序并入。
+    const nonSubstringPaths = [...exactPaths, ...aliasPaths, ...comboPaths, ...legacyPaths, ...rejectedPaths]
+    const substringPaths: ResolutionPath[] = []
+    const substring = substringsByTerm.get(term)
+    if (substring) {
+      const covered = new Set(nonSubstringPaths.flatMap((path) => path.memberIds))
+      const allCovered = substring.targets.every((target) => covered.has(target.slice('operator:'.length)))
+      if (!allCovered) {
+        substringPaths.push({
+          kind: 'substring',
+          term,
+          targets: [...substring.targets],
+          memberIds: memberIdsForTargets(substring.targets),
+          evidence: [...substring.evidence],
+        })
+      }
+    }
+
+    const paths = [...exactPaths, ...aliasPaths, ...substringPaths, ...comboPaths, ...legacyPaths, ...rejectedPaths]
     const matchedIds = new Set(paths.flatMap((path) => path.memberIds))
     const matches = cards.flatMap((card) => {
       if (!matchedIds.has(card.canonical)) return []
@@ -319,6 +349,9 @@ function renderResolutionPath(path: ResolutionPath): string {
   if (path.kind === 'exact') return `- 精确：${FACTS_MATCH_CATEGORY_LABEL[path.category]}；命中 ${path.memberIds.length} 张记录卡`
   if (path.kind === 'alias') {
     return `- 别名：${path.term} → ${path.targets.map((target) => target.slice('operator:'.length)).join('、')}；来源：${renderEvidence(path.evidence)}；命中 ${path.memberIds.length} 张记录卡`
+  }
+  if (path.kind === 'substring') {
+    return `- 子串：${path.term} → ${path.targets.map((target) => target.slice('operator:'.length)).join('、')}；来源：${renderEvidence(path.evidence)}；命中 ${path.memberIds.length} 张记录卡`
   }
   if (path.kind === 'combo') return renderComboPath('组合', path.term, path.combo, path.memberIds)
   if (path.kind === 'legacy') {

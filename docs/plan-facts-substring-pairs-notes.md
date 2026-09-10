@@ -47,6 +47,13 @@
 - **后果**：phase 3 的索引直接消费 `TERM_CURATIONS.substrings`，登记数据无需再改。
 - **验证**：`pnpm run typecheck` 通过；`facts-curation.test.ts` 28 通过、`facts-terms.test.ts` 24 通过。
 
+### 2026-09-10 — phase 3 索引、查询路径与产出条件（步骤3）
+- **spec 原文**：`ResolutionPath` 增 `substring`；建 `substringsByTerm` 索引；路径顺序固定为 exact → alias → substring → combo → legacy → rejected；先收集同查询全部非 substring 路径，以其成员并集判定覆盖，全部目标被覆盖则省略 substring，部分覆盖仍保留完整 targets 与 memberIds。
+- **实际做法**：`factsSearch` 由顺序 push 改为分组收集（exact / alias / combo / legacy / rejected）后统一组装，`rejected` 从原 legacy 循环末尾拆出并排到 legacy 之后；以非 substring 路径 memberIds 并集判定覆盖。另因 `substring` 变体加入后 `renderResolutionPath` 的兜底分支会读取 `path.reason`（`substring` 无该字段）导致编译失败，本 phase 顺带加入 substring 渲染分支，switch 化留到 phase 4。
+- **原因**：覆盖判定需要看到最终顺序中位于 substring 之后的 combo / legacy，必须先收集再判定；同时保持每阶段可编译。
+- **后果**：phase 4 仅需把 `renderResolutionPath` 改为 switch + never、升双版本号、更新工具描述与 store 顶部说明及 `TODO(tech-debt) R5-2` 注释。
+- **验证**：`pnpm run typecheck` 通过；facts 相关 6 个测试文件 155 通过。
+
 ## 债务记录
 > 遗留的技术债、被牺牲的改进与延期偿还事项
 

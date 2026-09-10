@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { buildCardStore, serializeFactsMatches } from '../src/facts/store.js'
 import type { RecordCard } from '../src/facts/card.js'
-import type { TermCurations } from '../src/facts/terms.js'
+import type { ComboEntry, TermCurations } from '../src/facts/terms.js'
 
 const evidence = { path: 'knowledge/guides/测试.md', section: '测试组' }
 
@@ -94,5 +94,86 @@ describe('facts 查询级解析', () => {
     expect(rejected).toContain('拒绝：拒绝词')
     expect(rejected).toContain('该名称已明确废弃')
     expect(rejected).not.toContain('未收录精确词条')
+  })
+})
+
+const substringEvidence = { path: 'knowledge/references/歧义.md', section: '一、子串包含对（31 组，自动生成）' }
+
+const substringCards: RecordCard[] = [
+  { canonical: '测试甲', aliases: [], rarity: '4', class: '医疗', rooms: [], factionGroups: [], skillGroups: [], skills: [], notes: '' },
+  { canonical: '长测试甲', aliases: [], rarity: '5', class: '近卫', rooms: [], factionGroups: [], skillGroups: [], skills: [], notes: '' },
+  { canonical: '测试甲乙', aliases: [], rarity: '5', class: '重装', rooms: [], factionGroups: [], skillGroups: [], skills: [], notes: '' },
+]
+
+const substringTerms: TermCurations = {
+  aliases: [],
+  substrings: [{
+    text: '测试甲', targets: ['operator:长测试甲', 'operator:测试甲乙'], evidence: [substringEvidence],
+  }],
+  combos: [],
+  legacyNames: [],
+}
+
+function substringCombo(name: string, id: ComboEntry['id']): ComboEntry {
+  return {
+    id, name,
+    members: [{ target: 'operator:长测试甲', role: 'core' }, { target: 'operator:测试甲乙', role: 'core' }],
+    conditions: ['同站进驻'], coverage: 'listed', evidence: [substringEvidence],
+  }
+}
+
+describe('facts 子串对查询路径', () => {
+  it('S6 短名精确返回自身并按下标登记返回全部长名，卡片按输入卡序去重', () => {
+    const result = buildCardStore(substringCards, substringTerms).factsSearch('测试甲')
+    expect(result.paths.map((path) => path.kind)).toEqual(['exact', 'substring'])
+    expect(result.paths[0]).toMatchObject({ kind: 'exact', category: 'operator', memberIds: ['测试甲'] })
+    expect(result.paths[1]).toMatchObject({
+      kind: 'substring', term: '测试甲',
+      targets: ['operator:长测试甲', 'operator:测试甲乙'], memberIds: ['长测试甲', '测试甲乙'],
+      evidence: [substringEvidence],
+    })
+    expect(result.matches.map((match) => match.card.canonical)).toEqual(['测试甲', '长测试甲', '测试甲乙'])
+    expect(result.matches.map((match) => match.categories)).toEqual([['operator'], [], []])
+    expect(serializeFactsMatches(result)).toContain('子串：测试甲 → 长测试甲、测试甲乙')
+  })
+
+  it('S7 同名别名仅覆盖一个长名时仍保留完整子串目标与全部成员，顺序 exact → alias → substring', () => {
+    const result = buildCardStore(substringCards, {
+      ...substringTerms,
+      aliases: [{ text: '测试甲', targets: ['operator:长测试甲'], evidence: [substringEvidence] }],
+    }).factsSearch('测试甲')
+    expect(result.paths.map((path) => path.kind)).toEqual(['exact', 'alias', 'substring'])
+    expect(result.paths[2]).toMatchObject({
+      kind: 'substring', targets: ['operator:长测试甲', 'operator:测试甲乙'], memberIds: ['长测试甲', '测试甲乙'],
+    })
+    expect(result.matches.map((match) => match.card.canonical)).toEqual(['测试甲', '长测试甲', '测试甲乙'])
+  })
+
+  it('S8 全部长名被同名组合覆盖时省略子串路径', () => {
+    const result = buildCardStore(substringCards, {
+      ...substringTerms,
+      combos: [substringCombo('测试甲', 'combo:测试甲')],
+    }).factsSearch('测试甲')
+    expect(result.paths.map((path) => path.kind)).toEqual(['exact', 'combo'])
+    expect(result.matches.map((match) => match.card.canonical)).toEqual(['测试甲', '长测试甲', '测试甲乙'])
+  })
+
+  it('S8 全部长名被同名旧称搭配覆盖时省略子串路径', () => {
+    const result = buildCardStore(substringCards, {
+      ...substringTerms,
+      combos: [substringCombo('覆盖组', 'combo:覆盖组')],
+      legacyNames: [{ text: '测试甲', action: 'redirect', target: 'combo:覆盖组', evidence: [substringEvidence] }],
+    }).factsSearch('测试甲')
+    expect(result.paths.map((path) => path.kind)).toEqual(['exact', 'legacy'])
+    expect(result.matches.map((match) => match.card.canonical)).toEqual(['测试甲', '长测试甲', '测试甲乙'])
+  })
+
+  it('长名查询不反查短名，未登记子串不扩展', () => {
+    const store = buildCardStore(substringCards, substringTerms)
+    const long = store.factsSearch('长测试甲')
+    expect(long.paths.map((path) => path.kind)).toEqual(['exact'])
+    expect(long.matches.map((match) => match.card.canonical)).toEqual(['长测试甲'])
+    expect(store.factsSearch('测试').paths).toEqual([])
+    expect(store.factsSearch('光').paths).toEqual([])
   })
 })
