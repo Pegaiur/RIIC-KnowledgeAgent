@@ -132,13 +132,36 @@ describe('facts 子串对查询路径', () => {
   })
 
   it('S8 别名与组合联合覆盖全部长名时省略子串路径', () => {
-    const result = buildCardStore(substringCards, {
+    const jointTerms: TermCurations = {
       ...substringTerms,
       aliases: [{ text: '测试甲', targets: ['operator:长测试甲'], evidence: [substringEvidence] }],
-      combos: [substringCombo('测试甲', 'combo:测试甲')],
-    }).factsSearch('测试甲')
+      combos: [{
+        ...substringCombo('测试甲', 'combo:测试甲'),
+        members: [{ target: 'operator:测试甲乙', role: 'core' }],
+      }],
+    }
+    const result = buildCardStore(substringCards, jointTerms).factsSearch('测试甲')
     expect(result.paths.map((path) => path.kind)).toEqual(['exact', 'alias', 'combo'])
+    expect(result.paths[1]?.memberIds).toEqual(['长测试甲'])
+    expect(result.paths[2]?.memberIds).toEqual(['测试甲乙'])
     expect(result.matches.map((match) => match.card.canonical)).toEqual(['测试甲', '长测试甲', '测试甲乙'])
+
+    // 任一路径单独存在都只覆盖一个长名，必须保留完整子串路径。
+    for (const removed of ['alias', 'combo'] as const) {
+      const partialTerms = {
+        ...jointTerms,
+        aliases: removed === 'alias' ? [] : jointTerms.aliases,
+        combos: removed === 'combo' ? [] : jointTerms.combos,
+      }
+      const partial = buildCardStore(substringCards, partialTerms).factsSearch('测试甲')
+      expect(partial.paths.map((path) => path.kind)).toEqual(
+        removed === 'alias' ? ['exact', 'substring', 'combo'] : ['exact', 'alias', 'substring'],
+      )
+      expect(partial.paths.find((path) => path.kind === 'substring')).toMatchObject({
+        targets: ['operator:长测试甲', 'operator:测试甲乙'], memberIds: ['长测试甲', '测试甲乙'],
+      })
+      expect(partial.matches.map((match) => match.card.canonical)).toEqual(['测试甲', '长测试甲', '测试甲乙'])
+    }
   })
 
   it('长名查询不反查短名，未登记子串不扩展', () => {
