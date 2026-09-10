@@ -9,7 +9,7 @@
 ## 过程
 
 > 日期：2026-09-07
-> 原迁移说明：曾于2026-09-09归档，本次恢复为暂缓试验。探针未实施；原设计基于 lookup/query_operators 路由，当前已统一为 facts_search，标记候选由[性能评估](exp-harness-performance.md#roi-排序与最小验证)承接，重启前需按 schema v5 重估
+> 原迁移说明：曾于2026-09-09归档，本次恢复为暂缓试验。探针未实施；原设计基于 lookup/query_operators 路由，当前已统一为 facts_search，重启前需按当前 schema 重估
 > 需求入口：[inbox](inbox.md)
 
 ### 三组，只改返回片段的表示

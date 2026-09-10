@@ -534,4 +534,4 @@
 
 ### 迁移收尾（2026-09-09）
 
-输入清理尚未完成：依 ADR-009 一次性过渡，保留 `bench-runs/2026-09-07T14-55-33-663Z-qwen-off-t0/` 与 `bench-runs/2026-09-08T03-21-55-405Z-qwen-off-t0/` 中各5份既有文件：`answers.md`、`trace.jsonl`、`injected.json`、`records.jsonl`、`meta.json`，以及这两个runId的 `bench/results/*.json` 既有快照。它们仅供本次独立审定使用，审定完成或取消时按既有保护清理，不扩增副本，新exp不继承。原回放、留出题附件及指令恢复副本已清理；必要回放/覆盖结果见 [性能试验](exp-harness-performance.md)。本轮未启动审定、未重新评分，已有逐项标签和不确定性保持原样。
+输入清理尚未完成：依 ADR-009 一次性过渡，保留 `bench-runs/2026-09-07T14-55-33-663Z-qwen-off-t0/` 与 `bench-runs/2026-09-08T03-21-55-405Z-qwen-off-t0/` 中各5份既有文件：`answers.md`、`trace.jsonl`、`injected.json`、`records.jsonl`、`meta.json`，以及这两个runId的 `bench/results/*.json` 既有快照。它们仅供本次独立审定使用，审定完成或取消时按既有保护清理，不扩增副本，新exp不继承。原回放、留出题附件及指令恢复副本已清理；必要回放/覆盖结果见 [性能试验](archive/exp/exp-harness-performance.md)。本轮未启动审定、未重新评分，已有逐项标签和不确定性保持原样。

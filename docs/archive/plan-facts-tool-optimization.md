@@ -3,7 +3,7 @@
 > 创建日期：2026-09-07
 > 状态：已完成
 > 需求入口：[inbox](../inbox.md)
-> 前置：[独立工具计划](plan-independent-tools-schema.md)、[策略评估](../exp-harness-performance.md#按设计契约调整策略2026-09-07)
+> 前置：[独立工具计划](plan-independent-tools-schema.md)、[策略评估](exp/exp-harness-performance.md)
 
 ## 目标与边界
 
