@@ -21,6 +21,13 @@ export interface AliasEntry {
   evidence: readonly EvidenceRef[]
 }
 
+/** 干员子串对：短名为长名的真子串，按短→长单向扩展。 */
+export interface SubstringEntry {
+  text: string
+  targets: readonly OperatorRef[]
+  evidence: readonly EvidenceRef[]
+}
+
 export interface ComboEntry {
   id: ComboRef
   name: string
@@ -37,6 +44,7 @@ export type LegacyEntry =
 
 export interface TermCurations {
   aliases: readonly AliasEntry[]
+  substrings: readonly SubstringEntry[]
   combos: readonly ComboEntry[]
   legacyNames: readonly LegacyEntry[]
 }
@@ -93,10 +101,10 @@ function assertTextEntry(entry: { text: string; evidence: readonly EvidenceRef[]
   assertEvidence(entry.evidence, label)
 }
 
-/** 校验别名、搭配和旧称登记；不把跨索引同名当作冲突。 */
+/** 校验别名、子串对、搭配和旧称登记；不把跨索引同名当作冲突。 */
 export function validateTermCurations(cards: readonly RecordCard[], data: TermCurations): ValidatedTermCurations {
-  if (!Array.isArray(data.aliases) || !Array.isArray(data.combos) || !Array.isArray(data.legacyNames)) {
-    fail('登记数据缺少 aliases、combos 或 legacyNames 数组')
+  if (!Array.isArray(data.aliases) || !Array.isArray(data.substrings) || !Array.isArray(data.combos) || !Array.isArray(data.legacyNames)) {
+    fail('登记数据缺少 aliases、substrings、combos 或 legacyNames 数组')
   }
   const cardsByCanonical = new Map<string, RecordCard>()
   for (const card of cards) {
@@ -112,6 +120,22 @@ export function validateTermCurations(cards: readonly RecordCard[], data: TermCu
     if (!Array.isArray(entry.targets) || entry.targets.length === 0) fail(`别名 ${entry.text} 至少需要一个目标`)
     assertUnique(entry.targets as readonly string[], `别名 ${entry.text}目标`)
     for (const target of entry.targets) assertOperatorRef(target, `别名 ${entry.text}目标`, cardsByCanonical)
+  }
+
+  const substringTexts = data.substrings.map((entry) => entry.text)
+  assertUnique(substringTexts, '子串短名')
+  for (const entry of data.substrings) {
+    assertTextEntry(entry, '子串')
+    if (!cardsByCanonical.has(entry.text)) fail(`子串短名不是已登记干员规范名：${entry.text}`)
+    if (!Array.isArray(entry.targets) || entry.targets.length === 0) fail(`子串 ${entry.text} 至少需要一个目标`)
+    assertUnique(entry.targets as readonly string[], `子串 ${entry.text}目标`)
+    for (const target of entry.targets) {
+      assertOperatorRef(target, `子串 ${entry.text}目标`, cardsByCanonical)
+      const targetCanonical = target.slice('operator:'.length)
+      if (targetCanonical === entry.text || !targetCanonical.includes(entry.text)) {
+        fail(`子串 ${entry.text}目标必须是包含短名且不等于短名的干员规范名：${targetCanonical}`)
+      }
+    }
   }
 
   const comboNames = data.combos.map((entry) => entry.name)
@@ -161,6 +185,7 @@ export function validateTermCurations(cards: readonly RecordCard[], data: TermCu
 
 export const EMPTY_TERM_CURATIONS: ValidatedTermCurations = {
   aliases: [],
+  substrings: [],
   combos: [],
   legacyNames: [],
 }

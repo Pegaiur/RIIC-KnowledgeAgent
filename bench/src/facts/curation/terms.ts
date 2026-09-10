@@ -40,6 +40,7 @@ export const TERM_CURATIONS: TermCurations = {
     { text: '拉狗', targets: ['operator:拉普兰德'], evidence: [source(ambiguity, '二、简称与合称（人工维护）')] },
     { text: '推王', targets: ['operator:推进之王', 'operator:维娜·维多利亚'], evidence: [source(ambiguity, '二、简称与合称（人工维护）')] },
   ],
+  substrings: [],
   combos: [
     combo('龙舌兰组', [
       member('巫恋', 'core'), member('龙舌兰', 'core'),

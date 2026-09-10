@@ -91,7 +91,7 @@ describe('拒绝及错误路径的 executor 边界', () => {
       canonical: '拒绝词', aliases: [], rarity: '4', class: '医疗', rooms: [], factionGroups: [], skillGroups: [], skills: [], notes: '',
     }
     const store = stores.buildCardStore(withExact ? [card] : [], {
-      aliases: [], combos: [], legacyNames: [{
+      aliases: [], substrings: [], combos: [], legacyNames: [{
         text: '拒绝词', action: 'reject', reason: '此旧称解释已废弃',
         evidence: [{ path: 'knowledge/guides/测试.md', section: '测试依据' }],
       }],

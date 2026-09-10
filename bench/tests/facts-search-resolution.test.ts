@@ -13,6 +13,7 @@ const cards: RecordCard[] = [
 
 const terms: TermCurations = {
   aliases: [{ text: '测试甲', targets: ['operator:测试甲', 'operator:测试乙'], evidence: [evidence] }],
+  substrings: [],
   combos: [{
     id: 'combo:共享词', name: '共享词',
     members: [{ target: 'operator:测试甲', role: 'core' }, { target: 'operator:共享词', role: 'support' }],
