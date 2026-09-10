@@ -1,16 +1,16 @@
 # facts legacy 实现清理计划
 
 > 创建日期：2026-09-10
-> 状态：已完成（待发布元数据收束）
+> 状态：已完成
 > 修订：2026-09-10，按用户要求同步后续旧称说明清理，并删除旧称专项验收要求。
 
 ## 目标
 
-删除 `facts_search` 的旧称兼容实现：移除 `legacyNames`（redirect / reject）、`ResolutionPath` 的 `legacy` / `rejected` 两类路径及其专用索引、校验和渲染代码。后续清理三个旧组合名的语料说明与词表登记，保留 exact / alias / substring / combo 四类路径与既有同名全部返回行为，依据 [ADR-010](adr/ADR-010-facts-alias-disambiguation.md) §7 实施。
+删除 `facts_search` 的旧称兼容实现：移除 `legacyNames`（redirect / reject）、`ResolutionPath` 的 `legacy` / `rejected` 两类路径及其专用索引、校验和渲染代码。后续清理三个旧组合名的语料说明与词表登记，保留 exact / alias / substring / combo 四类路径与既有同名全部返回行为，依据 [ADR-010](../adr/ADR-010-facts-alias-disambiguation.md) §7 实施。
 
 ## 非目标
 
-- 组合／搭配名称结构标准、正式组合准入、成员关系表达及推荐边界统一；相关需求仅登记于 [inbox](inbox.md)，本轮暂缓，不另启动实施计划。
+- 组合／搭配名称结构标准、正式组合准入、成员关系表达及推荐边界统一；相关需求仅登记于 [inbox](../inbox.md)，本轮暂缓，不另启动实施计划。
 - 三个旧组合名之外的语料命名迁移；不修改 `knowledge/base`、`knowledge/references` 或检索白名单。
 - 分词与 RAG 检索算法、术语规则、旧词黑名单或旧词专项回归；不要求历史文档和 RAG 结果中的所有旧词消失。
 - 别名、31 组子串对、搭配规范名、成员与实际使用条件、同名全部返回的语义调整；不改历史 `lookup` / `queryOperators` 数据接口。
@@ -22,7 +22,7 @@
 
 查询统一按现有登记处理：合法命中返回对应路径，没有合法命中则按未收录返回。2026-09-10 用户要求删除过时描述和要求，取消三个旧词的专项验收，不维护历史名称测试清单；通用未收录、trim、合法命中和协议回归继续保留。
 
-兼容实现修改集中于 [terms.ts](../bench/src/facts/terms.ts)、[curation/terms.ts](../bench/src/facts/curation/terms.ts)、[store.ts](../bench/src/facts/store.ts) 和 [tool-executor.ts](../bench/src/tool-executor.ts)。旧称专用 ID 索引随消费者一起删除，搭配本身的 `ComboRef`、ID 唯一性与成员校验继续保留。后续语料与词表清理会影响检索输入和输出文字，不能视为零行为变化的代码重构。
+兼容实现修改集中于 [terms.ts](../../bench/src/facts/terms.ts)、[curation/terms.ts](../../bench/src/facts/curation/terms.ts)、[store.ts](../../bench/src/facts/store.ts) 和 [tool-executor.ts](../../bench/src/tool-executor.ts)。旧称专用 ID 索引随消费者一起删除，搭配本身的 `ComboRef`、ID 唯一性与成员校验继续保留。后续语料与词表清理会影响检索输入和输出文字，不能视为零行为变化的代码重构。
 
 ## 实施方案
 
@@ -78,8 +78,46 @@
 
 ## 关联 ADR
 
-- [ADR-010](adr/ADR-010-facts-alias-disambiguation.md) — §7 facts legacy 与旧称说明清理，已实施
+- [ADR-010](../adr/ADR-010-facts-alias-disambiguation.md) — §7 facts legacy 与旧称说明清理，已实施
 
 ---
 
 <!-- 冻结说明：发版归档（node scripts/tooling.mjs run release/archive-plan -- --plan <path> --apply）时替换此行，标记完成日期 -->
+
+## 实施纪要
+
+# 实施笔记：facts legacy 实现清理
+
+> 对应 spec：docs/plan-facts-legacy-purge.md
+> 开始日期：2026-09-10
+
+## 决策偏离
+> spec 中没有提到，但在实施中做出的重要决策
+
+### 2026-09-10 — 后续旧称说明清理与验收要求收束
+- **背景**：初始实施仅删除兼容路径；后续提交 `dd2f23e` 已清理三个旧组合名在 guides、raw、ENTITY_WORDS、fixtures 注释和搭配条件中的说明，并删除三个固定旧词的未收录测试。
+- **决策**：完成度检查发现原计划仍要求这些专项测试且描述语料、词表未改。用户随后要求“修正删除过时描述和要求后提交”，因此取消固定旧词的专项验收，保留既有通用未收录、trim、同名合法命中、别名／子串／搭配及错误协议回归。
+- **影响**：词表修改会影响 grep 模式与排序、jieba 字典及实体加权集合；guides 内容与搭配条件的输出文字也已改变，不能作为零行为重构记账。组合命名标准继续暂缓，历史评测不改写。
+- **验证**：在 `b7add40` 上完成五项 merge 门禁，39 个文件、426 项测试通过；此前 429 项与当前差额来自已删除的三个专项用例。内存对比实际 grep 实现：查询“龙舌兰组搭配”，两个片段依次为“龙舌兰”“龙舌兰组”，topK=1，词表更新前返回首个片段，更新后返回第二个片段，确认存在名称数据带来的排序变化。
+- **后果**：已回馈计划、ADR-010 与 inbox，决策正文删除过时兼容条款，历史测试结果不回写。
+
+## 实现调整
+> spec 中有描述，但实际实现方式不同
+
+### 2026-09-10 — 旧称专用测试用例改写而非整体删除
+- **spec 原文**：步骤1「删除旧称专用用例；混合用例只改写被删除路径部分，保留其他行为的回归」。
+- **实际做法**：`facts-search-resolution.test.ts` 的 trim 用例查询词由 `旧共享词` 换为仍合法的 `共享词`（断言改为 exact/exact/combo）；序列化用例移除纯拒绝断言并补 `未收录精确词条` 断言；S8 旧称覆盖用例改写为「alias 与 combo 联合覆盖全部长名时省略子串路径」；`facts-resolution-executor.test.ts` 删除 reject 用例并移除随之不再使用的 `RecordCard` 导入。
+- **原因**：这些用例的主体词仅由 legacy 登记命中，删除实现后断言失去对象；改用仍合法的路径保留覆盖意图。
+- **后果**：无下游文档需更新。
+
+## 债务记录
+> 遗留的技术债、被牺牲的改进与延期偿还事项（纯权衡取舍、无遗留债务的决策记入「决策偏离」）
+> 可定位到代码的债务须在代码处写 `TODO(tech-debt) <编号>：` 注释（AGENTS.md 编码核心约束 #6），此处只记编号、结论与未来偿还条件
+
+## 意外发现
+> 实施中发现的 spec 未覆盖的依赖/边界/风险
+
+## 阻塞与解决
+> 遇到的阻塞问题及解决方案
+
+> ✅ 已完成于 2026-09-10

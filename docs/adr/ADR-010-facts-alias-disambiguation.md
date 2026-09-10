@@ -15,7 +15,7 @@
 
 用户于2026-09-10二次裁决：在保留“不做消歧、不反问”的前提下，将[指代歧义](../../knowledge/references/歧义.md)第一节的31组“短名 ⊂ 长名”子串对纳入登记，按短→长单向、全量返回（见 §6）。本条款实施时为 TOOL_SCHEMA_VERSION=8、FACTS_RESULT_VERSION=4，后经三次修订将结果版本升至 5（见 §7）。
 
-用户于2026-09-10进一步收窄三次修订范围：仅清理 `legacyNames` 承载的旧称重定向与拒绝实现；组合／搭配命名标准与语料治理暂缓，仅保留待办。§7 已实施并取代 §1–§6 中相关旧称条款；别名、子串对、搭配与同名全部返回继续保留。实施与回归见 [legacy 实现清理计划](../plan-facts-legacy-purge.md)。
+用户于2026-09-10进一步收窄三次修订范围：仅清理 `legacyNames` 承载的旧称重定向与拒绝实现；组合／搭配命名标准与语料治理暂缓，仅保留待办。§7 已实施并取代 §1–§6 中相关旧称条款；别名、子串对、搭配与同名全部返回继续保留。实施与回归见 [legacy 实现清理计划](../archive/plan-facts-legacy-purge.md)。
 
 后续提交 `dd2f23e` 已清理三个旧组合名在语料、ENTITY_WORDS、fixtures 注释及搭配条件中的过渡说明。2026-09-10 用户要求修正删除过时描述和要求，现同步该范围并取消固定旧词的专项验收；决策正文移除已废弃的兼容规则，查询统一遵循现有登记及通用未收录契约。组合／搭配名称结构标准仍暂缓，历史实施及评测结果不回写。
 
@@ -82,7 +82,7 @@ query仍为唯一输入，trim后精确查索引。一次查询收集六类规�
 - **校验**：`text` 已 trim 且命中 canonical；`targets` 为非空数组，各项均为存在的 `operator:<canonical>`，去掉 `operator:` 前缀后校验 `targetCanonical.includes(text) && targetCanonical !== text`；`text` 仅在 `substrings` 内唯一且条目内 targets 不重复，允许跨索引同名；`evidence` 至少一条并沿用既有来源路径与小节校验。完整性以测试侧显式 31 条清单做集合相等断言，**不以名册包含关系派生**（名册包含会误纳 `陈`、`阿`、`红`）。
 - **语料关系**：歧义.md 中「设施重叠→必须反问」的策略在本特性下由「全量返回」覆盖；不修改 `knowledge/references/歧义.md` 与 `knowledge/AGENTS.md`，差异只记录于本ADR与实施计划。
 - **治理**：本条款由用户 2026-09-10 裁决授权，属通用别名/身份能力，不针对评测题、问法或预期答案添加特判。
-- **实施**：见 [facts 子串对登记计划](../plan-facts-substring-pairs.md)。
+- **实施**：见 [facts 子串对登记计划](../archive/plan-facts-substring-pairs.md)。
 
 ### 7. legacy 实现与旧称说明清理（2026-09-10 三次修订及后续收束）
 
@@ -93,7 +93,7 @@ query仍为唯一输入，trim后精确查索引。一次查询收集六类规�
 - **路径**：最终顺序为 exact → alias → substring → combo；substring 仍以全部其他路径的成员并集判断覆盖，全部覆盖才省略，部分覆盖保留完整目标和成员。
 - **版本**：`FACTS_RESULT_VERSION` 已由 4 升至 5；`TOOL_SCHEMA_VERSION` 保持 8，参数与工具描述不变。当前运行时为 8 / 5。
 - **生效**：决策正文已同步四类路径与通用查询契约，删除被本节替代的旧称分类、映射、拒绝及覆盖规则；历史实施与核查结果保留当时事实。
-- **治理**：本次为用户授权的能力收缩，不新增替代映射或拒绝机制，不针对评测题添加特判。实施见 [facts legacy 实现清理计划](../plan-facts-legacy-purge.md)。
+- **治理**：本次为用户授权的能力收缩，不新增替代映射或拒绝机制，不针对评测题添加特判。实施见 [facts legacy 实现清理计划](../archive/plan-facts-legacy-purge.md)。
 
 ## 理由
 
@@ -121,7 +121,7 @@ query仍为唯一输入，trim后精确查索引。一次查询收集六类规�
 
 ## 关联
 
-- [实施计划](../plan-facts-term-alias.md)
-- [子串对实施计划](../plan-facts-substring-pairs.md)
-- [legacy 实现清理计划](../plan-facts-legacy-purge.md)
+- [实施计划](../archive/plan-facts-term-alias.md)
+- [子串对实施计划](../archive/plan-facts-substring-pairs.md)
+- [legacy 实现清理计划](../archive/plan-facts-legacy-purge.md)
 - [ADR-002](ADR-002-facts-record-card-source.md)、[ADR-007](ADR-007-single-term-facts-tool.md)
