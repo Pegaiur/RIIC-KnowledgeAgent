@@ -35,6 +35,13 @@
 - **原因**：路径对象作为唯一结构化来源同时进入正文和 envelope，避免从正文反推解析类型；版本升级与调用链迁移同批完成，消除旧协议状态。
 - **后果**：phase 5 仅需补齐计划收尾、全量维护校验及最终门禁记录，不再修改结果协议。
 
+### 2026-09-10 — phase 5 计划与 ADR 收尾
+- **spec 原文**：具名覆盖、异常数据、协议及预算回归通过；`pnpm run typecheck`、`pnpm run test`、`node scripts/doc-check.mjs` 通过；合并前执行 `node scripts/verify.mjs merge -- --base main`。
+- **实际做法**：完成 10 项验收清单并更新 inbox；ADR-010 与 INDEX 状态同步为“已实施”；保留计划和 notes 活动文件，未执行冻结归档、版本、变更日志或合并发布。
+- **原因**：实现已完成且维护门禁通过，但本轮明确不发版；冻结归档属于发布元数据收束，应交给 release/archive-plan 流程。
+- **后果**：`node scripts/doc-check.mjs` 通过，`node scripts/verify.mjs merge -- --base main` 通过；后续发版仍需按生命周期归档计划、合并 notes 并处理版本元数据。
+- **验证**：定向回归 6 个文件 102 个测试通过；全量回归 38 个文件 372 个测试通过；类型检查、文档检查及 merge profile 五项门禁均通过。测试中既有 dry/失败场景按预期输出缺少密钥提示，未启动付费运行。
+
 ## 债务记录
 
 > 遗留的技术债、被牺牲的改进与延期偿还事项

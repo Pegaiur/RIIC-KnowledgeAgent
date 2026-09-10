@@ -2,7 +2,7 @@
 
 > 创建日期：2026-09-09
 > 修订日期：2026-09-10
-> 状态：待启动；本轮仅修订设计，未实施运行时改动
+> 状态：已完成（待发布元数据收束）
 
 ## 目标
 
@@ -204,24 +204,24 @@ type FactsSearchResult = { query: string; paths: ResolutionPath[]; matches: Fact
 
 按依赖实施：类型与校验 → 纯登记及具名来源测试 → store查询结果与全部调用者同步迁移 → executor/序列化/版本 → 全量回归。每个阶段结束保持可编译；迁移factsSearch返回类型时必须同批调整调用者，不留中间半兼容运行路径。
 
-定向使用 `pnpm run test -- bench/tests/facts-terms.test.ts bench/tests/facts-tools.test.ts bench/tests/tool-executor.test.ts bench/tests/inputs.test.ts`，然后执行全量 `pnpm run typecheck` 与 `pnpm run test`。本轮只提交计划和关联ADR，不运行这些尚未实现功能的验收；仅做文档检查及独立审查。D1检查未完成实施项是合并门禁的预期阻塞，不提前勾选。
+实施已按“类型与校验 → 登记及来源测试 → store 查询结果与调用者迁移 → executor/序列化/版本 → 全量回归”完成；定向回归、`pnpm run typecheck` 与 `pnpm run test` 均已执行。phase 5 继续完成维护校验与最终门禁记录，不启动付费运行；计划仍待发布元数据收束，暂不执行冻结归档。
 
 ## 验收清单
 
-- [ ] 支持范围与具名清单落地，简写合称和子串扩展未接入
-- [ ] 别名/搭配及来源校验完成，旧名处置不混淆推荐隐藏
-- [ ] 搭配条件、成员角色与非穷尽边界保留
-- [ ] 同名命中全部返回，跨类别路径和成员归属正确
-- [ ] 查询级结果、零卡拒绝与计数契约实现
-- [ ] RecordCard.aliases 仍为空，历史 lookup 不扩展
-- [ ] TOOL_SCHEMA_VERSION = 7、FACTS_RESULT_VERSION = 3，工具描述同步
-- [ ] 具名覆盖、异常数据、协议及预算回归通过
-- [ ] pnpm run typecheck 与 pnpm run test 全通过
-- [ ] node scripts/doc-check.mjs 全通过
+- [x] 支持范围与具名清单落地，简写合称和子串扩展未接入
+- [x] 别名/搭配及来源校验完成，旧名处置不混淆推荐隐藏
+- [x] 搭配条件、成员角色与非穷尽边界保留
+- [x] 同名命中全部返回，跨类别路径和成员归属正确
+- [x] 查询级结果、零卡拒绝与计数契约实现
+- [x] RecordCard.aliases 仍为空，历史 lookup 不扩展
+- [x] TOOL_SCHEMA_VERSION = 7、FACTS_RESULT_VERSION = 3，工具描述同步
+- [x] 具名覆盖、异常数据、协议及预算回归通过
+- [x] pnpm run typecheck 与 pnpm run test 全通过
+- [x] node scripts/doc-check.mjs 全通过
 
 ## 本轮设计修订（2026-09-10）
 
-按用户最新裁决，将反问与消歧措施移出范围，删除人工子串入口、设施判断、提示及Agent契约修改，只保留同名命中全部返回。独立审查指出的两个搭配规范名连写已拆开；旧检索内容中的反问规则不在本计划处理。完成本轮一致性自审，实施项保持未勾选；D1仍受待启动计划阻塞，不能提前勾选或修改检查器绕过。
+按用户最新裁决，将反问与消歧措施移出范围，删除人工子串入口、设施判断、提示及Agent契约修改，只保留同名命中全部返回。独立审查指出的两个搭配规范名连写已拆开；旧检索内容中的反问规则不在本计划处理。实现与回归已完成，D1 清单已据实际结果勾选；发布元数据收束（冻结归档、版本和变更日志）按本轮“不发版”约束暂不执行。
 
 ## 关联 ADR
 
