@@ -13,7 +13,7 @@ import { getCardStore, serializeFactsMatches, type CardStore, type ResolutionPat
 export type KnowledgeOperation = ToolId
 
 /** 工具 schema 发生协议变化时递增；快照保留该值供对照分组。 */
-export const TOOL_SCHEMA_VERSION = 7 as const
+export const TOOL_SCHEMA_VERSION = 8 as const
 
 export interface ToolBudgetState {
   limit: number
@@ -32,7 +32,7 @@ export type ToolResultStatus =
   | 'error'
   | 'budget_exhausted'
 
-export const FACTS_RESULT_VERSION = 3 as const
+export const FACTS_RESULT_VERSION = 4 as const
 
 export interface FactsResultMetadata {
   factsResultVersion: typeof FACTS_RESULT_VERSION
@@ -124,7 +124,7 @@ const TOOL_DEFINITIONS: Record<CurrentToolId, JsonObject> = {
     type: 'function',
     function: {
       name: 'facts_search',
-      description: '用一个完整词条精确查询干员事实卡：干员正式名、技能名、已收录技能组词、设施、阵营或职业；支持已确认别名（干员别名）、阵营规范名和搭配规范名。同名命中全部返回并保留命中路径；不支持简写合称，不拆词，不解析句子或多个条件。',
+      description: '用一个完整词条精确查询干员事实卡：干员正式名、技能名、已收录技能组词、设施、阵营或职业；支持已确认别名（干员别名）、已登记子串短名、阵营规范名和搭配规范名。同名命中全部返回并保留命中路径，短名按登记返回全部长名，不做消歧；不支持简写合称，不拆词，不解析句子或多个条件。',
       parameters: {
         type: 'object',
         properties: {

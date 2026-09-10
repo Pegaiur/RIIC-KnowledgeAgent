@@ -43,6 +43,7 @@ describe('独立函数工具 schema', () => {
     expect(fn.description).toContain('完整词条')
     expect(fn.description).toContain('已确认别名')
     expect(fn.description).toContain('同名命中全部返回')
+    expect(fn.description).toContain('短名按登记返回全部长名，不做消歧')
     expect(fn.description).toContain('不支持简写合称')
     expect(fn.parameters.properties).toEqual({ query: expect.any(Object) })
     expect(fn.parameters.required).toEqual(['query'])
@@ -51,7 +52,7 @@ describe('独立函数工具 schema', () => {
   })
 
   it('schema 指纹只由当前实际工具数组决定', () => {
-    expect(toolSchemaMetadata('bm25')).toMatchObject({ toolSchemaVersion: 7, toolNames: ['rag_search', 'read_section'] })
+    expect(toolSchemaMetadata('bm25')).toMatchObject({ toolSchemaVersion: 8, toolNames: ['rag_search', 'read_section'] })
     expect(toolSchemaMetadata('bm25').toolSchemaSha256).toMatch(/^[a-f0-9]{64}$/)
     expect(toolSchemaMetadata('bm25').toolSchemaSha256).not.toBe(toolSchemaMetadata('hybrid').toolSchemaSha256)
   })
@@ -220,7 +221,7 @@ describe('独立函数 executor：按批次预占工具预算', () => {
     expect(item).toMatchObject({
       status: 'success',
       factsResult: {
-        factsResultVersion: 3,
+        factsResultVersion: 4,
         matchedCount: 1,
         returnedCount: 1,
         complete: true,
@@ -228,7 +229,7 @@ describe('独立函数 executor：按批次预占工具预算', () => {
       },
     })
     const envelope = JSON.parse(serializeToolResult(item)) as Record<string, any>
-    expect(envelope).toMatchObject({ factsResultVersion: 3, resolution: { paths: [{ kind: 'alias', term: '维娜' }] } })
+    expect(envelope).toMatchObject({ factsResultVersion: 4, resolution: { paths: [{ kind: 'alias', term: '维娜' }] } })
     expect(envelope.data).toContain('别名：维娜 → 维娜·维多利亚')
   })
 

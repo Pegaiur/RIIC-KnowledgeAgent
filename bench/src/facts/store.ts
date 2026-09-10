@@ -3,7 +3,7 @@
  *
  * 运行时以最终门禁通过的全量 RecordCard 为源；fixture 只保留为回归基线。
  * factsSearch 返回六类规范词条与人工登记入口的查询级结果；lookup/queryOperators 仅供旧数据调用者和历史回归使用。
- * 不做落盘、不做自然语言解析、不做模糊或子串兜底。
+ * 不做落盘、不做自然语言解析、不做模糊兜底；子串仅按人工登记的短名做确定性展开，不做任意子串扫描。
  */
 import type { RecordCard } from './card.js'
 import { TERM_CURATIONS } from './curation/terms.js'
@@ -37,7 +37,8 @@ export const FACTS_MATCH_CATEGORY_LABEL: Record<FactsMatchCategory, string> = {
 
 /**
  * TODO(tech-debt) R5-2：历史 lookup 仍未迁移到 facts 词条登记；
- * 待另行决策并完成旧调用者兼容核对后，再决定是否恢复其别名、合称与子串解析能力。
+ * facts 入口已按人工登记恢复短名到长名的确定性子串展开（仅限已登记短名），
+ * 合称与模糊解析仍未恢复，待另行决策并完成旧调用者兼容核对后再定。
  */
 
 export interface FactsMatch {
@@ -346,18 +347,36 @@ export function serializeFactsMatches(result: FactsSearchResult): string {
 }
 
 function renderResolutionPath(path: ResolutionPath): string {
-  if (path.kind === 'exact') return `- 精确：${FACTS_MATCH_CATEGORY_LABEL[path.category]}；命中 ${path.memberIds.length} 张记录卡`
-  if (path.kind === 'alias') {
-    return `- 别名：${path.term} → ${path.targets.map((target) => target.slice('operator:'.length)).join('、')}；来源：${renderEvidence(path.evidence)}；命中 ${path.memberIds.length} 张记录卡`
+  switch (path.kind) {
+    case 'exact':
+      return `- 精确：${FACTS_MATCH_CATEGORY_LABEL[path.category]}；命中 ${path.memberIds.length} 张记录卡`
+    case 'alias':
+      return renderNamedTargetPath('别名', path.term, path.targets, path.evidence, path.memberIds)
+    case 'substring':
+      return renderNamedTargetPath('子串', path.term, path.targets, path.evidence, path.memberIds)
+    case 'combo':
+      return renderComboPath('组合', path.term, path.combo, path.memberIds)
+    case 'legacy':
+      return `${renderComboPath('旧称', path.term, path.combo, path.memberIds)}；来源：${renderEvidence(path.evidence)}`
+    case 'rejected':
+      return `- 拒绝：${path.term}；理由：${path.reason}；依据：${renderEvidence(path.evidence)}`
+    default: {
+      const exhaustive: never = path
+      throw new Error(`未处理的事实解析路径：${(exhaustive as { kind: string }).kind}`)
+    }
   }
-  if (path.kind === 'substring') {
-    return `- 子串：${path.term} → ${path.targets.map((target) => target.slice('operator:'.length)).join('、')}；来源：${renderEvidence(path.evidence)}；命中 ${path.memberIds.length} 张记录卡`
-  }
-  if (path.kind === 'combo') return renderComboPath('组合', path.term, path.combo, path.memberIds)
-  if (path.kind === 'legacy') {
-    return `${renderComboPath('旧称', path.term, path.combo, path.memberIds)}；来源：${renderEvidence(path.evidence)}`
-  }
-  return `- 拒绝：${path.term}；理由：${path.reason}；依据：${renderEvidence(path.evidence)}`
+}
+
+/** 别名与子串同构：一词指向多个已登记目标并保留来源。 */
+function renderNamedTargetPath(
+  label: string,
+  term: string,
+  targets: readonly OperatorRef[],
+  evidence: readonly EvidenceRef[],
+  memberIds: readonly string[],
+): string {
+  const names = targets.map((target) => target.slice('operator:'.length)).join('、')
+  return `- ${label}：${term} → ${names}；来源：${renderEvidence(evidence)}；命中 ${memberIds.length} 张记录卡`
 }
 
 function renderComboPath(kind: string, term: string, combo: ComboEntry, memberIds: readonly string[]): string {

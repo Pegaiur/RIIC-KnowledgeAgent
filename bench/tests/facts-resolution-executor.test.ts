@@ -22,7 +22,7 @@ function expectEnvelope(item: ToolExecutionResult, expectedIds: string[]) {
   expect(item.hitIds).toEqual(expectedIds)
   expect(item.injectedIds).toEqual(expectedIds)
   expect(item.factsResult).toMatchObject({
-    factsResultVersion: 3, matchedCount: expectedIds.length, returnedCount: expectedIds.length, complete: true,
+    factsResultVersion: 4, matchedCount: expectedIds.length, returnedCount: expectedIds.length, complete: true,
   })
   const envelope = JSON.parse(serializeToolResult(item))
   expect(envelope).toMatchObject({
@@ -61,6 +61,19 @@ describe('真实词条的 executor 解析协议', () => {
     expect(new Set(item.hitIds)).toEqual(new Set([...faction, '八幡海铃']))
     expectEnvelope(item, item.hitIds!)
     expect(item).toMatchObject({ status: 'success', executed: true })
+  })
+
+  it('临光按登记返回短名自身与长名，substring 路径进入 resolution 与正文', async () => {
+    const item = (await executor().executeBatch([call('临光')])).results[0]!
+    expect(item).toMatchObject({ status: 'success', executed: true })
+    expect(item.factsResult?.resolution.paths.map((path) => path.kind)).toEqual(['exact', 'substring'])
+    expect(item.factsResult?.resolution.paths[1]).toMatchObject({
+      kind: 'substring', term: '临光', targets: ['operator:耀骑士临光'], memberIds: ['耀骑士临光'],
+    })
+    expect(item.factsResult).toMatchObject({ factsResultVersion: 4, matchedCount: 2, returnedCount: 2, complete: true })
+    expect(new Set(item.hitIds)).toEqual(new Set(['临光', '耀骑士临光']))
+    expectEnvelope(item, item.hitIds!)
+    expect(item.data).toContain('子串：临光 → 耀骑士临光')
   })
 
   it('企鹅物流仅返回已登记搭配，不伪造真源中不存在的阵营路径', async () => {

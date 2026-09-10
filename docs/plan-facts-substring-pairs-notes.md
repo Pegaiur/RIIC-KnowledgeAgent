@@ -54,6 +54,13 @@
 - **后果**：phase 4 仅需把 `renderResolutionPath` 改为 switch + never、升双版本号、更新工具描述与 store 顶部说明及 `TODO(tech-debt) R5-2` 注释。
 - **验证**：`pnpm run typecheck` 通过；facts 相关 6 个测试文件 155 通过。
 
+### 2026-09-10 — phase 4 序列化 switch、双版本号与工具描述（步骤4）
+- **spec 原文**：`renderResolutionPath` 改 switch + never 兜底并新增子串分支；`TOOL_SCHEMA_VERSION` 7→8、`FACTS_RESULT_VERSION` 3→4；工具描述补「短名按登记返回全部长名，不做消歧」；同步修订 store 顶部说明与 `TODO(tech-debt) R5-2` 注释。
+- **实际做法**：switch + `never` 兜底，别名与子串共用 `renderNamedTargetPath`；双版本号与工具描述同步升级；store 顶部说明区分「不做模糊兜底」与「子串仅按人工登记做确定性展开」；R5-2 注释改写为「子串已按登记恢复、合称与模糊未恢复」。新增真实「临光」executor 回归，验证 substring 路径进入 `resolution`、正文与计数。
+- **原因**：版本升级与调用链迁移同批完成，消除阶段间协议版本不一致窗口；用真实数据覆盖序列化链路。
+- **后果**：phase 5 补齐 S1–S5 其余真实/负例、协议与版本回归，并完成维护门禁与计划收尾。
+- **验证**：`pnpm run typecheck` 通过；7 个测试文件 158 通过。
+
 ## 债务记录
 > 遗留的技术债、被牺牲的改进与延期偿还事项
 
