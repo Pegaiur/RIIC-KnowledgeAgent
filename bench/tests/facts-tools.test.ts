@@ -311,7 +311,7 @@ describe('第一阶段合成卡契约', () => {
 
 describe('单词条 facts_search 精确索引', () => {
   const store = buildCardStore(SINGLE_TERM_CARDS)
-  const names = (query: string) => store.factsSearch(query).map((match) => match.card.canonical)
+  const names = (query: string) => store.factsSearch(query).matches.map((match) => match.card.canonical)
 
   it('U01：干员、技能和等价技能名按精确词条返回预期并集', () => {
     expect(names('测试甲')).toEqual(['测试甲'])
@@ -335,32 +335,32 @@ describe('单词条 facts_search 精确索引', () => {
     { query: '另一组', canonical: '测试丙', category: 'faction', label: '阵营' },
     { query: '近卫', canonical: '测试甲', category: 'class', label: '职业' },
   ] as const)('U09：$query 命中类别为 $category 并输出中文标签', ({ query, canonical, category, label }) => {
-    const matches = store.factsSearch(query)
-    const match = matches.find((item) => item.card.canonical === canonical)
+    const result = store.factsSearch(query)
+    const match = result.matches.find((item) => item.card.canonical === canonical)
     expect(match?.categories).toEqual([category])
-    expect(serializeFactsMatches(query, matches)).toContain(`匹配类别：${label}`)
+    expect(serializeFactsMatches(result)).toContain(`匹配类别：${label}`)
   })
 
   it('U03：同名跨类别并集按 canonical 去重并保留类别依据', () => {
-    const matches = store.factsSearch('共享词')
-    expect(matches.map((match) => match.card.canonical)).toEqual(['测试甲', '共享词'])
-    expect(matches[0]?.categories).toEqual(['skillGroup'])
-    expect(matches[1]?.categories).toEqual(['operator'])
-    expect(serializeFactsMatches('共享词', matches)).toContain('匹配类别：技能组')
-    expect(serializeFactsMatches('共享词', matches)).toContain('匹配类别：干员正式名')
+    const result = store.factsSearch('共享词')
+    expect(result.matches.map((match) => match.card.canonical)).toEqual(['测试甲', '共享词'])
+    expect(result.matches[0]?.categories).toEqual(['skillGroup'])
+    expect(result.matches[1]?.categories).toEqual(['operator'])
+    expect(serializeFactsMatches(result)).toContain('匹配类别：技能组')
+    expect(serializeFactsMatches(result)).toContain('匹配类别：干员正式名')
   })
 
   it('U04/U05：不做分词、子串兜底或内部空格改写，只 trim 首尾空白', () => {
     expect(names('制造站 近卫')).toEqual([])
     expect(names('未知词条')).toEqual([])
     const spaced = buildCardStore([{ ...SINGLE_TERM_CARDS[0]!, canonical: '测试 甲' }])
-    expect(spaced.factsSearch('  测试 甲  ').map((match) => match.card.canonical)).toEqual(['测试 甲'])
-    expect(spaced.factsSearch('测试甲')).toEqual([])
+    expect(spaced.factsSearch('  测试 甲  ').matches.map((match) => match.card.canonical)).toEqual(['测试 甲'])
+    expect(spaced.factsSearch('测试甲')).toMatchObject({ paths: [], matches: [] })
   })
 
   it('U06：精确空查仍可由执行器按合法 query 执行；索引自身不伪造事实', () => {
-    expect(store.factsSearch('   ')).toEqual([])
-    expect(serializeFactsMatches('未知词条', [])).toBe('未收录精确词条：未知词条')
+    expect(store.factsSearch('   ')).toEqual({ query: '', paths: [], matches: [] })
+    expect(serializeFactsMatches(store.factsSearch('未知词条'))).toBe('未收录精确词条：未知词条')
   })
 
   it('U07：设施命中返回完整卡，不裁剪其他设施技能、替换和备注', () => {
@@ -372,7 +372,7 @@ describe('单词条 facts_search 精确索引', () => {
         { grantId: 'a2', room: '办公室', name: '联络技能', unlockType: '初始解锁', target: '', effectText: '联络效果', notes: '联络备注' },
       ],
     }
-    const text = serializeFactsMatches('制造站', buildCardStore([card]).factsSearch('制造站'))
+    const text = serializeFactsMatches(buildCardStore([card]).factsSearch('制造站'))
     expect(text).toContain('「甲技能」')
     expect(text).toContain('「甲技能升级」')
     expect(text).toContain('「联络技能」')
@@ -385,16 +385,16 @@ describe('单词条 facts_search 精确索引', () => {
     const sameCard = { ...SINGLE_TERM_CARDS[0]!, factionGroups: ['共享词'] }
     const sameStore = buildCardStore([sameCard])
     const same = sameStore.factsSearch('共享词')
-    expect(same).toHaveLength(1)
-    expect(same[0]?.categories).toEqual(['skillGroup', 'faction'])
-    expect(serializeFactsMatches('共享词', same)).toContain('匹配类别：技能组、阵营')
+    expect(same.matches).toHaveLength(1)
+    expect(same.matches[0]?.categories).toEqual(['skillGroup', 'faction'])
+    expect(serializeFactsMatches(same)).toContain('匹配类别：技能组、阵营')
 
     const wideCards = Array.from({ length: 100 }, (_, index) => ({ ...SINGLE_TERM_CARDS[0]!, canonical: `宽查${String(index + 1).padStart(3, '0')}` }))
     const wideStore = buildCardStore(wideCards)
     const wide = wideStore.factsSearch('制造站')
-    expect(wide).toHaveLength(100)
-    expect(new Set(wide.map((match) => match.card.canonical))).toHaveLength(100)
-    expect(serializeFactsMatches('制造站', wide)).toContain('【宽查100】')
+    expect(wide.matches).toHaveLength(100)
+    expect(new Set(wide.matches.map((match) => match.card.canonical))).toHaveLength(100)
+    expect(serializeFactsMatches(wide)).toContain('【宽查100】')
   })
 })
 
@@ -417,11 +417,11 @@ describe('第一阶段 facts 结果 envelope', () => {
     expect(result.results).toHaveLength(2)
     for (const item of result.results) {
       expect(item).toMatchObject({ status: 'empty', executed: true, hitIds: [], injectedIds: [], factsResult: {
-        factsResultVersion: 2, matchedCount: 0, returnedCount: 0, complete: true,
+        factsResultVersion: 5, matchedCount: 0, returnedCount: 0, complete: true, resolution: { paths: [] },
       } })
       expect(item.factsResult?.scope).toEqual(item.actualParams)
       const envelope = JSON.parse(serializeToolResult(item)) as Record<string, unknown>
-       expect(envelope).toMatchObject({ status: 'empty', executed: true, factsResultVersion: 2, matchedCount: 0, returnedCount: 0, complete: true })
+       expect(envelope).toMatchObject({ status: 'empty', executed: true, factsResultVersion: 5, matchedCount: 0, returnedCount: 0, complete: true, resolution: { paths: [] } })
        expect(envelope.data).toContain('未收录精确词条')
     }
     expect(JSON.parse(serializeToolResult(result.results[0]!)).scope).toEqual({ query: '__不存在的规范名_核查__' })
@@ -446,7 +446,7 @@ describe('第一阶段 facts 结果 envelope', () => {
     expect(result.results[0]).toMatchObject({ status: 'invalid_params', executed: false })
     expect(result.results[0]?.factsResult).toBeUndefined()
     expect(JSON.parse(serializeToolResult(result.results[0]!))).not.toHaveProperty('factsResultVersion')
-    expect(result.results[1]).toMatchObject({ status: 'empty', executed: true, factsResult: { factsResultVersion: 2, matchedCount: 0, complete: true } })
+    expect(result.results[1]).toMatchObject({ status: 'empty', executed: true, factsResult: { factsResultVersion: 5, matchedCount: 0, complete: true, resolution: { paths: [] } } })
   })
 })
 
@@ -618,7 +618,7 @@ describe('runQuery（facts 模式）', () => {
     })
     const writtenContent = (trace.events[1] as { writtenContent: string }).writtenContent
     expect(writtenContent).toContain('【刻俄柏】')
-    expect(JSON.parse(writtenContent)).toMatchObject({ factsResultVersion: 2, matchedCount: 1, returnedCount: 1, complete: true, scope: { query: '刻俄柏' } })
+    expect(JSON.parse(writtenContent)).toMatchObject({ factsResultVersion: 5, matchedCount: 1, returnedCount: 1, complete: true, scope: { query: '刻俄柏' }, resolution: { paths: [{ kind: 'exact', term: '刻俄柏' }] } })
     const secondMessages = mockCall.mock.calls[1]?.[0] as Array<{ role: string; content: string }>
     expect(secondMessages.find((message) => message.role === 'tool')?.content).toBe(writtenContent)
   })

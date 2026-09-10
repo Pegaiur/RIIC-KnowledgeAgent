@@ -12,7 +12,7 @@ description: 发版与版本管理——在 feature 分支收束发布元数据�
 | 职责 | 命令 | 说明 |
 |------|------|------|
 | 合并门禁 | `node scripts/verify.mjs merge -- --base <主分支>` | merge profile 唯一入口，按 feature 相对主分支的完整变更路由附加门禁 |
-| 发版准备态检查 | `node scripts/tooling.mjs run release/check` | 复用 doc-check（D1-D4）+ 活动 plan/notes/inbox/archive INDEX 准备态（P1-P4） |
+| 发版准备态检查 | `node scripts/tooling.mjs run release/check` | 复用 doc-check（D1-D5）+ 活动 plan/notes/inbox/archive INDEX 准备态（P1-P4） |
 | plan 归档 | `node scripts/tooling.mjs run release/prepare -- --plan <path>` | archive → check → calculate 编排；默认 dry-run，`--apply` 真实归档 |
 | 子包版本推算 | `node scripts/tooling.mjs run release/calculate-version -- --pkg <dir\|all>` | 逐包独立推算；`--apply` 写入子包版本文件 |
 | 更新日志 | `node scripts/tooling.mjs run release/changelog -- --version <根版本> --apply` | 发版区间（最近 tag..HEAD）变更摘要追加 docs/CHANGELOG.md；`--agent` 紧凑视图供发版后新任务首读 |

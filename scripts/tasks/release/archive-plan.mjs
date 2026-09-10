@@ -21,6 +21,7 @@ import { existsSync, lstatSync, readFileSync, realpathSync, writeFileSync, rmSyn
 import { resolve, join, basename, dirname, isAbsolute, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { resolveRepoRoot } from '../../lib/repo-context.mjs'
+import { parsePlanChecklist } from '../../lib/plan-scan.mjs'
 
 const DEFAULT_ROOT = resolveRepoRoot(import.meta.url)
 
@@ -76,16 +77,6 @@ function resolveExplicitNotesPath(root, ref) {
     throw new Error(`显式 notes 必须是 docs/ 直属的 *-notes.md 普通文件：${ref}`)
   }
   return notesPath
-}
-
-/** 提取已完成 checklist 行 */
-function doneChecklist(content) {
-  return content.match(/^\s*-\s*\[x\]/gm) ?? []
-}
-
-/** 提取未勾选 checklist 行 */
-function openChecklist(content) {
-  return content.match(/^\s*-\s*\[ \]/gm) ?? []
 }
 
 /** 从 plan「## 目标」段提取首条 bullet 作缺省摘要 */
@@ -154,11 +145,10 @@ export function archivePlan(root, planRef, { summary, version = '—', date = to
 
   // 1. 校验 checklist 与冻结状态：唯一可归档条件是「至少一个 checkbox 且全部 [x]」；
   //    存在 [ ] 或无 checkbox（疑似草案）均拒绝，校验发生在任何写操作之前，无文件副作用
-  const open = openChecklist(planContent)
-  const done = doneChecklist(planContent)
+  const { open, done, frozen } = parsePlanChecklist(planContent)
   if (open.length > 0) throw new Error(`plan 存在 ${open.length} 个未勾选条目，禁止归档（${planRef}）`)
   if (done.length === 0) throw new Error(`plan 无验收清单段（疑似草案），禁止归档：${planRef}`)
-  if (planContent.includes('已完成于')) throw new Error(`plan 已冻结，勿重复归档：${planRef}`)
+  if (frozen) throw new Error(`plan 已冻结，勿重复归档：${planRef}`)
 
   // 2. notes（显式指定或自动推导 docs/plan-<name>-notes.md）
   const notesPaths = notes

@@ -12,7 +12,7 @@
 > 创建日期：2026-09-07
 > 状态：前序提案，已由 [归档计划](../plan-independent-tools-schema.md) 取代；正文保留供追溯
 > 需求入口：[inbox](../../inbox.md)
-> 前置证据：[性能与 hybrid 评估](../../exp-harness-performance.md)
+> 前置证据：[性能与 hybrid 评估](exp-harness-performance.md)
 
 ### 目标
 

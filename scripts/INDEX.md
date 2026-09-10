@@ -48,6 +48,7 @@
 | task-ref | normalizeTaskRef | domain/name 引用规范化（防穿越） | tooling、ref-check |
 | ref-check | collectRefIssues | 文档/脚本引用存在性检查（doc-check D4） | doc-check |
 | skill-check | checkSkillStructure | skills/ 开放格式结构校验（S1-S5） | doc-check |
+| plan-scan | listActivePlans / parsePlanChecklist | 活动 plan 枚举与验收清单/冻结标记解析（统一口径） | doc-check、release/check、release/archive-plan |
 | verify-profile | PROFILE_VERSION | 门禁 profile 版本事实源（命令构成变化时递增） | verify |
 
 ## 临时路径边界（所有权分离 + 清理白名单）

@@ -5,8 +5,8 @@
  * 用法：
  *   node scripts/tasks/release/check.mjs [--json] [--root <dir>]
  *
- * 检查项（不改变 doc-check D1-D4 语义，仅调用并叠加发版准备态）：
- *   D 检查：调用 node scripts/doc-check.mjs --json（D1-D4 原样展示）
+ * 检查项（不改变 doc-check D1-D5 语义，仅调用并叠加发版准备态）：
+ *   D 检查：调用 node scripts/doc-check.mjs --json（D1-D5 原样展示）
  *   P1 活动 plan：docs/plan-*.md 施工中条目数与冻结待归档状态
  *   P2 notes：docs/*-notes.md 待合并清单（发版前应经 archive-plan 合并归档）
  *   P3 inbox：已勾选 [x] 条目数（发版时应清理）
@@ -22,6 +22,7 @@ import { fileURLToPath } from 'node:url'
 import { resolveRepoRoot } from '../../lib/repo-context.mjs'
 import { runCapture } from '../../lib/process.mjs'
 import { formatJson } from '../../lib/output.mjs'
+import { listActivePlans, parsePlanChecklist } from '../../lib/plan-scan.mjs'
 
 const DEFAULT_ROOT = resolveRepoRoot(import.meta.url)
 
@@ -32,7 +33,7 @@ function usage() {
   node scripts/tasks/release/check.mjs [--json] [--root <dir>]
 
 检查项：
-  D  调用 node scripts/doc-check.mjs --json（D1-D4 原样展示，作用于真实仓库）
+  D  调用 node scripts/doc-check.mjs --json（D1-D5 原样展示，作用于真实仓库）
   P1 活动 plan：施工中条目与冻结待归档状态
   P2 docs/*-notes.md 待合并清单
   P3 inbox 已勾选条目
@@ -56,19 +57,15 @@ export function collectReleaseChecks(root) {
   const docsDir = join(root, 'docs')
 
   // P1 活动 plan（排除 *-notes.md）
-  const planFiles = existsSync(docsDir)
-    ? readdirSync(docsDir).filter(f => f.startsWith('plan-') && f.endsWith('.md') && !f.endsWith('-notes.md'))
-    : []
-  for (const f of planFiles) {
+  for (const f of listActivePlans(docsDir)) {
     const content = readFileSync(join(docsDir, f), 'utf-8')
-    const open = content.match(/^\s*-\s*\[ \]/gm) ?? []
-    const done = content.match(/^\s*-\s*\[x\]/gm) ?? []
+    const { open, done, frozen } = parsePlanChecklist(content)
     if (open.length > 0) {
       warnings.push({ check: 'P1', message: `活动 plan ${f} 施工中（${open.length} 项未勾选），发版前需完成或归档` })
     } else if (done.length === 0) {
       // 无 checkbox（无 [x] 也无 [ ]）：疑似草案，与「存在 checklist 且全部完成」严格区分
       warnings.push({ check: 'P1', message: `活动 plan ${f} 无验收清单段（疑似草案），发版前需定稿或降级为 draft` })
-    } else if (content.includes('已完成于')) {
+    } else if (frozen) {
       warnings.push({ check: 'P1', message: `活动 plan ${f} 已冻结待归档（执行 release/archive-plan）` })
     } else {
       warnings.push({ check: 'P1', message: `活动 plan ${f} 已勾选全部条目但未冻结归档` })

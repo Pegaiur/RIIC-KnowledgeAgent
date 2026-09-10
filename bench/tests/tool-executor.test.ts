@@ -41,6 +41,10 @@ describe('独立函数工具 schema', () => {
     const fn = facts.function as { name: string; description: string; parameters: { properties: Record<string, unknown>; required: string[]; additionalProperties: boolean; anyOf?: unknown[] } }
     expect(fn.name).toBe('facts_search')
     expect(fn.description).toContain('完整词条')
+    expect(fn.description).toContain('已确认别名')
+    expect(fn.description).toContain('同名命中全部返回')
+    expect(fn.description).toContain('短名按登记返回全部长名，不做消歧')
+    expect(fn.description).toContain('不支持简写合称')
     expect(fn.parameters.properties).toEqual({ query: expect.any(Object) })
     expect(fn.parameters.required).toEqual(['query'])
     expect(fn.parameters.additionalProperties).toBe(false)
@@ -48,7 +52,7 @@ describe('独立函数工具 schema', () => {
   })
 
   it('schema 指纹只由当前实际工具数组决定', () => {
-    expect(toolSchemaMetadata('bm25')).toMatchObject({ toolSchemaVersion: 6, toolNames: ['rag_search', 'read_section'] })
+    expect(toolSchemaMetadata('bm25')).toMatchObject({ toolSchemaVersion: 8, toolNames: ['rag_search', 'read_section'] })
     expect(toolSchemaMetadata('bm25').toolSchemaSha256).toMatch(/^[a-f0-9]{64}$/)
     expect(toolSchemaMetadata('bm25').toolSchemaSha256).not.toBe(toolSchemaMetadata('hybrid').toolSchemaSha256)
   })
@@ -206,6 +210,27 @@ describe('独立函数 executor：按批次预占工具预算', () => {
     })
     expect(new Set(item.hitIds).size).toBe(item.hitIds?.length ?? 0)
     expect(item.data.length).toBeGreaterThan(config.maxContextChars)
+  })
+
+  it('facts 结果元数据携带查询级 resolution，序列化与正文保持同源', async () => {
+    const config = loadConfig()
+    config.retriever = 'facts'
+    const executor = createKnowledgeToolExecutor({ config, query: { id: 'FACTS-RESOLUTION', category: 'fact', question: '别名查询' }, chunks, index: buildIndex(chunks) }, 2)
+    const result = await executor.executeBatch([call('alias', 'facts_search', { query: '维娜' })])
+    const item = result.results[0]!
+    expect(item).toMatchObject({
+      status: 'success',
+      factsResult: {
+        factsResultVersion: 5,
+        matchedCount: 1,
+        returnedCount: 1,
+        complete: true,
+        resolution: { paths: [{ kind: 'alias', term: '维娜', targets: ['operator:维娜·维多利亚'] }] },
+      },
+    })
+    const envelope = JSON.parse(serializeToolResult(item)) as Record<string, any>
+    expect(envelope).toMatchObject({ factsResultVersion: 5, resolution: { paths: [{ kind: 'alias', term: '维娜' }] } })
+    expect(envelope.data).toContain('别名：维娜 → 维娜·维多利亚')
   })
 
   it('旧 knowledge 外壳被视为未知工具，不自动解包', async () => {

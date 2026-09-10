@@ -6,11 +6,13 @@
 >
 > 本版知识源基准提交：`b008f80c00c05097856921da946fe344bcaed600`；修订仅改变核查文档，不声明上游游戏数据已重新核验。独立审查及配套评估见[校正记录](../archive/exp/exp-answer-baseline-calibration.md#独立审查与v4定稿2026-09-08)。
 >
+> 命名同步（2026-09-10）：S07 组合名统一为「红松骑士团组」，仅同步证据锚点与 gold/questions，不改判定口径与题号集合。
+>
 > 事实依据：`knowledge/corpus-manifest.json` 当前白名单中的 `base/`、`references/`、`guides/`。题目、gold 和本快照必须保持同一题号集合；下文证据块服务答案核查；gold 是独立的检索相关性标注，不是完整答案的必要检索路径。v4 未变更 gold，不能将 gold 全命中解释为必答项已全部取证。
 
 ## 质量基线
 
-当前正式质量基线：未指定。本 spec 只规定答案核查口径，不以运行完成状态替代质量结论。历史运行观察见 [性能试验](../exp-harness-performance.md)，v4 核查及审定状态见 [核查试验](../exp-answer-baseline-v4.md)。
+当前正式质量基线：未指定。本 spec 只规定答案核查口径，不以运行完成状态替代质量结论。历史运行观察见 [性能试验](../archive/exp/exp-harness-performance.md)，v4 核查结论见 [核查试验](../archive/exp/exp-answer-baseline-v4.md)。
 
 ## 使用口径
 
@@ -340,9 +342,9 @@
 
 - 将迷迭香、黑键、絮雨放同站，或让夕在宿舍继续产生其中枢技能资源；用不完整配置推固定总效率。
 
-## S07 红松林骑士组
+## S07 红松骑士团组
 
-**证据块**：`guides/制造站组合.md#红松林骑士组`、`references/技能-控制中枢.md#焰尾 ☆6 · 先锋`、`references/技能-控制中枢.md#薇薇安娜 ☆6 · 近卫`、`references/技能-制造站.md#灰毫 ☆5 · 重装`、`references/技能-制造站.md#远牙 ☆6 · 狙击`、`references/技能-制造站.md#野鬃 ☆5 · 先锋`、`references/类别.md#干员组（28 条）`
+**证据块**：`guides/制造站组合.md#红松骑士团组`、`references/技能-控制中枢.md#焰尾 ☆6 · 先锋`、`references/技能-控制中枢.md#薇薇安娜 ☆6 · 近卫`、`references/技能-制造站.md#灰毫 ☆5 · 重装`、`references/技能-制造站.md#远牙 ☆6 · 狙击`、`references/技能-制造站.md#野鬃 ☆5 · 先锋`、`references/类别.md#干员组（28 条）`
 
 ### 必须覆盖
 

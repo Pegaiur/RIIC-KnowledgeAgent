@@ -8,12 +8,12 @@ import { grepSearch, buildGrepResult } from './grep-retriever.js'
 import { search, type IndexEntry } from './retriever.js'
 import type { SectionDirectory, SectionEntry } from './sections.js'
 import { isFactTool, type BenchQuery, type DocChunk, type ToolCall, type ToolId } from './types.js'
-import { getCardStore, serializeFactsMatches, type CardStore } from './facts/store.js'
+import { getCardStore, serializeFactsMatches, type CardStore, type ResolutionPath } from './facts/store.js'
 
 export type KnowledgeOperation = ToolId
 
 /** 工具 schema 发生协议变化时递增；快照保留该值供对照分组。 */
-export const TOOL_SCHEMA_VERSION = 6 as const
+export const TOOL_SCHEMA_VERSION = 8 as const
 
 export interface ToolBudgetState {
   limit: number
@@ -32,14 +32,19 @@ export type ToolResultStatus =
   | 'error'
   | 'budget_exhausted'
 
-export const FACTS_RESULT_VERSION = 2 as const
+export const FACTS_RESULT_VERSION = 5 as const
 
+/**
+ * TODO(tech-debt) R5-5：协议层直接内嵌 store 的 ResolutionPath 联合类型，路径种类变更会牵动 wire 契约；
+ * 待协议与领域类型分层后把该类型下沉到共享 terms 模块（只沉 wire 契约，不沉内部行形状）。
+ */
 export interface FactsResultMetadata {
   factsResultVersion: typeof FACTS_RESULT_VERSION
   matchedCount: number
   returnedCount: number
   complete: true
   scope: Record<string, unknown>
+  resolution: { paths: ResolutionPath[] }
 }
 
 export interface ToolExecutionResult {
@@ -123,7 +128,7 @@ const TOOL_DEFINITIONS: Record<CurrentToolId, JsonObject> = {
     type: 'function',
     function: {
       name: 'facts_search',
-      description: '用一个完整词条精确查询干员事实卡：干员正式名、技能名、已收录技能组词、设施、阵营或职业。不拆词，不解析句子或多个条件。',
+      description: '用一个完整词条精确查询干员事实卡：干员正式名、技能名、已收录技能组词、设施、阵营或职业；支持已确认别名（干员别名）、已登记子串短名、阵营规范名和搭配规范名。同名命中全部返回并保留命中路径，短名按登记返回全部长名，不做消歧；不支持简写合称，不拆词，不解析句子或多个条件。',
       parameters: {
         type: 'object',
         properties: {
@@ -281,6 +286,7 @@ async function executeOne(
           returnedCount: output.hitIds.length,
           complete: true as const,
           scope: parsed.value,
+          resolution: output.factsResolution ?? { paths: [] },
         }
       : undefined
     return {
@@ -352,9 +358,6 @@ function parseToolParams(
   const unknownKey = Object.keys(raw).find((key) => !allowedKeys.includes(key))
   if (unknownKey) return { reason: `${tool} 不支持参数字段 ${unknownKey}；参数示例：${exampleFor(tool)}` }
 
-  if (tool === 'rag_search' || tool === 'grep_search') {
-    return parseRequiredString(raw, tool, 'query', exampleFor(tool))
-  }
   return parseRequiredString(raw, tool, 'query', exampleFor(tool))
 }
 
@@ -401,7 +404,7 @@ function runOperation(
   params: Record<string, unknown>,
   context: KnowledgeToolContext,
   config: BenchConfig,
-): { data: string; hitIds: string[]; injectedIds: string[]; status?: ToolResultStatus } {
+): { data: string; hitIds: string[]; injectedIds: string[]; factsResolution?: { paths: ResolutionPath[] }; status?: ToolResultStatus } {
   if (operation === 'rag_search' || operation === 'grep_search') {
     const query = params.query as string
     const hits = operation === 'grep_search'
@@ -442,12 +445,13 @@ function runOperation(
     // 观测回调不得改变 facts 工具的执行语义。
   }
   const query = params.query as string
-  const matches = store.factsSearch(query)
-  const hits = matches.map((match) => match.card)
+  const searchResult = store.factsSearch(query)
+  const hits = searchResult.matches.map((match) => match.card)
   return {
-    data: serializeFactsMatches(query, matches),
+    data: serializeFactsMatches(searchResult),
     hitIds: hits.map((card) => card.canonical),
     injectedIds: hits.map((card) => card.canonical),
+    factsResolution: { paths: searchResult.paths },
   }
 }
 

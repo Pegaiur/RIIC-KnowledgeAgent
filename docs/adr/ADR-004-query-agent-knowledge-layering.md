@@ -29,4 +29,3 @@
 ## 关联
 
 - 规划文档：`docs/archive/plan-agent-facts-knowledge-layering.md`
-- 原始需求“R5 查询 Agent 知识分层”和“R5 查询 Agent 指令单一真源”已实施并随分支收束从 `docs/inbox.md` 清理

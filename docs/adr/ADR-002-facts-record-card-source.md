@@ -29,4 +29,3 @@ R5 上游计划原定通过全量 LLM 转录生成记录卡，再用程序化核
 ## 关联
 
 - 规划文档：`docs/archive/plan-facts-record-cards.md`；`docs/archive/plan-hybrid-facts.md`
-- 扩展需求：`docs/inbox.md` 中 R5 事实查询条目

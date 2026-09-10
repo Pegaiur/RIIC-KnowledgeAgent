@@ -123,8 +123,8 @@ node scripts/verify.mjs merge -- --base main   # 合并门禁
 | ---- | ---- |
 | [`docs/inbox.md`](docs/inbox.md) | 待办事项需求唯一入口 |
 | [`docs/spec/rag-answer-baseline.md`](docs/spec/rag-answer-baseline.md) | 评测/核查规格（版本与状态由 spec 自身承载，长期复用资产） |
-| [`docs/exp-answer-baseline-v4.md`](docs/exp-answer-baseline-v4.md) | 按 spec v4 的核查试验（已完成全量复核，待独立审定） |
-| [`docs/exp-harness-performance.md`](docs/exp-harness-performance.md) | 试验记录：性能测量与后续候选 |
+| [`docs/archive/exp/exp-answer-baseline-v4.md`](docs/archive/exp/exp-answer-baseline-v4.md) | 试验记录（已归档）：按 spec v4 的两次既有运行回答核查（已完成全量复核，未经独立复核） |
+| [`docs/archive/exp/exp-harness-performance.md`](docs/archive/exp/exp-harness-performance.md) | 试验记录（已归档）：性能测量与执行诊断 |
 | [`docs/rules/`](docs/rules/) | 复杂规则权威目录 |
 | [`docs/templates/`](docs/templates/) | ADR/plan/notes/exp 机械模板唯一权威目录 |
 | [`docs/adr/INDEX.md`](docs/adr/INDEX.md) | ADR 状态索引 |

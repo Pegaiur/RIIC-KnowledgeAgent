@@ -27,4 +27,3 @@ CLI 的 `--retriever` 增加 `hybrid` 可选值；系统提示必须明确三类
 ## 关联
 
 - 规划文档：`docs/archive/plan-rag-facts-hybrid.md`
-- 扩展需求：`docs/inbox.md` 的“RAG + facts 混合工具模式”

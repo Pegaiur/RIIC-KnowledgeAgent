@@ -11,6 +11,7 @@
  *   D2: ADR 状态与 INDEX.md 一致
  *   D3: 文档交叉引用有效（docs/ 下引用的 ADR-NNN 存在）
  *   D4: 脚本引用路径有效（package scripts / 源码静态 import / spawn 字符串 / rules/templates）
+ *   D5: ADR 引用方向单一（ADR-NNN 只引用编号更小的 ADR，禁止前向/循环引用）
  *   S:  skills/ 技能结构（目录名 / YAML name/description / 名称一致性 / 相对引用 / 禁用宿主措辞）
  *
  * 扩展点：monorepo 子包约定文档校验（如 PACKAGE.md 路径）、spec↔rule 双向引用等，
@@ -20,6 +21,9 @@
  * 与 draft-*.md 的路径失同步，2026-09-03 实际发生）不在检查范围；重启条件：R5 facts 草案落地转 plan 时，
  * 或同类失同步再次复发时，扩展 D3 扫描 docs/ 下 md 相对路径引用的有效性。
  *
+ * TODO(tech-debt) R5-6：doc-check 与 release/check 的 issue 容器、severity 图标映射与退出码样板各自实现，
+ * 未收敛到共享 helper（两处输出契约不同，合并需先统一渲染格式）；重启条件：新增同类检查脚本时一并抽取。
+ *
  * 退出码：0 = 全绿，1 = 有错误
  */
 
@@ -28,6 +32,7 @@ import { resolve, dirname } from 'path'
 import { fileURLToPath } from 'url'
 import { collectRefIssues } from './lib/ref-check.mjs'
 import { checkSkillStructure } from './lib/skill-check.mjs'
+import { listActivePlans, parsePlanChecklist } from './lib/plan-scan.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const root = resolve(__dirname, '..')
@@ -81,17 +86,6 @@ function readFile(relPath) {
   return readFileSync(full, 'utf-8')
 }
 
-function grepLines(content, regex) {
-  /** @type {{index:number,line:number,text:string}[]} */
-  const matches = []
-  const lines = content.split('\n')
-  for (let i = 0; i < lines.length; i++) {
-    const m = regex.exec(lines[i])
-    if (m) matches.push({ index: m.index, line: i + 1, text: m[0].trim() })
-  }
-  return matches
-}
-
 /**
  * 归一化 ADR 状态值
  * "✅ 已决策并实施" → "已实施"
@@ -119,9 +113,7 @@ function checkD1() {
 
   // 活动 plan 指 docs/ 下以 plan- 开头、.md 结尾、非 -notes.md（实施笔记）的正式计划；
   // 只看名称与位置判定，不维护冻结/施工中状态；archive 内已归档即完成，不参与检查
-  const activePlanFiles = readdirSync(docsDir)
-    .filter(f => f.startsWith('plan-') && f.endsWith('.md') && !f.endsWith('-notes.md'))
-    .sort()
+  const activePlanFiles = listActivePlans(docsDir)
 
   if (activePlanFiles.length === 0) {
     ok('D1 规划文档 — 无活动 plan')
@@ -135,20 +127,20 @@ function checkD1() {
       continue
     }
 
-    const openChecklist = grepLines(content, /^\s*-\s*\[ \]/)
-    if (openChecklist.length > 0) {
+    const { open, done, frozen } = parsePlanChecklist(content)
+    if (open.length > 0) {
       // 活动 plan 存在未勾选条目 → 阻塞（合并/发版前必须全部 [x]）
-      for (const { line, text } of openChecklist) {
+      for (const { line, text } of open) {
         error('D1', `${file}:${line} 活动 plan 存在未勾选条目: ${text}`)
       }
+    } else if (done.length === 0) {
+      warn('D1', `${file} 疑似草案——无验收清单段`)
+    } else if (frozen) {
+      // 已冻结但未归档：冻结标记（已完成于）出现即应移入 archive（发版 checklist 原子动作），
+      // 阻塞合并/发版；判定口径与 release/archive-plan 一致，杜绝口径分裂
+      error('D1', `${file} 已冻结但未归档，应经 release/archive-plan 移入 docs/archive/`)
     } else {
-      const completedChecklist = grepLines(content, /^\s*-\s*\[x\]/)
-      if (completedChecklist.length === 0) warn('D1', `${file} 疑似草案——无验收清单段`)
-      else if (content.includes('已完成于'))
-        // 已冻结但未归档：冻结标记（已完成于）出现即应移入 archive（发版 checklist 原子动作），
-        // 阻塞合并/发版；判定口径与 release/archive-plan 一致（includes 子串），杜绝口径分裂
-        error('D1', `${file} 已冻结但未归档，应经 release/archive-plan 移入 docs/archive/`)
-      else ok(`D1 ${file} — 全部 ${completedChecklist.length} 项已完成`)
+      ok(`D1 ${file} — 全部 ${done.length} 项已完成`)
     }
   }
 }
@@ -281,6 +273,40 @@ function checkD4() {
 }
 
 // ══════════════════════════════════════════════════════════════
+// D5: ADR 引用方向单一（ADR-NNN 只引用编号更小的 ADR，禁止前向/循环引用）
+// ══════════════════════════════════════════════════════════════
+function checkD5() {
+  const adrDir = resolve(root, 'docs/adr')
+  if (!existsSync(adrDir)) {
+    ok('D5 ADR 引用方向 — 无 docs/adr 目录')
+    return
+  }
+  // 只检查 ADR 正文（ADR-NNN-*.md），实施笔记不参与方向约束。
+  const adrFiles = readdirSync(adrDir).filter(f => /^ADR-\d+-.*\.md$/.test(f) && !f.endsWith('-notes.md'))
+
+  for (const file of adrFiles) {
+    const selfMatch = /^ADR-(\d+)-/.exec(file)
+    if (!selfMatch) continue
+    const self = Number(selfMatch[1])
+    const content = readFile(`docs/adr/${file}`)
+    if (!content) continue
+
+    const lines = content.split('\n')
+    for (let i = 0; i < lines.length; i++) {
+      // 同一行可能多次出现同一 ADR（链接文本 + 文件名），按目标去重后再报错。
+      const targets = new Set()
+      for (const ref of lines[i].matchAll(/ADR-(\d+)/g)) targets.add(Number(ref[1]))
+      for (const target of targets) {
+        if (target > self) {
+          error('D5', `${file}:${i + 1} 前向引用 ADR-${String(target).padStart(3, '0')}；ADR 只允许新号引用旧号，禁止前向/循环引用`)
+        }
+      }
+    }
+  }
+  ok(`D5 ADR 引用方向 — ${adrFiles.length} 个文件已检查`)
+}
+
+// ══════════════════════════════════════════════════════════════
 // S: skills/ 技能结构（契约唯一实现于 lib/skill-check.mjs）
 // ══════════════════════════════════════════════════════════════
 function checkS() {
@@ -302,6 +328,7 @@ checkD1()
 checkD2()
 checkD3()
 checkD4()
+checkD5()
 checkS()
 
 if (!jsonOut) console.log()

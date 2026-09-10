@@ -31,4 +31,3 @@
 ## 关联
 
 - 规划文档：[单词条facts实施计划](../archive/plan-facts-single-query.md)
-- 需求入口：[inbox](../inbox.md)

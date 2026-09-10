@@ -15,3 +15,4 @@
 | [007](ADR-007-single-term-facts-tool.md) | 已实施 | 单词条 facts 统一入口 | 2026-09-07 |
 | [008](ADR-008-section-navigation.md) | 已实施 | 增加原文小节阅读能力 | 2026-09-08 |
 | [009](ADR-009-exp-document-workflow.md) | 已实施 | 试验工作采用 exp 文档并仅保留过程结果结论 | 2026-09-09 |
+| [010](ADR-010-facts-alias-disambiguation.md) | 已实施 | facts 别名、集合词条真源与同名全部返回契约 | 2026-09-09 |
