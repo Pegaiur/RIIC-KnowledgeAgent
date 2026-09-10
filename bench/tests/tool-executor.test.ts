@@ -221,7 +221,7 @@ describe('独立函数 executor：按批次预占工具预算', () => {
     expect(item).toMatchObject({
       status: 'success',
       factsResult: {
-        factsResultVersion: 4,
+        factsResultVersion: 5,
         matchedCount: 1,
         returnedCount: 1,
         complete: true,
@@ -229,7 +229,7 @@ describe('独立函数 executor：按批次预占工具预算', () => {
       },
     })
     const envelope = JSON.parse(serializeToolResult(item)) as Record<string, any>
-    expect(envelope).toMatchObject({ factsResultVersion: 4, resolution: { paths: [{ kind: 'alias', term: '维娜' }] } })
+    expect(envelope).toMatchObject({ factsResultVersion: 5, resolution: { paths: [{ kind: 'alias', term: '维娜' }] } })
     expect(envelope.data).toContain('别名：维娜 → 维娜·维多利亚')
   })
 

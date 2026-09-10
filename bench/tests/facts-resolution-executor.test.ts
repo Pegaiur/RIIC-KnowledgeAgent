@@ -21,7 +21,7 @@ function expectEnvelope(item: ToolExecutionResult, expectedIds: string[]) {
   expect(item.hitIds).toEqual(expectedIds)
   expect(item.injectedIds).toEqual(expectedIds)
   expect(item.factsResult).toMatchObject({
-    factsResultVersion: 4, matchedCount: expectedIds.length, returnedCount: expectedIds.length, complete: true,
+    factsResultVersion: 5, matchedCount: expectedIds.length, returnedCount: expectedIds.length, complete: true,
   })
   const envelope = JSON.parse(serializeToolResult(item))
   expect(envelope).toMatchObject({
@@ -69,7 +69,7 @@ describe('真实词条的 executor 解析协议', () => {
     expect(item.factsResult?.resolution.paths[1]).toMatchObject({
       kind: 'substring', term: '临光', targets: ['operator:耀骑士临光'], memberIds: ['耀骑士临光'],
     })
-    expect(item.factsResult).toMatchObject({ factsResultVersion: 4, matchedCount: 2, returnedCount: 2, complete: true })
+    expect(item.factsResult).toMatchObject({ factsResultVersion: 5, matchedCount: 2, returnedCount: 2, complete: true })
     expect(new Set(item.hitIds)).toEqual(new Set(['临光', '耀骑士临光']))
     expectEnvelope(item, item.hitIds!)
     expect(item.data).toContain('子串：临光 → 耀骑士临光')

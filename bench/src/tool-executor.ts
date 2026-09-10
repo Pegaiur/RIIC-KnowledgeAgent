@@ -32,7 +32,7 @@ export type ToolResultStatus =
   | 'error'
   | 'budget_exhausted'
 
-export const FACTS_RESULT_VERSION = 4 as const
+export const FACTS_RESULT_VERSION = 5 as const
 
 export interface FactsResultMetadata {
   factsResultVersion: typeof FACTS_RESULT_VERSION
