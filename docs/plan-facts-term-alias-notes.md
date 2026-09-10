@@ -55,8 +55,10 @@
 
 ### 2026-09-10 — 分支技术债治理（阶段4）
 - **已收敛**：删除 `store.ts` 无消费者的 `byAlias` 死索引；`buildCardStore` 索引构建抽取为 `buildTermIndexes`；删除 `tool-executor.ts` `parseToolParams` 同构冗余分支；新增 `scripts/lib/plan-scan.mjs`，统一 doc-check D1、release/check P1、release/archive-plan 的活动 plan 解析口径。
-- **后置债务（编号见对应代码处 TODO 注释）**：`R5-3`（store 的 `CardStore` 职责过多且暴露内部索引 Map，偿还条件：facts 入口稳定后收口接口并拆分模块）；`R5-4`（`bench/src/terms.ts` 的 `ENTITY_WORDS` 三消费点无隔离，偿还条件：需按检索策略分别裁剪词表时引入消费者隔离）；`R5-5`（`tool-executor.ts` 协议层内嵌 store 的 `ResolutionPath` 类型，偿还条件：协议与领域类型分层后下沉到共享 terms 模块）；`R5-6`（doc-check 与 release/check 的 issue 容器、severity 图标映射与退出码样板未收敛，偿还条件：新增同类检查脚本时抽取共享 helper）。
+- **后置债务**：`R5-3`、`R5-4`、`R5-5`、`R5-6` 均已登记，尚未偿还；内容与重启条件以各代码处 TODO 为准。
 - **判定不值得修（本轮关闭，不落 TODO）**：`ToolExecutionResult` envelope 按状态有意分化；标题路径拼装三处非本分支引入且不完全同构；测试内 `factsResultVersion` 硬编码是协议断言所必需；`（无匹配记录卡）`/`（无匹配结果）` 分属不同工具语义；grep-retriever 与 retriever 的分词半同源属 main 既有、超出本分支范围；`scripts/build_refs.py` 生成器缺位为已裁定接受（测试侧固化 31 条清单）。
+- **验收补记**：在 `b7add40` 上五项 merge 门禁通过，39 个文件、426 项测试通过；三个查询闭包与 `a750c0e` 文本一致。共享 plan 解析对现有三份计划及常规边界的开闭计数、冻结状态一致；P1 新增排序，D1 诊断显示完整条目，跨行 checkbox 不再沿用旧 P1/archive 全文正则的识别方式，而与 D1 逐行口径一致。
+- **范围区分**：`dd2f23e` 的旧称文案与词表更新有可见行为影响，另记于 [legacy 清理笔记](plan-facts-legacy-purge-notes.md)，不计作本节的零行为重构。验收临时产物已清理，发布元数据仍待收束。
 
 ## 意外发现
 
