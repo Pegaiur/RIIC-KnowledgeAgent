@@ -12,7 +12,7 @@
 
 ## 质量基线
 
-当前正式质量基线：未指定。本 spec 只规定答案核查口径，不以运行完成状态替代质量结论。历史运行观察见 [性能试验](../archive/exp/exp-harness-performance.md)，v4 核查及审定状态见 [核查试验](../exp-answer-baseline-v4.md)。
+当前正式质量基线：未指定。本 spec 只规定答案核查口径，不以运行完成状态替代质量结论。历史运行观察见 [性能试验](../archive/exp/exp-harness-performance.md)，v4 核查结论见 [核查试验](../archive/exp/exp-answer-baseline-v4.md)。
 
 ## 使用口径
 
