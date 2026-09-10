@@ -1,6 +1,6 @@
 # 实施笔记：ADR-009 exp 文档流程
 
-> 对应 spec：[ADR-009](ADR-009-exp-document-workflow.md)
+> 对应 spec：ADR-009
 > 开始日期：2026-09-09
 
 ## 决策偏离

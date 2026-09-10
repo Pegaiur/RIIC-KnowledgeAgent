@@ -4,7 +4,7 @@
 >
 > 定位：基于当前知识库的评测快照（2026-09-08，本地证据核查），不是独立的游戏事实真源。
 >
-> 本版知识源基准提交：`b008f80c00c05097856921da946fe344bcaed600`；修订仅改变核查文档，不声明上游游戏数据已重新核验。独立审查及配套评估见[校正记录](../archive/exp/exp-answer-baseline-calibration.md#独立审查与v4定稿2026-09-08)。
+> 本版知识源基准提交：`b008f80c00c05097856921da946fe344bcaed600`；修订仅改变核查文档，不声明上游游戏数据已重新核验。独立审查及配套评估见 docs/archive/exp/exp-answer-baseline-calibration.md。
 >
 > 命名同步（2026-09-10）：S07 组合名统一为「红松骑士团组」，仅同步证据锚点与 gold/questions，不改判定口径与题号集合。
 >
@@ -12,7 +12,7 @@
 
 ## 质量基线
 
-当前正式质量基线：未指定。本 spec 只规定答案核查口径，不以运行完成状态替代质量结论。历史运行观察见 [性能试验](../archive/exp/exp-harness-performance.md)，v4 核查结论见 [核查试验](../archive/exp/exp-answer-baseline-v4.md)。
+当前正式质量基线：未指定。本 spec 只规定答案核查口径，不以运行完成状态替代质量结论。历史运行观察见 docs/archive/exp/exp-harness-performance.md，v4 核查结论见 docs/archive/exp/exp-answer-baseline-v4.md。
 
 ## 使用口径
 
