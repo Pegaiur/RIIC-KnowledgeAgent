@@ -61,6 +61,13 @@
 - **后果**：phase 5 补齐 S1–S5 其余真实/负例、协议与版本回归，并完成维护门禁与计划收尾。
 - **验证**：`pnpm run typecheck` 通过；7 个测试文件 158 通过。
 
+### 2026-09-10 — phase 5 回归、维护校验与收尾（步骤5）
+- **spec 原文**：31 组逐条正例、未登记子串负例、长名不反查、`能天使`/`嘉维尔` 不产出子串路径、校验异常、协议与版本、evidence 核验迭代、测试侧固化 31 条清单；`pnpm run typecheck`、`pnpm run test`、`node scripts/doc-check.mjs` 通过，合并前 `node scripts/verify.mjs merge -- --base main`。
+- **实际做法**：`facts-curation.test.ts` 增加真实记录卡上 31 组短名→长名循环正例（`能天使`/`嘉维尔` 断言由阵营精确路径覆盖而不产出子串）与未登记子串（`耀骑士`、`光`）负例；`facts-resolution-executor.test.ts` 增加 `能天使`/`嘉维尔` 的 executor 覆盖条件回归；同步勾选计划验收清单、计划状态改为「已完成（待发布元数据收束）」、ADR-010 撤销「子串条款待实施」括注并更新 §5/§6 与后果叙述、更新 ADR INDEX 与 inbox 条目。
+- **原因**：以真实数据与 executor 链路验证契约，不以名册包含关系派生清单，也不针对评测问法添加特判。
+- **后果**：计划尚未冻结归档，发布元数据收束（冻结、版本、变更日志）按发版流程另执行。
+- **验证**：`pnpm run typecheck` 通过；全量 `pnpm run test` 39 个文件 432 通过；`node scripts/doc-check.mjs` 通过；`node scripts/verify.mjs merge -- --base main` 五项门禁通过。
+
 ## 债务记录
 > 遗留的技术债、被牺牲的改进与延期偿还事项
 

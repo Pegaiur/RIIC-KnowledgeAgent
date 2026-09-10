@@ -76,6 +76,14 @@ describe('真实词条的 executor 解析协议', () => {
     expect(item.data).toContain('子串：临光 → 耀骑士临光')
   })
 
+  it.each(['能天使', '嘉维尔'])('%s 的长名已被阵营精确路径覆盖，不产出 substring 路径', async (query) => {
+    const item = (await executor().executeBatch([call(query)])).results[0]!
+    const paths = item.factsResult!.resolution.paths
+    expect(paths.some((path) => path.kind === 'substring')).toBe(false)
+    expect(paths).toContainEqual(expect.objectContaining({ kind: 'exact', category: 'faction' }))
+    expect(item.status).toBe('success')
+  })
+
   it('企鹅物流仅返回已登记搭配，不伪造真源中不存在的阵营路径', async () => {
     const item = (await executor().executeBatch([call('企鹅物流')])).results[0]!
     expect(item.factsResult?.resolution.paths).toMatchObject([{ kind: 'combo', combo: { id: 'combo:企鹅物流' } }])

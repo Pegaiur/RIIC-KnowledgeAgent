@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { TERM_CURATIONS } from '../src/facts/curation/terms.js'
 import { loadValidatedRecordCards } from '../src/facts/final.js'
+import { buildCardStore } from '../src/facts/store.js'
 import { validateTermCurations } from '../src/facts/terms.js'
 
 const COMBO_NAMES = [
@@ -97,6 +98,40 @@ describe('facts 人工词条登记', () => {
       entry.text, ...entry.targets.map((target) => target.slice('operator:'.length)),
     ])
     expect(actual).toEqual(EXPECTED_SUBSTRINGS.map(([short, long]) => [short, long]))
+  })
+
+  it('真实记录卡上 31 组短名返回全部长名，长名不反查短名', () => {
+    const cards = loadValidatedRecordCards(process.cwd(), 'curated')
+    const store = buildCardStore(cards, TERM_CURATIONS)
+    // 能天使、嘉维尔的官方术语组同时是阵营规范名，长名已由阵营精确路径覆盖。
+    const coveredByFactionGroup = new Set(['能天使', '嘉维尔'])
+    for (const [short, long] of EXPECTED_SUBSTRINGS) {
+      const result = store.factsSearch(short)
+      const substringPath = result.paths.find((path) => path.kind === 'substring')
+      if (coveredByFactionGroup.has(short)) {
+        expect(substringPath, short).toBeUndefined()
+        expect(result.paths, short).toContainEqual(expect.objectContaining({ kind: 'exact', category: 'faction' }))
+      } else {
+        expect(substringPath, short).toMatchObject({
+          kind: 'substring', term: short, targets: [`operator:${long}`], memberIds: [long],
+        })
+      }
+      expect(result.matches.map((match) => match.card.canonical), short).toContain(long)
+
+      const longResult = store.factsSearch(long)
+      expect(longResult.paths.map((path) => path.kind), long).not.toContain('substring')
+      expect(longResult.matches.map((match) => match.card.canonical), long).toContain(long)
+    }
+  })
+
+  it('未登记的短名子串不扩展为长名', () => {
+    const cards = loadValidatedRecordCards(process.cwd(), 'curated')
+    const store = buildCardStore(cards, TERM_CURATIONS)
+    const partial = store.factsSearch('耀骑士')
+    expect(partial.paths.some((path) => path.kind === 'substring')).toBe(false)
+    expect(partial.matches.map((match) => match.card.canonical)).not.toContain('耀骑士临光')
+    const single = store.factsSearch('光')
+    expect(single.paths.some((path) => path.kind === 'substring')).toBe(false)
   })
 
   it('别名目标按证据登记，推王保留两个目标', () => {
