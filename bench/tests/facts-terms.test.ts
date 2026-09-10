@@ -34,11 +34,20 @@ describe('facts 词条登记校验', () => {
 
   it.each([
     ['空别名', (data: TermCurations) => ({ ...data, aliases: [{ ...data.aliases[0]!, text: '  ' }] })],
+    ['空来源', (data: TermCurations) => ({ ...data, aliases: [{ ...data.aliases[0]!, evidence: [] }] })],
+    ['空来源小节', (data: TermCurations) => ({ ...data, combos: [{ ...data.combos[0]!, evidence: [{ ...evidence, section: ' ' }] }] })],
+    ['重复别名定义', (data: TermCurations) => ({ ...data, aliases: [...data.aliases, data.aliases[0]!] })],
+    ['重复搭配定义', (data: TermCurations) => ({ ...data, combos: [...data.combos, data.combos[0]!] })],
     ['重复别名目标', (data: TermCurations) => ({ ...data, aliases: [{ ...data.aliases[0]!, targets: ['operator:测试甲', 'operator:测试甲'] }] })],
     ['悬空干员目标', (data: TermCurations) => ({ ...data, aliases: [{ ...data.aliases[0]!, targets: ['operator:不存在'] }] })],
     ['重复搭配成员', (data: TermCurations) => ({ ...data, combos: [{ ...data.combos[0]!, members: [{ target: 'operator:测试甲', role: 'core' }, { target: 'operator:测试甲', role: 'important' }] }] })],
     ['开放搭配缺少范围', (data: TermCurations) => ({ ...data, combos: [{ ...data.combos[0]!, coverage: 'open', openScope: undefined }] })],
     ['旧称链式指向', (data: TermCurations) => ({ ...data, legacyNames: [{ text: '链式旧名', action: 'redirect', target: 'combo:另一个旧名', evidence: [evidence] }] })],
+    ['旧称成环', (data: TermCurations) => ({ ...data, legacyNames: [
+      { text: '旧甲', action: 'redirect', target: 'combo:旧乙', evidence: [evidence] },
+      { text: '旧乙', action: 'redirect', target: 'combo:旧甲', evidence: [evidence] },
+    ] })],
+    ['封闭登记误填开放范围', (data: TermCurations) => ({ ...data, combos: [{ ...data.combos[0]!, openScope: '其他成员' }] })],
   ])('%s时失败并给出中文原因', (_label, mutate) => {
     expect(() => validateTermCurations(cards, mutate(validData()) as TermCurations)).toThrowError(/事实词条登记失败：/u)
   })

@@ -10,6 +10,29 @@ const COMBO_NAMES = [
   '自动化组', '赤金工艺组', '红云组', '红松骑士团组', '深海猎人组', '泡泡组', '水月标准化组', '莱茵科技', '感知信息组', '龙门中枢组',
 ] as const
 
+// 依据三个正式 guides 的成员分层逐项核对；预期名单独立于生产登记表。
+const EXPECTED_MEMBERS = [
+  ['龙舌兰组', { core: '巫恋、龙舌兰', optional: '柏喙、折光、明椒、卡夫卡' }],
+  ['能天使组', { core: '能天使、蕾缪安' }],
+  ['叙拉古', { core: '伺夜、八幡海铃', important: '贝洛内' }],
+  ['喀兰贸易组', { core: '灵知、银灰、孑', optional: '崖心、琳琅诗怀雅' }],
+  ['格拉斯哥帮组', { core: '摩根、戴菲恩、推进之王', secondary: '维娜·维多利亚' }],
+  ['鸿雪杜林组', { core: '鸿雪、绮良、图耶', support: '至简、桃金娘、褐果、杜林、特克诺' }],
+  ['人间烟火组', { core: '乌有、重岳、令', important: '桑葚、琴柳', secondary: '夕、截云、黍' }],
+  ['企鹅物流', { core: '德克萨斯、拉普兰德', important: '能天使' }],
+  ['深巡＋乌尔比安', { core: '深巡', support: '乌尔比安' }],
+  ['自动化组', { core: '温蒂、清流', important: '承曦格雷伊、森蚺、冬时', secondary: '异客、掠风', support: 'Lancet-2' }],
+  ['赤金工艺组', { core: '苍苔', optional: '引星棘刺、砾、斑点、夜烟、温米' }],
+  ['红云组', { core: '红云', important: '酒神、Miss.Christine、稀音、帕拉斯、刻俄柏', secondary: '圣约送葬人、娜仁图亚、豆苗、裁度、洋灰、钼铅', support: '黑角、蛇屠箱' }],
+  ['红松骑士团组', { core: '焰尾、薇薇安娜', important: '灰毫、远牙、野鬃', optional: '砾' }],
+  ['深海猎人组', { core: '歌蕾蒂娅', important: '乌尔比安、斯卡蒂、幽灵鲨、安哲拉' }],
+  ['泡泡组', { core: '泡泡、火神', support: '贝娜' }],
+  ['水月标准化组', { core: '水月', optional: '香草、杰西卡、史都华德、海沫、罗比菈塔、调香师', important: '涤火杰西卡' }],
+  ['莱茵科技', { core: '多萝西', important: '淬羽赫默、娜斯提' }],
+  ['感知信息组', { core: '迷迭香、黑键', important: '絮雨、琴柳、夕', secondary: '爱丽丝、车尔尼、塑心、令' }],
+  ['龙门中枢组', { core: '斩业星熊', important: '诗怀雅', secondary: '陈' }],
+] as const
+
 function sourceSection(path: string, section: string): string {
   const lines = readFileSync(join(process.cwd(), path), 'utf8').split('\n')
   const heading = lines.findIndex((line) => /^#{1,6}\s+/u.test(line) && line.replace(/^#{1,6}\s+/u, '').trim() === section)
@@ -23,6 +46,28 @@ function sourceSection(path: string, section: string): string {
 }
 
 describe('facts 人工词条登记', () => {
+  it.each(EXPECTED_MEMBERS)('%s 的完整成员及角色符合正式来源分层', (name, roles) => {
+    const entry = TERM_CURATIONS.combos.find((combo) => combo.name === name)!
+    const expected = Object.entries(roles).flatMap(([role, names]) => names.split('、').map((canonical) => ({
+      target: `operator:${canonical}`, role,
+    })))
+    expect(entry.members).toHaveLength(expected.length)
+    expect(entry.members).toEqual(expect.arrayContaining(expected))
+  })
+
+  it.each([
+    ['人间烟火组', '桑葚、琴柳均达到精二'],
+    ['自动化组', '异客、掠风均达到精二'],
+  ])('%s 保留重要或次级成员的精二条件', (name, condition) => {
+    const entry = TERM_CURATIONS.combos.find((combo) => combo.name === name)!
+    expect(entry.conditions.join('；')).toContain(condition)
+  })
+
+  it('来源缺失小节时明确报错', () => {
+    expect(() => sourceSection('knowledge/guides/贸易站组合.md', '__不存在的小节__'))
+      .toThrow('找不到来源小节')
+  })
+
   it('登记首批19个具名搭配且不接入简写合称', () => {
     expect(TERM_CURATIONS.combos.map((combo) => combo.name)).toEqual(COMBO_NAMES)
     expect(TERM_CURATIONS.aliases).toHaveLength(4)

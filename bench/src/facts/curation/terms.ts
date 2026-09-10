@@ -90,7 +90,7 @@ export const TERM_CURATIONS: TermCurations = {
       member('桑葚', 'important'), member('琴柳', 'important'),
       member('夕', 'secondary'), member('截云', 'secondary'), member('黍', 'secondary'),
     ], [
-      '乌有、重岳、令均达到精二；桑葚、琴柳为重要成员',
+      '乌有、重岳、令均达到精二；桑葚、琴柳均达到精二，为重要成员',
       '夕精零、截云精二、黍精二可作为次级成员',
       '这是跨多个设施的资源链，不能压缩成纯人间烟火贸易组',
     ], 'listed', source(trade, '人间烟火组')),
@@ -114,7 +114,7 @@ export const TERM_CURATIONS: TermCurations = {
       member('异客', 'secondary'), member('掠风', 'secondary'), member('Lancet-2', 'support'),
     ], [
       '温蒂达到精二，清流达到精一，二人为统一核心',
-      '承曦格雷伊、森蚺精二，冬时精一为重要成员；异客、掠风为次级成员，Lancet-2 精零且不设独立培养目标',
+      '承曦格雷伊、森蚺精二，冬时精一为重要成员；异客、掠风均达到精二，为次级成员，Lancet-2 精零且不设独立培养目标',
       '其他成员按当前布局补足发电站或中枢协作，不固定要求二电或三电路线',
     ], 'listed', source(manufacturing, '自动化组')),
     combo('赤金工艺组', [
