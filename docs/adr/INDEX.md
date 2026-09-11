@@ -16,3 +16,5 @@
 | [008](ADR-008-section-navigation.md) | 已实施 | 增加原文小节阅读能力 | 2026-09-08 |
 | [009](ADR-009-exp-document-workflow.md) | 已实施 | 试验工作采用 exp 文档并仅保留过程结果结论 | 2026-09-09 |
 | [010](ADR-010-facts-alias-disambiguation.md) | 已实施 | facts 别名、集合词条真源与同名全部返回契约 | 2026-09-09 |
+| [011](ADR-011-retriever-tool-convergence.md) | 提议 | 检索模式与工具集合收敛 | 2026-09-10 |
+| [012](ADR-012-tool-budget-attempt-limit.md) | 提议 | 工具预算改为失败不消耗与双上限，取消并行调用 | 2026-09-10 |
