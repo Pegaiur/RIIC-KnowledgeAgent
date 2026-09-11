@@ -159,6 +159,33 @@ describe('Agent auto 主循环', () => {
     expect((mockCall.mock.calls[2]?.[1] as Array<Record<string, unknown>>)[0]).toMatchObject({ function: { name: 'rag_search' } })
   })
 
+  it('获准尝试上限耗尽后只拒绝、不新增执行，模型仍可作答', async () => {
+    const config = loadConfig()
+    config.retriever = 'bm25'
+    config.toolBudget = 5
+    config.toolAttemptLimit = 1
+    mockCall
+      .mockResolvedValueOnce(result({ toolCalls: [toolCall('first')] }))
+      .mockResolvedValueOnce(result({ toolCalls: [toolCall('second'), toolCall('third', 'rag_search', { query: '制造站效率' })] }))
+      .mockResolvedValueOnce(result({ content: '基于已有证据的答案' }))
+
+    const agentResult = await runQuery(
+      { id: 'AUTO-ATTEMPT-LIMIT', category: 'fact', question: '尝试上限' },
+      { config, thinking: 'off', dry: false },
+      chunks,
+      buildIndex(chunks),
+    )
+
+    expect(agentResult.finalAnswer).toBe('基于已有证据的答案')
+    expect(agentResult.budget).toMatchObject({ successLimit: 5, successUsed: 1, attemptLimit: 1, attemptUsed: 1, requested: 3, denied: 2, executed: 1 })
+    expect(agentResult.records[1]?.toolBatch).toMatchObject({ requested: 2, granted: 0, executed: 0, denied: 2, attempts: 0, successes: 0 })
+    const toolMessages = (mockCall.mock.calls[2]?.[0] as Array<{ role: string; tool_call_id?: string; content: string }>)
+      .filter((message) => message.role === 'tool' && (message.tool_call_id === 'second' || message.tool_call_id === 'third'))
+    expect(toolMessages.map((message) => message.tool_call_id)).toEqual(['second', 'third'])
+    expect(toolMessages.every((message) => JSON.parse(message.content).status === 'budget_exhausted')).toBe(true)
+    expect(toolMessages.every((message) => JSON.parse(message.content).message.includes('获准尝试次数已用尽'))).toBe(true)
+  })
+
   it('批内重复 call ID 直接失败，不回写不完整工具结果', async () => {
     const config = loadConfig()
     mockCall.mockResolvedValueOnce(result({ toolCalls: [toolCall('same'), toolCall('same')] }))

@@ -79,6 +79,33 @@ describe('运行输入记录', () => {
     }
   })
 
+  it('自定义成功额度与获准尝试上限进入预构建提示、inputs 与 meta', async () => {
+    const outDir = mkdtempSync(join(tmpdir(), 'rag-inputs-limits-'))
+    try {
+      const config = loadConfig('qwen')
+      config.retriever = 'hybrid'
+      config.toolBudget = 3
+      config.toolAttemptLimit = 4
+      config.feedbackOnNoToolAnswer = false
+      mockCall.mockImplementation(async (messages: Array<{ role: string; content: string }>) => {
+        expect(messages[0]?.content).toContain('3 点成功额度 + 4 次获准尝试上限')
+        return providerResult({ content: '完成' })
+      })
+      const output = await runBenchmark(
+        [{ id: 'INPUT-LIMITS', category: 'fact', question: '预算配置' }],
+        { thinking: 'off', dry: false, outDir, config },
+      )
+
+      const inputs = JSON.parse(readFileSync(output.inputsPath, 'utf-8')) as Record<string, any>
+      expect(inputs.systemPrompt.text).toContain('3 点成功额度 + 4 次获准尝试上限')
+      expect(inputs.config).toMatchObject({ toolBudget: 3, toolAttemptLimit: 4 })
+      const meta = JSON.parse(readFileSync(output.metaPath, 'utf-8')) as Record<string, unknown>
+      expect(meta).toMatchObject({ toolBudget: 3, toolAttemptLimit: 4 })
+    } finally {
+      rmSync(outDir, { recursive: true, force: true })
+    }
+  })
+
   it('配置声明值与实际有效 tokenizer/entityBoost 分开记录', () => {
     const config = loadConfig()
     config.tokenizer = 'jieba'

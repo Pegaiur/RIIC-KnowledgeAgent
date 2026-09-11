@@ -49,6 +49,12 @@
 - **原因**：历史 `bench-runs` 与已导出快照仍按旧行读取，替换正则会使其解析为空。
 - **后果**：runner 的 `answers.md` 改为输出新行；`SnapshotQuery` 增加可选 attempt 字段贯通运行目录导出与快照往返。
 
+### 2026-09-11 — 步骤 5「两条提示构建路径」按 runner 预构建与 runQuery 默认构建落地
+- **plan 原文**：「验证自定义尝试上限进入两条提示构建路径及 inputs/meta」。
+- **实际做法**：把「两条路径」解释为 runner 在首个请求前预构建的 system prompt（runner.ts 的 `buildSystemPrompt(config.retriever, agentInstructions, config.toolBudget, config.toolAttemptLimit)`）与 runQuery 未提供 `systemPrompt` 时的默认构建路径；在 agent.test.ts 覆盖后者，在 inputs.test.ts 以自定义 `toolBudget=3`、`toolAttemptLimit=4` 运行并断言预构建提示、`inputs.systemPrompt.text`、`inputs.config` 与 `meta` 均带实际双上限。agent-auto-loop.test.ts 补「获准尝试上限耗尽后只拒绝、不新增执行」用例。
+- **原因**：独立审查指出仅覆盖默认构建路径时，runner 预构建漏传 `config.toolAttemptLimit` 不会被测试捕获。
+- **后果**：两条路径与 inputs/meta 均有回归覆盖；测试夹具沿用 `hybrid`，不新增对已删除模式的引用。
+
 ## 债务记录
 > 遗留的技术债、被牺牲的改进与延期偿还事项（纯权衡取舍、无遗留债务的决策记入「决策偏离」）
 > 可定位到代码的债务须在代码处写 `TODO(tech-debt) <编号>：` 注释（AGENTS.md 编码核心约束 #6），此处只记编号、结论与未来偿还条件

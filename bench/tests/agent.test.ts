@@ -48,6 +48,12 @@ describe('agent：独立函数工具 schema', () => {
     expect(prompt).toContain('可用工具：rag_search、facts_search、read_section')
   })
 
+  it('系统提示使用实际配置的成功额度与获准尝试上限', () => {
+    const prompt = buildSystemPrompt('bm25', '规则', 3, 4)
+
+    expect(prompt).toContain('3 点成功额度 + 4 次获准尝试上限')
+  })
+
   it('人工契约保留通用证据边界，不注入基线题号或固定答案', () => {
     const prompt = buildSystemPrompt('bm25')
     expect(prompt).toContain('冲突时以更直接、对象更明确的记录为准')
@@ -111,6 +117,25 @@ describe('runQuery：轮次耗尽兜底（末位强制作答轮）', () => {
 
     const messages = mockCall.mock.calls[0]?.[0] as Array<{ role: string; content: string }>
     expect(messages[0]?.content).toContain('固定契约快照')
+  })
+
+  it('未提供 systemPrompt 时按实际配置构建双上限提示', async () => {
+    const config = loadConfig()
+    config.retriever = 'bm25'
+    config.toolBudget = 2
+    config.toolAttemptLimit = 6
+    config.feedbackOnNoToolAnswer = false
+    mockCall.mockResolvedValueOnce(providerResult({ content: '答案' }))
+
+    await runQuery(
+      { id: 'PROMPT-DEFAULT', category: 'fact', question: '提示构建' },
+      { config, thinking: 'off', dry: false },
+      chunks,
+      buildIndex(chunks),
+    )
+
+    const messages = mockCall.mock.calls[0]?.[0] as Array<{ role: string; content: string }>
+    expect(messages[0]?.content).toContain('2 点成功额度 + 6 次获准尝试上限')
   })
 
   it('工具预算内模型持续请求工具，预算归零后仍暴露工具并产出最终答案', async () => {
