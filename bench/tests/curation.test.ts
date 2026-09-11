@@ -18,7 +18,9 @@ describe('curation：九个设施独立人工优化批次', () => {
     expect(ALL_CURATIONS.map((batch) => batch.room)).toEqual([...REFERENCE_ROOMS])
     expect(validated.skills.size).toBe(0)
     expect(validated.grants.size).toBe(0)
-    expect([...validated.operators.keys()].sort()).toEqual(['孑', '巫恋'])
+    expect([...validated.operators.keys()].sort()).toEqual([
+      '乌尔比安', '令', '伺夜', '多萝西', '孑', '巫恋', '摩根', '斯卡蒂', '桃金娘', '水月', '泡泡', '温蒂', '焰尾', '能天使', '迷迭香', '银灰', '陈', '龙舌兰',
+    ])
     const fact = facts.skillFacts[0]
     expect(resolveSkillEffectText(fact, 'raw', validated)).toBe(fact.rawEffectText)
     expect(resolveSkillEffectText(fact, 'curated', validated)).toBe(fact.rawEffectText)
