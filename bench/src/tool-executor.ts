@@ -16,11 +16,18 @@ export type CurrentToolId = 'rag_search' | 'facts_search' | 'read_section'
 export const TOOL_SCHEMA_VERSION = 9 as const
 
 export interface ToolBudgetState {
-  limit: number
-  used: number
+  /** 非空执行成功额度上限（每题默认 5） */
+  successLimit: number
+  /** 已扣点的非空执行成功数 */
+  successUsed: number
+  /** 获准尝试硬上限（每题默认 10） */
+  attemptLimit: number
+  /** 已获准的尝试数（成功、空结果与失败均占一次） */
+  attemptUsed: number
   requested: number
   denied: number
   executed: number
+  /** 成功额度余额（successLimit - successUsed） */
   remaining: number
 }
 
@@ -88,7 +95,8 @@ export interface KnowledgeToolExecutor {
   snapshot(): ToolBudgetState
 }
 
-const BUDGET_ANSWER_HINT = '工具预算已用尽，请依据已有证据作答；未覆盖部分明确说明。'
+const SUCCESS_BUDGET_HINT = '工具成功额度已用尽，请依据已有证据作答；未覆盖部分明确说明。'
+const ATTEMPT_BUDGET_HINT = '工具获准尝试次数已用尽，请依据已有证据作答；未覆盖部分明确说明。'
 
 type JsonObject = Record<string, unknown>
 
@@ -177,15 +185,35 @@ export function toolSchemaMetadata(retriever: RetrieverId = 'hybrid'): {
  */
 export function createKnowledgeToolExecutor(
   context: KnowledgeToolContext,
-  limit: number,
+  successLimit: number,
 ): KnowledgeToolExecutor {
   const config = context.config ?? loadConfig()
-  if (!Number.isInteger(limit) || limit <= 0) throw new Error(`toolBudget 必须是正整数：${limit}`)
-  const state: ToolBudgetState = { limit, used: 0, requested: 0, denied: 0, executed: 0, remaining: limit }
+  if (!Number.isInteger(successLimit) || successLimit <= 0) throw new Error(`toolBudget 必须是正整数：${successLimit}`)
+  const attemptLimit = config.toolAttemptLimit
+  if (!Number.isInteger(attemptLimit) || attemptLimit <= 0) {
+    throw new Error(`toolAttemptLimit 必须是正整数：${attemptLimit}`)
+  }
+  const state: ToolBudgetState = {
+    successLimit,
+    successUsed: 0,
+    attemptLimit,
+    attemptUsed: 0,
+    requested: 0,
+    denied: 0,
+    executed: 0,
+    remaining: successLimit,
+  }
   const allowed = new Set(allowedOperations(config.retriever))
 
   function snapshot(): ToolBudgetState {
-    return { ...state, remaining: state.limit - state.used }
+    return { ...state, remaining: state.successLimit - state.successUsed }
+  }
+
+  /** 单项结算后的提示：两项同时用尽时优先提示成功额度。 */
+  function settledHint(): string | undefined {
+    if (state.successUsed >= state.successLimit) return SUCCESS_BUDGET_HINT
+    if (state.attemptUsed >= state.attemptLimit) return ATTEMPT_BUDGET_HINT
+    return undefined
   }
 
   async function executeBatch(calls: ToolCall[]): Promise<ToolBatchResult> {
@@ -193,30 +221,45 @@ export function createKnowledgeToolExecutor(
     // 缺失或重复 ID 会让宿主无法安全回写；整批不准入、不扣点、不执行。
     if (protocolError) return { results: [], snapshot: snapshot(), protocolError }
 
-    state.requested += calls.length
-    const granted = Math.min(calls.length, state.limit - state.used)
-    state.used += granted
-    state.denied += calls.length - granted
-    state.remaining = state.limit - state.used
-
-    const results = await Promise.all(calls.map((call, index) => {
-      if (index >= granted) {
-        return Promise.resolve<ToolExecutionResult>({
-          callId: call.id,
-          operation: call.name,
-          status: 'budget_exhausted',
-          executed: false,
-          data: '请依据已有证据作答，预算已用尽，未覆盖部分明确说明。',
-          budgetRemaining: state.remaining,
-          message: '工具预算已用尽，未执行调用',
-        })
+    const results: ToolExecutionResult[] = []
+    // 同批逐项「检查上限 → 获准 → 执行 → 结算」；后一项使用前一项结算后的状态，不做整批预扣。
+    for (const call of calls) {
+      state.requested++
+      if (state.attemptUsed >= state.attemptLimit || state.successUsed >= state.successLimit) {
+        state.denied++
+        results.push(exhaustedResult(call, state))
+        continue
       }
-      return executeOne(call, allowed, context, config, state)
-    }))
+      state.attemptUsed++
+      const item = await executeOne(call, allowed, context, config, state)
+      if (item.executed && item.status === 'success') state.successUsed++
+      state.remaining = state.successLimit - state.successUsed
+      item.budgetRemaining = state.remaining
+      const hint = settledHint()
+      if (hint) item.message = item.message && item.message !== hint ? `${item.message}；${hint}` : hint
+      results.push(item)
+    }
     return { results, snapshot: snapshot() }
   }
 
   return { executeBatch, snapshot }
+}
+
+/** 超限拒绝结果：不占用获准尝试数，message 区分成功额度用尽与尝试次数用尽。 */
+function exhaustedResult(call: ToolCall, state: ToolBudgetState): ToolExecutionResult {
+  const successGone = state.successUsed >= state.successLimit
+  const message = successGone
+    ? '工具成功额度已用尽，未执行调用；请依据已有证据作答。'
+    : '工具获准尝试次数已用尽，未执行调用；请依据已有证据作答。'
+  return {
+    callId: call.id,
+    operation: call.name,
+    status: 'budget_exhausted',
+    executed: false,
+    data: message,
+    budgetRemaining: state.successLimit - state.successUsed,
+    message,
+  }
 }
 
 export const createToolExecutor = createKnowledgeToolExecutor
@@ -254,7 +297,7 @@ async function executeOne(
       ?? (isFactTool(call.name)
         ? output.hitIds.length > 0 ? 'success' : 'empty'
         : output.data ? 'success' : 'empty')
-    // 上下文相关的参数错误（如 read_section 越界 offset）不计入已执行，但仍已占用预算点。
+    // 上下文相关的参数错误（如 read_section 越界 offset）不计入已执行，但仍占用一次获准尝试。
     const executed = status !== 'invalid_params'
     if (executed) state.executed++
     const factsResult = isFactTool(call.name)
@@ -278,7 +321,6 @@ async function executeOne(
       hitIds: output.hitIds,
       injectedIds: output.injectedIds,
       factsResult,
-      message: state.remaining === 0 ? BUDGET_ANSWER_HINT : undefined,
     }
   } catch (error) {
     state.executed++
@@ -593,7 +635,13 @@ function readSectionOperation(
       status: 'error',
     }
   }
-  return { data: renderSectionPage(section, offset, config.maxContextChars, directory), hitIds: [], injectedIds: [], status: 'success' }
+  // 末尾读取（offset 恰等于正文长度）或空小节正文只返回分页元数据，按非空证据判定为 empty，不扣成功额度。
+  return {
+    data: renderSectionPage(section, offset, config.maxContextChars, directory),
+    hitIds: [],
+    injectedIds: [],
+    status: remaining > 0 ? 'success' : 'empty',
+  }
 }
 
 /** 分页元数据（含与正文之间的空行）的保守长度，用于先扣除元数据预算。 */

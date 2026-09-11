@@ -30,18 +30,18 @@ function toolCall(id: string, name = 'rag_search', params: Record<string, unknow
 describe('Agent auto 主循环', () => {
   beforeEach(() => mockCall.mockReset())
 
-  it('能力块只暴露当前独立工具，并描述工具与积分预算', () => {
+  it('能力块只暴露当前独立工具，并描述双上限预算', () => {
     const prompt = buildSystemPrompt('hybrid', '规则', 2)
 
     expect(prompt).toContain('可用工具：rag_search、facts_search、read_section')
-    expect(prompt).toContain('工具积分预算：2 点')
-    expect(prompt).toContain('每个准入工具调用占 1 点，参数错误也占点')
-    expect(prompt).toContain('同批调用分别计费')
-    expect(prompt).toContain('余额用尽后新增调用不会执行')
+    expect(prompt).toContain('2 点成功额度 + 10 次获准尝试上限')
+    expect(prompt).toContain('仅非空执行成功扣 1 点')
+    expect(prompt).toContain('同批调用逐项结算')
+    expect(prompt).toContain('任一上限用尽后新增调用不会执行')
     expect(prompt).not.toContain('工具调用上限：2 次')
   })
 
-  it('同批 3 个调用只执行预算内的前 2 个，并按原顺序回写结果', async () => {
+  it('同批逐项结算：空结果不扣成功额度，成功额度用尽后拒绝后续调用并按原顺序回写', async () => {
     const config = loadConfig()
     config.retriever = 'hybrid'
     config.toolBudget = 2
@@ -50,7 +50,8 @@ describe('Agent auto 主循环', () => {
       .mockResolvedValueOnce(result({ toolCalls: [
         toolCall('a', 'rag_search'),
         toolCall('b', 'read_section', { section_id: 'sec-不存在' }),
-        toolCall('c', 'rag_search', { query: '超额' }),
+        toolCall('c', 'rag_search', { query: '制造站效率' }),
+        toolCall('d', 'rag_search', { query: '超额' }),
       ] }))
       .mockResolvedValueOnce(result({ content: '最终答案' }))
 
@@ -62,11 +63,11 @@ describe('Agent auto 主循环', () => {
     )
 
     expect(agentResult.finalAnswer).toBe('最终答案')
-    expect(agentResult.budget).toMatchObject({ limit: 2, used: 2, requested: 3, denied: 1, executed: 2, remaining: 0 })
+    expect(agentResult.budget).toMatchObject({ successLimit: 2, successUsed: 2, attemptLimit: 10, attemptUsed: 3, requested: 4, denied: 1, executed: 3, remaining: 0 })
     expect(agentResult.records[0]?.toolBatch).toMatchObject({
-      requested: 3,
-      granted: 2,
-      executed: 2,
+      requested: 4,
+      granted: 3,
+      executed: 3,
       denied: 1,
       errors: 0,
       budgetBefore: 2,
@@ -75,16 +76,18 @@ describe('Agent auto 主循环', () => {
     expect(trace.summary).toMatchObject({
       modelSteps: 2,
       toolBatches: 1,
-      toolCallsRequested: 3,
-      toolCallsExecuted: 2,
+      toolCallsRequested: 4,
+      toolCallsExecuted: 3,
       toolCallsDenied: 1,
       feedbackUsed: false,
-      budget: { used: 2, remaining: 0 },
+      budget: { successUsed: 2, remaining: 0 },
     })
-    expect(agentResult.toolTrace[0]).toEqual(['rag_search', 'read_section', 'rag_search'])
+    expect(agentResult.toolTrace[0]).toEqual(['rag_search', 'read_section', 'rag_search', 'rag_search'])
     const toolMessages = (mockCall.mock.calls[1]?.[0] as Array<{ role: string; tool_call_id?: string; content: string }>).filter((message) => message.role === 'tool')
-    expect(toolMessages.map((message) => message.tool_call_id)).toEqual(['a', 'b', 'c'])
-    expect(JSON.parse(toolMessages[2]!.content)).toMatchObject({ status: 'budget_exhausted', executed: false, budget_remaining: 0 })
+    expect(toolMessages.map((message) => message.tool_call_id)).toEqual(['a', 'b', 'c', 'd'])
+    expect(JSON.parse(toolMessages[1]!.content)).toMatchObject({ status: 'empty', executed: true })
+    expect(JSON.parse(toolMessages[3]!.content)).toMatchObject({ status: 'budget_exhausted', executed: false, budget_remaining: 0 })
+    expect(JSON.parse(toolMessages[3]!.content).message).toContain('成功额度已用尽')
   })
 
   it('允许五次有依赖的工具步骤后由模型作答，不再使用旧 maxRounds 上限', async () => {
@@ -107,7 +110,7 @@ describe('Agent auto 主循环', () => {
 
     expect(agentResult.finalAnswer).toBe('五步后的答案')
     expect(agentResult.modelSteps).toBe(6)
-    expect(agentResult.budget.used).toBe(5)
+    expect(agentResult.budget).toMatchObject({ successUsed: 5, attemptUsed: 5 })
   })
 
   it('未调用工具直接作答最多触发一次宿主回馈，再次直接作答标记未完成', async () => {
@@ -170,6 +173,6 @@ describe('Agent auto 主循环', () => {
     expect(agentResult.status).toBe('failed')
     expect(agentResult.terminationReason).toBe('protocol_error')
     expect(mockCall).toHaveBeenCalledTimes(1)
-    expect(agentResult.budget.used).toBe(0)
+    expect(agentResult.budget).toMatchObject({ successUsed: 0, attemptUsed: 0 })
   })
 })

@@ -62,8 +62,8 @@ describe('provider：请求体参数映射', () => {
     expect(buildChatBody(messages, tools, opts('qwen', 'off')).model).toBe('qwen3.7-flash')
   })
 
-  it('Qwen 显式开启并行工具调用，Hy3 不套用未实测参数', () => {
-    expect(buildChatBody(messages, tools, opts('qwen', 'off')).parallel_tool_calls).toBe(true)
+  it('请求体不发送 parallel_tool_calls，宿主按返回顺序逐项串行执行', () => {
+    expect(buildChatBody(messages, tools, opts('qwen', 'off'))).not.toHaveProperty('parallel_tool_calls')
     expect(buildChatBody(messages, tools, opts('hy3', 'off'))).not.toHaveProperty('parallel_tool_calls')
   })
 

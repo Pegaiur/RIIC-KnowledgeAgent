@@ -108,7 +108,13 @@ describe('真实词条的 executor 解析协议', () => {
 describe('错误路径的 executor 边界', () => {
   it('store 加载失败、参数无效及预算拒绝不伪造 resolution', async () => {
     const getStore = vi.spyOn(stores, 'getCardStore').mockImplementation(() => { throw new Error('测试 store 加载失败') })
-    const batch = await executor(2).executeBatch([call(' ', 'invalid'), call('推王', 'error'), call('维娜', 'denied')])
+    const config = loadConfig()
+    config.retriever = 'hybrid'
+    config.toolAttemptLimit = 2
+    const batch = await createKnowledgeToolExecutor({
+      config, query: { id: 'RESOLUTION', category: 'fact', question: '词条协议回归' },
+      chunks: [], index: buildIndex([]),
+    }, 2).executeBatch([call(' ', 'invalid'), call('推王', 'error'), call('维娜', 'denied')])
     expect(batch.results.map((item) => [item.status, item.executed])).toEqual([
       ['invalid_params', false], ['error', true], ['budget_exhausted', false],
     ])
@@ -120,6 +126,6 @@ describe('错误路径的 executor 边界', () => {
       expect(envelope).not.toHaveProperty('resolution')
       expect(envelope).not.toHaveProperty('factsResultVersion')
     }
-    expect(batch.snapshot).toMatchObject({ used: 2, executed: 1, denied: 1, remaining: 0 })
+    expect(batch.snapshot).toMatchObject({ successUsed: 0, attemptUsed: 2, executed: 1, denied: 1, remaining: 2 })
   })
 })

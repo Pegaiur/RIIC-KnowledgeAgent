@@ -9,12 +9,15 @@ describe('CLI 参数：工具预算与回馈兼容入口', () => {
       '0',
       '--tool-budget',
       '7',
+      '--tool-attempt-limit',
+      '12',
       '--session-timeout-ms',
       '120000',
     ])
 
     expect(args.minRag).toBe(0)
     expect(args.toolBudget).toBe(7)
+    expect(args.toolAttemptLimit).toBe(12)
     expect(args.sessionTimeoutMs).toBe(120000)
   })
 
@@ -22,6 +25,7 @@ describe('CLI 参数：工具预算与回馈兼容入口', () => {
     const args = parseArgs(['run', '--tool-budget'])
 
     expect(args.toolBudget).toBeNaN()
+    expect(parseArgs(['run', '--tool-attempt-limit']).toolAttemptLimit).toBeNaN()
   })
 
   it('--retriever 解析取值；未传时为 null 且不标记缺值', () => {

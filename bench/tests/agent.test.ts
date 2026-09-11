@@ -27,7 +27,7 @@ describe('agent：独立函数工具 schema', () => {
     expect(buildSystemPrompt('hybrid')).toContain('facts_search')
     expect(buildSystemPrompt('bm25')).toContain('rag_search')
     expect(buildSystemPrompt('hybrid')).toContain('明日方舟基建查询 Agent 决策契约')
-    expect(buildSystemPrompt('hybrid')).toContain('工具积分预算：5 点')
+    expect(buildSystemPrompt('hybrid')).toContain('5 点成功额度 + 10 次获准尝试上限')
   })
 
   it.each([

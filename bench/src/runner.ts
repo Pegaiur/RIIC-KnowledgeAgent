@@ -68,7 +68,7 @@ export async function runBenchmark(
   validateBenchConfig(config)
   const started = Date.now()
   const agentInstructions = loadKnowledgeAgentInstructions()
-  const systemPrompt = buildSystemPrompt(config.retriever, agentInstructions, config.toolBudget)
+  const systemPrompt = buildSystemPrompt(config.retriever, agentInstructions, config.toolBudget, config.toolAttemptLimit)
   const toolSchema = toolSchemaMetadata(config.retriever)
   const toolDefinitions = toolsForRetriever(config.retriever)
   const sourceAtStart = collectSourceMetadata()
@@ -160,7 +160,7 @@ export async function runBenchmark(
           status: result.status,
           terminationReason: result.terminationReason,
           feedbackUsed: result.feedbackUsed,
-          budgetUsed: result.budget.used,
+          budgetUsed: result.budget.successUsed,
           budgetRemaining: result.budget.remaining,
           answer: result.finalAnswer,
         })
@@ -179,7 +179,7 @@ export async function runBenchmark(
           status: result.status,
           terminationReason: result.terminationReason,
           feedbackUsed: result.feedbackUsed,
-          budgetUsed: result.budget.used,
+          budgetUsed: result.budget.successUsed,
           budgetRemaining: result.budget.remaining,
           answer: `（查询未完成：${safeMessage}）`,
         })

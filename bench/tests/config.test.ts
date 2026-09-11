@@ -14,10 +14,11 @@ describe('配置：工具预算与单题生命周期', () => {
     expect(config.model).toBe('glm-5.3-flash')
     expect(() => loadConfig('invalid' as 'glm')).toThrow('不支持的 provider')
   })
-  it('默认每题 5 点、5 分钟总超时并开启未调用工具回馈', () => {
+  it('默认每题 5 点成功额度、10 次获准尝试上限、5 分钟总超时并开启未调用工具回馈', () => {
     const config = loadConfig()
 
     expect(config.toolBudget).toBe(5)
+    expect(config.toolAttemptLimit).toBe(10)
     expect(config.sessionTimeoutMs).toBe(300_000)
     expect(config.feedbackOnNoToolAnswer).toBe(true)
   })
@@ -36,6 +37,8 @@ describe('配置：工具预算与单题生命周期', () => {
   it.each([
     ['toolBudget', { toolBudget: 0 }],
     ['toolBudget', { toolBudget: 1.5 }],
+    ['toolAttemptLimit', { toolAttemptLimit: 0 }],
+    ['toolAttemptLimit', { toolAttemptLimit: Number.NaN }],
     ['sessionTimeoutMs', { sessionTimeoutMs: 0 }],
     ['sessionTimeoutMs', { sessionTimeoutMs: Number.NaN }],
   ] as const)('%s 非正整数或非有限值时拒绝配置', (_field, patch) => {

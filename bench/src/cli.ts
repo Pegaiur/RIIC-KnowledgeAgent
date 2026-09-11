@@ -30,7 +30,7 @@ function printUsage(): void {
       'rag-test bench —— LLM 查询输出成本基准（Hy3 / Qwen3.7-Flash / GLM-5.3-Flash / DeepSeek-V4-Flash-Vision-Exp）',
       '',
       '用法：',
-      '  node dist/cli.js run [--provider hy3|qwen|glm|deepseek] [--thinking off|low|high] [--temperature N] [--retriever bm25|hybrid] [--tool-budget N] [--session-timeout-ms N] [--min-rag 0|1] [--limit N] [--dry] [--questions <path>] [--out <dir>]',
+      '  node dist/cli.js run [--provider hy3|qwen|glm|deepseek] [--thinking off|low|high] [--temperature N] [--retriever bm25|hybrid] [--tool-budget N] [--tool-attempt-limit N] [--session-timeout-ms N] [--min-rag 0|1] [--limit N] [--dry] [--questions <path>] [--out <dir>]',
       '  node dist/cli.js export <runDir> [--questions <path>] [--topic <name>] [--out <path>]',
       '  node dist/cli.js report <runDir|snapshot> [--out <path>]',
       '  node dist/cli.js compare <runDir|snapshot> <runDir|snapshot> [--out <path>]',
@@ -90,6 +90,7 @@ async function main(): Promise<void> {
     const config = loadConfig(args.provider)
     if (args.retriever !== null) config.retriever = args.retriever
     if (args.toolBudget !== null) config.toolBudget = args.toolBudget
+    if (args.toolAttemptLimit !== null) config.toolAttemptLimit = args.toolAttemptLimit
     if (args.sessionTimeoutMs !== null) config.sessionTimeoutMs = args.sessionTimeoutMs
     if (args.minRag !== null) {
       if (args.minRag !== 0 && args.minRag !== 1) {
@@ -114,7 +115,7 @@ async function main(): Promise<void> {
     const picked = args.limit ? questions.slice(0, args.limit) : questions
 
     process.stdout.write(
-      `Provider：${config.providerLabel}｜语料：${stats.files} 个文件｜问题：${picked.length}/${questions.length}｜档位：${args.thinking}｜temperature：${config.temperature ?? '服务端默认'}｜检索器：${config.retriever}｜工具预算：${config.toolBudget}｜总超时：${config.sessionTimeoutMs}ms｜未调用工具回馈：${config.feedbackOnNoToolAnswer ? '开' : '关'}｜dry：${args.dry}\n`,
+      `Provider：${config.providerLabel}｜语料：${stats.files} 个文件｜问题：${picked.length}/${questions.length}｜档位：${args.thinking}｜temperature：${config.temperature ?? '服务端默认'}｜检索器：${config.retriever}｜成功额度：${config.toolBudget}｜获准尝试上限：${config.toolAttemptLimit}｜总超时：${config.sessionTimeoutMs}ms｜未调用工具回馈：${config.feedbackOnNoToolAnswer ? '开' : '关'}｜dry：${args.dry}\n`,
     )
 
     const out = await runBenchmark(picked, {

@@ -426,7 +426,7 @@ describe('第一阶段 facts 结果 envelope', () => {
     }
     expect(JSON.parse(serializeToolResult(result.results[0]!)).scope).toEqual({ query: '__不存在的规范名_核查__' })
     expect(JSON.parse(serializeToolResult(result.results[1]!)).scope).toEqual({ query: '不存在设施' })
-    expect(result.snapshot).toMatchObject({ used: 2, executed: 2, remaining: 3 })
+    expect(result.snapshot).toMatchObject({ successUsed: 0, attemptUsed: 2, executed: 2, remaining: 5 })
   })
 
   it('T07 参数错误不携带事实结果元数据，合法未知值仍是空查', async () => {
@@ -460,7 +460,7 @@ describe('agent：hybrid 独立工具 schema 与系统提示', () => {
     const prompt = buildSystemPrompt('hybrid')
     expect(prompt).toContain('facts_search')
     expect(prompt).toContain('可用工具：rag_search、facts_search、read_section')
-    expect(prompt).toContain('工具积分预算：5 点')
+    expect(prompt).toContain('5 点成功额度 + 10 次获准尝试上限')
   })
 })
 
@@ -588,7 +588,7 @@ describe('runQuery（facts_search 派发）', () => {
     const result = await runQuery(query, { config, thinking: 'off', dry: false, trace }, chunks, index)
 
     expect(result.finalAnswer).toBe('新的设施查询已返回证据。')
-    expect(result.budget).toMatchObject({ used: 2, executed: 2, remaining: 3 })
+    expect(result.budget).toMatchObject({ successUsed: 1, attemptUsed: 2, executed: 2, remaining: 4 })
     expect(result.toolTrace).toEqual([['facts_search'], ['facts_search']])
     expect(trace.events.filter((event) => event.type === 'tool_call').map((event) => event.type === 'tool_call' ? event.status : ''))
       .toEqual(['empty', 'success'])

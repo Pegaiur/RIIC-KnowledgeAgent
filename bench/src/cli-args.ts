@@ -17,8 +17,10 @@ export interface ParsedArgs {
   retrieverMissingValue: boolean
   /** 兼容旧入口：0 关闭未调用工具回馈，1 开启一次回馈 */
   minRag: number | null
-  /** 每题工具积分预算 */
+  /** 每题工具成功额度 */
   toolBudget: number | null
+  /** 每题工具获准尝试硬上限 */
+  toolAttemptLimit: number | null
   /** 每题总超时（毫秒） */
   sessionTimeoutMs: number | null
   /** 采样温度；不传则沿用服务端默认值 */
@@ -57,6 +59,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
     retrieverMissingValue: false,
     minRag: null,
     toolBudget: null,
+    toolAttemptLimit: null,
     sessionTimeoutMs: null,
     temperature: null,
     topk: null,
@@ -85,6 +88,9 @@ export function parseArgs(argv: string[]): ParsedArgs {
       i++
     } else if (arg === '--tool-budget') {
       parsed.toolBudget = readNumber(argv, i)
+      i++
+    } else if (arg === '--tool-attempt-limit') {
+      parsed.toolAttemptLimit = readNumber(argv, i)
       i++
     } else if (arg === '--session-timeout-ms') {
       parsed.sessionTimeoutMs = readNumber(argv, i)

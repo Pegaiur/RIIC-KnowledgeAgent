@@ -29,7 +29,7 @@ export type TerminationReason =
   | 'truncated'
   | 'protocol_error'
 
-/** 单个模型响应对应的工具批次统计；used 口径是获准尝试数。 */
+/** 单个模型响应对应的工具批次统计；granted 口径为获准尝试数。 */
 export interface ToolBatchStats {
   requested: number
   granted: number

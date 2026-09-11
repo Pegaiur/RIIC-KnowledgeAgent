@@ -89,8 +89,10 @@ export interface ExperimentConfig {
   entityBoost: number
   /** 分词器（bigram | jieba） */
   tokenizer: TokenizerId
-  /** 每题工具调用积分上限；每次真实用户提问开始时重置 */
+  /** 每题工具成功额度；仅在非空执行成功时扣 1 点，每题真实用户提问开始时重置 */
   toolBudget: number
+  /** 每题工具获准尝试硬上限；与成败无关，达到后新增调用只收到拒绝 */
+  toolAttemptLimit: number
   /** 每题总超时（毫秒），覆盖请求、重试、等待、工具和后续模型步骤 */
   sessionTimeoutMs: number
   /** 未调用工具直接作答时是否允许一次宿主回馈 */
@@ -115,6 +117,7 @@ export const EXPERIMENT: ExperimentConfig = {
   entityBoost: 0,
   tokenizer: 'bigram',
   toolBudget: 5,
+  toolAttemptLimit: 10,
   sessionTimeoutMs: 300_000,
   feedbackOnNoToolAnswer: true,
   topK: 5,
@@ -154,8 +157,10 @@ export interface BenchConfig {
   maxContextChars: number
   /** 检索器：hybrid 同时暴露 BM25 RAG 与 facts 查询工具；bm25 保留为纯 RAG 对照 */
   retriever: RetrieverId
-  /** 每题工具调用积分上限；每次真实用户提问开始时重置 */
+  /** 每题工具成功额度；仅在非空执行成功时扣 1 点，每题真实用户提问开始时重置 */
   toolBudget: number
+  /** 每题工具获准尝试硬上限；与成败无关，达到后新增调用只收到拒绝 */
+  toolAttemptLimit: number
   /** 每题总超时（毫秒），覆盖请求、重试、等待、工具和后续模型步骤 */
   sessionTimeoutMs: number
   /** 未调用工具直接作答时是否允许一次宿主回馈 */
@@ -187,6 +192,7 @@ export function loadConfig(providerInput?: ProviderId): BenchConfig {
     maxContextChars: EXPERIMENT.maxContextChars,
     retriever: EXPERIMENT.retriever,
     toolBudget: EXPERIMENT.toolBudget,
+    toolAttemptLimit: EXPERIMENT.toolAttemptLimit,
     sessionTimeoutMs: EXPERIMENT.sessionTimeoutMs,
     feedbackOnNoToolAnswer: EXPERIMENT.feedbackOnNoToolAnswer,
     tokenizer: EXPERIMENT.tokenizer,
@@ -195,12 +201,13 @@ export function loadConfig(providerInput?: ProviderId): BenchConfig {
 }
 
 /** 校验单题生命周期相关配置；CLI 覆盖参数后也必须调用。 */
-export function validateBenchConfig(config: Pick<BenchConfig, 'toolBudget' | 'sessionTimeoutMs' | 'retriever'>): void {
+export function validateBenchConfig(config: Pick<BenchConfig, 'toolBudget' | 'toolAttemptLimit' | 'sessionTimeoutMs' | 'retriever'>): void {
   if (config.retriever !== 'bm25' && config.retriever !== 'hybrid') {
     throw new Error(`不支持的检索模式：${String(config.retriever)}（可选 bm25 | hybrid）`)
   }
   for (const [name, value] of [
     ['toolBudget', config.toolBudget],
+    ['toolAttemptLimit', config.toolAttemptLimit],
     ['sessionTimeoutMs', config.sessionTimeoutMs],
   ] as const) {
     if (!Number.isInteger(value) || value <= 0) {

@@ -38,7 +38,7 @@ export interface AgentResult {
   injectedIds: string[]
   /** 已发起的模型生成步骤数；失败/取消也保留真实值。 */
   modelSteps: number
-  /** 单题工具积分账本；成功、失败和取消均保留。 */
+  /** 单题工具双上限账本（成功额度 + 获准尝试）；成功、失败和取消均保留。 */
   budget: ToolBudgetState
   /** 未调用工具直接作答的宿主回馈是否已使用。 */
   feedbackUsed: boolean
@@ -91,13 +91,14 @@ export function buildSystemPrompt(
   retriever: RetrieverId = 'hybrid',
   agentInstructions = loadKnowledgeAgentInstructions(),
   toolBudget = 5,
+  toolAttemptLimit = 10,
 ): string {
   const toolNames = toolNamesForRetriever(retriever)
   const runtime = [
     '## 本次运行能力',
     `- 检索模式：${retriever}`,
     `- 可用工具：${toolNames.join('、')}`,
-    `- 工具积分预算：${toolBudget} 点；每个准入工具调用占 1 点，参数错误也占点；同批调用分别计费。余额用尽后新增调用不会执行。`,
+    `- 工具预算：${toolBudget} 点成功额度 + ${toolAttemptLimit} 次获准尝试上限；仅非空执行成功扣 1 点，空结果、参数错误与执行错误不扣成功额度但各占一次尝试；同批调用逐项结算，任一上限用尽后新增调用不会执行。`,
   ]
   return `${agentInstructions.trim()}\n\n${runtime.join('\n')}`
 }
@@ -123,7 +124,7 @@ export async function runQuery(
     onFactsStoreLoadFailed: opts.onFactsStoreLoadFailed,
   }, config.toolBudget)
   const messages: ChatMessage[] = [
-    { role: 'system', content: opts.systemPrompt ?? buildSystemPrompt(config.retriever, opts.agentInstructions ?? loadKnowledgeAgentInstructions(), config.toolBudget) },
+    { role: 'system', content: opts.systemPrompt ?? buildSystemPrompt(config.retriever, opts.agentInstructions ?? loadKnowledgeAgentInstructions(), config.toolBudget, config.toolAttemptLimit) },
     { role: 'user', content: query.question },
   ]
   const sessionController = new AbortController()

@@ -68,8 +68,8 @@ export function buildChatBody(
   }
   if (config.provider === 'qwen') {
     // Qwen3.7：enable_thinking 控制思考；off 必须显式 false，low/high 开启（暂不细分）
+    // 不发送 parallel_tool_calls：宿主按返回顺序逐项串行执行与结算。
     body.enable_thinking = thinking !== 'off'
-    if (tools && tools.length > 0) body.parallel_tool_calls = true
   } else if (thinking !== 'off') {
     // Hy3 / GLM：显式推理强度与思考开关。
     body.reasoning_effort = thinking
