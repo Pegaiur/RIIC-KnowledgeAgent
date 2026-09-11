@@ -54,8 +54,14 @@ export interface AnswerRecord {
   status: 'completed' | 'failed' | 'cancelled'
   terminationReason: TerminationReason
   feedbackUsed: boolean
+  /** 成功额度已用（非空执行成功扣点数） */
   budgetUsed: number
+  /** 成功额度余额 */
   budgetRemaining: number
+  /** 获准尝试已用数 */
+  attemptUsed: number
+  /** 获准尝试上限 */
+  attemptLimit: number
   answer: string | null
 }
 
@@ -162,6 +168,8 @@ export async function runBenchmark(
           feedbackUsed: result.feedbackUsed,
           budgetUsed: result.budget.successUsed,
           budgetRemaining: result.budget.remaining,
+          attemptUsed: result.budget.attemptUsed,
+          attemptLimit: result.budget.attemptLimit,
           answer: result.finalAnswer,
         })
         process.stderr.write(`问题 ${q.id} 完成：${result.rounds} 轮\n`)
@@ -181,6 +189,8 @@ export async function runBenchmark(
           feedbackUsed: result.feedbackUsed,
           budgetUsed: result.budget.successUsed,
           budgetRemaining: result.budget.remaining,
+          attemptUsed: result.budget.attemptUsed,
+          attemptLimit: result.budget.attemptLimit,
           answer: `（查询未完成：${safeMessage}）`,
         })
         if (result.failure) markTraceFailed(trace, result.failure)
@@ -205,6 +215,8 @@ export async function runBenchmark(
         feedbackUsed: false,
         budgetUsed: 0,
         budgetRemaining: config.toolBudget,
+        attemptUsed: 0,
+        attemptLimit: config.toolAttemptLimit,
         answer: `（查询失败：${safeMessage}）`,
       })
       markTraceFailed(trace, {
@@ -242,10 +254,12 @@ export async function runBenchmark(
         baseUrl: config.baseUrl,
         retriever: config.retriever,
         toolBudget: config.toolBudget,
+        toolAttemptLimit: config.toolAttemptLimit,
         sessionTimeoutMs: config.sessionTimeoutMs,
         feedbackOnNoToolAnswer: config.feedbackOnNoToolAnswer,
         toolChoice: 'auto',
-        parallelToolCalls: config.provider === 'qwen',
+        // 宿主未开启并行工具调用：同批按返回顺序逐项串行执行与结算。
+        parallelToolCalls: false,
         agentInstructionsSha256: sha256(agentInstructions),
         ...toolSchema,
         maxTokens: config.maxTokens,
@@ -282,6 +296,8 @@ export async function runBenchmark(
         toolCallsExecuted: runReport.toolStats.executed,
         toolCallsDenied: runReport.toolStats.denied,
         toolErrors: runReport.toolStats.errors,
+        toolAttempts: runReport.toolStats.attempts,
+        toolSuccesses: runReport.toolStats.successes,
         toolResultChars: runReport.toolStats.resultChars,
         toolHitCount: runReport.toolStats.hitCount,
         toolHitUnknown: runReport.toolStats.hitUnknown,
@@ -314,7 +330,7 @@ export async function runBenchmark(
 function renderAnswers(answers: AnswerRecord[]): string {
   const blocks = answers.map((a) => {
     const toolLine = a.toolTrace.length > 0 ? `｜工具序列：${a.toolTrace.join('→')}` : '｜工具序列：无'
-    return `## ${a.queryId}（${a.category}）\n\n- 问题：${a.question}\n- 状态：${a.status}｜终止：${a.terminationReason}\n- 模型步骤：${a.rounds}｜工具批次：${a.toolRounds}｜预算：${a.budgetUsed}/${a.budgetUsed + a.budgetRemaining}${toolLine}\n- 宿主回馈：${a.feedbackUsed ? '是' : '否'}\n\n${a.answer ?? '（无最终回答）'}`
+    return `## ${a.queryId}（${a.category}）\n\n- 问题：${a.question}\n- 状态：${a.status}｜终止：${a.terminationReason}\n- 模型步骤：${a.rounds}｜工具批次：${a.toolRounds}｜成功额度：${a.budgetUsed}/${a.budgetUsed + a.budgetRemaining}｜获准尝试：${a.attemptUsed}/${a.attemptLimit}${toolLine}\n- 宿主回馈：${a.feedbackUsed ? '是' : '否'}\n\n${a.answer ?? '（无最终回答）'}`
   })
   return ['# 查询回答记录', '', '> 供人工抽查答案质量，不参与成本评估。', '', ...blocks].join('\n')
 }

@@ -26,8 +26,9 @@ describe('runBenchmark：trace 逐题落盘', () => {
       expect(meta).toMatchObject({
         schemaVersion: 2,
         toolChoice: 'auto',
-        parallelToolCalls: true,
+        parallelToolCalls: false,
         toolBudget: 5,
+        toolAttemptLimit: 10,
         sessionTimeoutMs: 300000,
         feedbackOnNoToolAnswer: true,
         toolSchemaVersion: 9,
@@ -35,6 +36,8 @@ describe('runBenchmark：trace 逐题落盘', () => {
         modelSteps: 2,
         toolBatches: 0,
         toolCallsRequested: 0,
+        toolAttempts: 0,
+        toolSuccesses: 0,
         failed: 2,
         toolHitCount: 0,
         toolHitUnknown: 0,
@@ -86,8 +89,15 @@ describe('runBenchmark：trace 逐题落盘', () => {
       })
       expect(meta.maxTokens).toBe(4096)
       expect(meta.inputsSchemaVersion).toBe(1)
+      expect(meta.toolAttemptLimit).toBe(10)
+      expect(meta.toolAttempts).toBe(report.toolStats.attempts)
+      expect(meta.toolSuccesses).toBe(report.toolStats.successes)
+      const answers = readFileSync(output.answersPath, 'utf-8')
+      expect(answers).toContain('成功额度：')
+      expect(answers).toContain('获准尝试：')
       const inputs = JSON.parse(readFileSync(output.inputsPath, 'utf-8')) as Record<string, any>
       expect(inputs.captureStatus).toBe('complete')
+      expect(inputs.config).toMatchObject({ toolBudget: 5, toolAttemptLimit: 10, parallelToolCalls: false })
       expect(inputs.facts).toMatchObject({ status: 'captured', cardCount: expect.any(Number) })
     } finally {
       rmSync(outDir, { recursive: true, force: true })

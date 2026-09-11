@@ -36,6 +36,10 @@ export interface ToolBatchStats {
   executed: number
   denied: number
   errors: number
+  /** 获准尝试数（等于 granted）；新运行始终写入，历史记录缺失表示不可用。 */
+  attempts?: number
+  /** 非空执行成功扣点数；新运行始终写入，历史记录缺失表示不可用（不由 executed 推算）。 */
+  successes?: number
   /** 已执行且 hitIds 非空的结果数；旧记录缺失时不可回填。 */
   hitCount?: number
   /** 已执行但缺少 hitIds 的结果数；表示命中状态未知。 */

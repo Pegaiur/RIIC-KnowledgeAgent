@@ -70,7 +70,7 @@ describe('运行输入记录', () => {
       expect(inputs.captureStatus).toBe('complete')
       expect(inputs.systemPrompt.text).toBe((mockCall.mock.calls[0]?.[0] as Array<{ role: string; content: string }>)[0]?.content)
       expect(inputs.toolSchema.definitions).toEqual(mockCall.mock.calls[0]?.[1])
-      expect(inputs.config).toMatchObject({ maxTokens: 4096, temperature: null, retriever: 'hybrid' })
+      expect(inputs.config).toMatchObject({ maxTokens: 4096, temperature: null, retriever: 'hybrid', toolAttemptLimit: 10, parallelToolCalls: false })
       expect(inputs.facts).toEqual({ status: 'not_used' })
       const meta = JSON.parse(readFileSync(output.metaPath, 'utf-8')) as Record<string, unknown>
       expect(meta).toMatchObject({ maxTokens: 4096, inputsSchemaVersion: 1 })

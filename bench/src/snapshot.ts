@@ -22,8 +22,13 @@ export interface SnapshotQuery {
   toolRounds: number
   toolTrace: string[]
   feedbackUsed: boolean
+  /** 新运行为成功额度已用；历史记录按原口径解读。 */
   budgetUsed: number
   budgetRemaining: number
+  /** 获准尝试已用数；仅新运行写入，历史记录缺失表示不可用。 */
+  attemptUsed?: number
+  /** 获准尝试上限；仅新运行写入，历史记录缺失表示不可用。 */
+  attemptLimit?: number
   injectedIds: string[]
 }
 
@@ -61,19 +66,20 @@ const RECORD_KEYS = [
   'costIn', 'costOut', 'costTotal', 'usageCompleteness', 'usageAggregation',
   'httpAttempts', 'truncated', 'tools', 'toolBatch',
 ]
-const TOOL_BATCH_KEYS = ['requested', 'granted', 'executed', 'denied', 'errors', 'hitCount', 'hitUnknown', 'budgetBefore', 'budgetAfter', 'resultChars']
-const OPTIONAL_TOOL_BATCH_KEYS = new Set(['hitCount', 'hitUnknown'])
+const TOOL_BATCH_KEYS = ['requested', 'granted', 'executed', 'denied', 'errors', 'attempts', 'successes', 'hitCount', 'hitUnknown', 'budgetBefore', 'budgetAfter', 'resultChars']
+const OPTIONAL_TOOL_BATCH_KEYS = new Set(['attempts', 'successes', 'hitCount', 'hitUnknown'])
 const META_SUMMARY_KEYS = new Set([
   'records', 'inputTokens', 'outputTokens', 'inputTokensExact', 'outputTokensExact',
   'totalCostIn', 'totalCostOut', 'totalCost', 'costComplete', 'incompleteUsageCalls',
   'unknownUsageCalls', 'failed', 'modelSteps', 'toolBatches', 'toolCallsRequested',
   'toolCallsGranted', 'toolCallsExecuted', 'toolCallsDenied', 'toolErrors',
+  'toolAttempts', 'toolSuccesses',
   'toolResultChars', 'toolHitCount', 'toolHitUnknown', 'httpAttempts', 'retryAttempts', 'feedbackUsed', 'terminationReasons',
   'elapsedMs',
 ])
 const META_ALLOWED_KEYS = new Set([
   'schemaVersion', 'traceSchemaVersion', 'ts', 'thinking', 'dry', 'provider', 'model',
-  'temperature', 'maxTokens', 'baseUrl', 'retriever', 'minRagCalls', 'toolBudget', 'sessionTimeoutMs',
+  'temperature', 'maxTokens', 'baseUrl', 'retriever', 'minRagCalls', 'toolBudget', 'toolAttemptLimit', 'sessionTimeoutMs',
   'feedbackOnNoToolAnswer', 'toolChoice', 'parallelToolCalls', 'agentInstructionsSha256',
   'inputsSchemaVersion',
   'toolSchemaVersion', 'toolSchemaSha256', 'toolNames',
@@ -116,6 +122,8 @@ export function snapshotFromRunDir(runDirInput: string, options: SnapshotFromRun
       feedbackUsed: answer?.feedbackUsed ?? false,
       budgetUsed: answer?.budgetUsed ?? 0,
       budgetRemaining: answer?.budgetRemaining ?? 0,
+      ...(answer?.attemptUsed === undefined ? {} : { attemptUsed: answer.attemptUsed }),
+      ...(answer?.attemptLimit === undefined ? {} : { attemptLimit: answer.attemptLimit }),
       injectedIds: injected[question.id] ?? [],
     })
   }
@@ -137,6 +145,8 @@ export function snapshotFromRunDir(runDirInput: string, options: SnapshotFromRun
       feedbackUsed: answer.feedbackUsed,
       budgetUsed: answer.budgetUsed,
       budgetRemaining: answer.budgetRemaining,
+      ...(answer.attemptUsed === undefined ? {} : { attemptUsed: answer.attemptUsed }),
+      ...(answer.attemptLimit === undefined ? {} : { attemptLimit: answer.attemptLimit }),
       injectedIds: injected[queryId] ?? [],
     })
   }
@@ -159,6 +169,8 @@ export function snapshotFromRunDir(runDirInput: string, options: SnapshotFromRun
       feedbackUsed: answer?.feedbackUsed ?? false,
       budgetUsed: answer?.budgetUsed ?? 0,
       budgetRemaining: answer?.budgetRemaining ?? 0,
+      ...(answer?.attemptUsed === undefined ? {} : { attemptUsed: answer.attemptUsed }),
+      ...(answer?.attemptLimit === undefined ? {} : { attemptLimit: answer.attemptLimit }),
       injectedIds: injected[queryId] ?? [],
     })
   }
@@ -286,6 +298,8 @@ function validateQuery(value: unknown, index: number): SnapshotQuery {
     feedbackUsed: booleanValue(value.feedbackUsed, `queries[${index}].feedbackUsed`),
     budgetUsed: positiveOrZero(value.budgetUsed, `queries[${index}].budgetUsed`),
     budgetRemaining: positiveOrZero(value.budgetRemaining, `queries[${index}].budgetRemaining`),
+    ...(value.attemptUsed === undefined ? {} : { attemptUsed: positiveOrZero(value.attemptUsed, `queries[${index}].attemptUsed`) }),
+    ...(value.attemptLimit === undefined ? {} : { attemptLimit: positiveOrZero(value.attemptLimit, `queries[${index}].attemptLimit`) }),
     injectedIds: stringArray(value.injectedIds, `queries[${index}].injectedIds`),
   }
 }
@@ -517,6 +531,9 @@ interface ParsedAnswer {
   feedbackUsed: boolean
   budgetUsed: number
   budgetRemaining: number
+  /** 双预算行新增字段；旧预算行/旧格式缺失时保持 undefined。 */
+  attemptUsed?: number
+  attemptLimit?: number
 }
 
 function parseAnswers(raw: string | null): Map<string, ParsedAnswer> {
@@ -536,6 +553,7 @@ function parseAnswers(raw: string | null): Map<string, ParsedAnswer> {
     const statusLine = block.find((line) => line.startsWith('- 状态：')) ?? ''
     const statusMatch = /^- 状态：([^｜]+)｜终止：([^\s]+)$/.exec(statusLine)
     const budgetLine = block.find((line) => line.startsWith('- 模型步骤：')) ?? ''
+    const dualMatch = /^- 模型步骤：(\d+)｜工具批次：(\d+)｜成功额度：(\d+)\/(\d+)｜获准尝试：(\d+)\/(\d+)(?:｜工具序列：(.+))?$/.exec(budgetLine)
     const budgetMatch = /^- 模型步骤：(\d+)｜工具批次：(\d+)｜预算：(\d+)\/(\d+)(?:｜工具序列：(.+))?$/.exec(budgetLine)
     const feedbackLine = block.find((line) => line.startsWith('- 宿主回馈：'))
     const feedbackIndex = block.findIndex((line) => line.startsWith('- 宿主回馈：'))
@@ -547,19 +565,22 @@ function parseAnswers(raw: string | null): Map<string, ParsedAnswer> {
     const body = block.slice(answerStart).join('\n').trim()
     const legacyFailure = /^（查询(?:失败|未完成)：/.test(body)
     const status = statusMatch?.[1] ?? (legacyMatch && body ? (legacyFailure ? 'failed' : 'completed') : undefined)
+    const traceRaw = dualMatch?.[7] ?? budgetMatch?.[5] ?? legacyMatch?.[3]
     out.set(header.id, {
       category: header.category,
       question: redactText(question),
       answer: status === 'completed' ? redactText(body) : null,
       status: status === 'completed' || status === 'failed' || status === 'cancelled' ? status : 'unknown',
       terminationReason: parseTermination(statusMatch?.[2] ?? (legacyFailure ? 'llm_error' : undefined)),
-      rounds: Number(budgetMatch?.[1] ?? legacyMatch?.[1] ?? 0),
-      toolRounds: Number(budgetMatch?.[2] ?? legacyMatch?.[2] ?? 0),
-      budgetUsed: Number(budgetMatch?.[3] ?? 0),
-      budgetRemaining: Number(budgetMatch?.[4] ?? 0) - Number(budgetMatch?.[3] ?? 0),
-      toolTrace: budgetMatch?.[5] && budgetMatch[5] !== '无'
-        ? budgetMatch[5].split('→').filter(Boolean)
-        : legacyMatch?.[3] && legacyMatch[3] !== '无' ? legacyMatch[3].split('→').filter(Boolean) : [],
+      rounds: Number(dualMatch?.[1] ?? budgetMatch?.[1] ?? legacyMatch?.[1] ?? 0),
+      toolRounds: Number(dualMatch?.[2] ?? budgetMatch?.[2] ?? legacyMatch?.[2] ?? 0),
+      // 新双预算行的 budgetUsed/Remaining 表示成功额度；旧预算行保留原「获准即扣」口径。
+      budgetUsed: dualMatch ? Number(dualMatch[3]) : Number(budgetMatch?.[3] ?? 0),
+      budgetRemaining: dualMatch
+        ? Number(dualMatch[4]) - Number(dualMatch[3])
+        : Number(budgetMatch?.[4] ?? 0) - Number(budgetMatch?.[3] ?? 0),
+      ...(dualMatch ? { attemptUsed: Number(dualMatch[5]), attemptLimit: Number(dualMatch[6]) } : {}),
+      toolTrace: traceRaw && traceRaw !== '无' ? traceRaw.split('→').filter(Boolean) : [],
       feedbackUsed: feedbackLine?.includes('是') ?? false,
     })
   }

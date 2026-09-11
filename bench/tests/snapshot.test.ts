@@ -44,6 +44,7 @@ describe('共享基准快照', () => {
       const recordWithExtraToolBatch = record() as CostRecord & { toolBatch?: Record<string, unknown> }
       recordWithExtraToolBatch.toolBatch = {
         requested: 1, granted: 1, executed: 1, denied: 0, errors: 0,
+        attempts: 1, successes: 1,
         hitCount: 1, hitUnknown: 0,
         budgetBefore: 5, budgetAfter: 4, resultChars: 10, unexpected: 'drop-me',
       }
@@ -89,6 +90,7 @@ describe('共享基准快照', () => {
       expect(readSnapshot(path).records[0]?.httpAttempts?.[0]?.error).toBeUndefined()
       expect(readSnapshot(path).records[0]?.toolBatch).toEqual({
         requested: 1, granted: 1, executed: 1, denied: 0, errors: 0,
+        attempts: 1, successes: 1,
         hitCount: 1, hitUnknown: 0,
         budgetBefore: 5, budgetAfter: 4, resultChars: 10,
       })
@@ -187,6 +189,43 @@ describe('共享基准快照', () => {
       expect(snapshot.queries[2]).toMatchObject({ id: 'Q3', question: '', status: 'unknown' })
       expect(aggregateSnapshot(snapshot)).toMatchObject({ totalQueries: 3, totalCalls: 2 })
       expect(aggregateSnapshot(snapshot).byQuery.find((query) => query.queryId === 'Q2')).toMatchObject({ rounds: 0, costComplete: false })
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('新双预算行解析成功额度与获准尝试，旧预算行仍按原口径读取且不伪填 attempt', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'rag-dual-budget-'))
+    try {
+      writeFileSync(join(dir, 'meta.json'), JSON.stringify({
+        topic: 'rag-hybrid',
+        questionIds: ['Q1', 'Q2'],
+        toolAttemptLimit: 10,
+        parallelToolCalls: false,
+      }))
+      writeFileSync(join(dir, 'records.jsonl'), '')
+      writeFileSync(join(dir, 'answers.md'), [
+        '# 查询回答记录', '',
+        '## Q1（fact）', '',
+        '- 问题：新格式',
+        '- 状态：completed｜终止：answer',
+        '- 模型步骤：3｜工具批次：2｜成功额度：2/5｜获准尝试：4/10｜工具序列：rag_search→facts_search',
+        '- 宿主回馈：否', '',
+        '答案一', '',
+        '## Q2（fact）', '',
+        '- 问题：旧格式',
+        '- 状态：completed｜终止：answer',
+        '- 模型步骤：2｜工具批次：1｜预算：3/5｜工具序列：rag_search',
+        '- 宿主回馈：否', '',
+        '答案二',
+      ].join('\n'))
+
+      const snapshot = snapshotFromRunDir(dir, { root: dir })
+      expect(snapshot.meta).toMatchObject({ toolAttemptLimit: 10, parallelToolCalls: false })
+      expect(snapshot.queries[0]).toMatchObject({ id: 'Q1', budgetUsed: 2, budgetRemaining: 3, attemptUsed: 4, attemptLimit: 10, toolTrace: ['rag_search', 'facts_search'] })
+      expect(snapshot.queries[1]).toMatchObject({ id: 'Q2', budgetUsed: 3, budgetRemaining: 2, toolTrace: ['rag_search'] })
+      expect(snapshot.queries[1]).not.toHaveProperty('attemptUsed')
+      expect(snapshot.queries[1]).not.toHaveProperty('attemptLimit')
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }

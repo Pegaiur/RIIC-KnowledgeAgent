@@ -96,6 +96,10 @@ export interface ToolStatsAgg {
   executed: number
   denied: number
   errors: number
+  /** 获准尝试数；历史记录缺该字段时为 null（不可用）。 */
+  attempts: number | null
+  /** 非空执行成功扣点数；历史记录缺该字段时为 null（不可用），不由 executed 推算。 */
+  successes: number | null
   /** 已执行且明确有命中的结果数。 */
   hitCount: number
   /** 已执行但旧记录或异常缺少 hitIds 的结果数。 */
@@ -375,15 +379,29 @@ function aggregateToolStats(records: CostRecord[]): ToolStatsAgg {
     executed: sum(batches.map((batch) => batch.executed)),
     denied: sum(batches.map((batch) => batch.denied)),
     errors: sum(batches.map((batch) => batch.errors)),
+    attempts: sumOptionalField(batches, 'attempts'),
+    successes: sumOptionalField(batches, 'successes'),
     hitCount,
     hitUnknown,
     resultChars: sum(batches.map((batch) => batch.resultChars)),
   }
 }
 
+/** 历史批次可能缺少新统计：任一批次缺失即整体不可用（null），不以 0 伪填或由 executed 推算。 */
+function sumOptionalField(
+  batches: Array<NonNullable<CostRecord['toolBatch']>>,
+  key: 'attempts' | 'successes',
+): number | null {
+  if (batches.length === 0) return 0
+  if (batches.some((batch) => batch[key] === undefined)) return null
+  return sum(batches.map((batch) => batch[key]!))
+}
+
 const f2 = (v: number) => v.toFixed(2)
 const f4 = (v: number) => v.toFixed(4)
 const exact = (v: number | null) => v === null ? '未知' : v.toLocaleString()
+/** 历史缺失的新统计以「不可用」展示，回填 0 会与真实零次混淆。 */
+const nullable = (v: number | null) => v === null ? '不可用' : v.toLocaleString()
 
 /** 渲染 Markdown 报告 */
 export function renderMarkdown(report: BenchReport): string {
@@ -398,7 +416,7 @@ export function renderMarkdown(report: BenchReport): string {
     `- 费用状态：${report.costComplete ? '完整' : '不完整'}｜不完整 usage 调用：${report.incompleteUsageCalls}｜用量未知调用：${report.unknownUsageCalls}`,
     `- HTTP 尝试：${report.totalHttpAttempts}｜重试：${report.retryAttempts}`,
     `- 每查询输出 tokens：均值 ${avgOut}｜P95 ${p95Out.toLocaleString()}`,
-    `- 工具批次：${report.toolStats.batches}｜提出 ${report.toolStats.requested}｜准入 ${report.toolStats.granted}｜执行 ${report.toolStats.executed}｜拒绝 ${report.toolStats.denied}｜错误 ${report.toolStats.errors}｜有命中 ${report.toolStats.hitCount}｜命中未知 ${report.toolStats.hitUnknown}`,
+    `- 工具批次：${report.toolStats.batches}｜提出 ${report.toolStats.requested}｜准入 ${report.toolStats.granted}｜执行 ${report.toolStats.executed}｜拒绝 ${report.toolStats.denied}｜错误 ${report.toolStats.errors}｜获准尝试 ${nullable(report.toolStats.attempts)}｜成功 ${nullable(report.toolStats.successes)}｜有命中 ${report.toolStats.hitCount}｜命中未知 ${report.toolStats.hitUnknown}`,
     ...(report.toolUsage.length > 0
       ? [`- 工具调用：${report.toolUsage.map((u) => `${u.tool} ${u.calls} 次`).join('｜')}`]
       : []),

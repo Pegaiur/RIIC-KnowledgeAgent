@@ -37,6 +37,18 @@
 - **原因**：`ToolBudgetState` 字段改名属步骤 3 必要项，而观测格式变更集中在步骤 4；两步之间保持可编译与可测，避免在步骤 3 提前引入尚未定稿的观测字段。
 - **后果**：此中间态的运行目录不应被当作最终口径解读；步骤 4 提交后 `toolBudget` 语义与展示同步更新，历史记录按原口径读取。
 
+### 2026-09-11 — 观测字段以「缺失即可用性未知」区分新旧口径
+- **plan 原文**：新运行始终写入 `attempts`/`successes`，历史记录允许缺失，缺失表示不可用，不伪填零或由 executed 推算。
+- **实际做法**：`ToolBatchStats.attempts/successes` 与 `SnapshotQuery.attemptUsed/attemptLimit` 均为可选；`report.toolStats.attempts/successes` 用 `number | null` 表示，任一批次缺字段即整体为 `null` 并在报告渲染为「不可用」；`snapshot` 的 `TOOL_BATCH_KEYS` 把两项列入 `OPTIONAL_TOOL_BATCH_KEYS`，旧快照与旧运行目录仍可读。
+- **原因**：把「历史没有该统计」与「真实为 0」区分开，避免下游把伪零当作真实计数。
+- **后果**：`meta.json` 新增 `toolAttempts`/`toolSuccesses`（归入 `META_SUMMARY_KEYS`，快照不保留）；`META_ALLOWED_KEYS` 新增保留配置字段 `toolAttemptLimit`。
+
+### 2026-09-11 — answers.md 预算行兼容新旧两种格式
+- **plan 原文**：回答解析同时支持旧预算行和新双预算行，不以替换旧正则的方式丢弃历史格式。
+- **实际做法**：`parseAnswers` 先匹配新行「成功额度：a/b｜获准尝试：c/d」，再回退旧行「预算：a/b」，最后回退「轮数/检索次数」；新行的 `budgetUsed/Remaining` 表示成功额度，旧行保留原「获准即扣」口径，旧行缺 attempt 字段时保持缺失。
+- **原因**：历史 `bench-runs` 与已导出快照仍按旧行读取，替换正则会使其解析为空。
+- **后果**：runner 的 `answers.md` 改为输出新行；`SnapshotQuery` 增加可选 attempt 字段贯通运行目录导出与快照往返。
+
 ## 债务记录
 > 遗留的技术债、被牺牲的改进与延期偿还事项（纯权衡取舍、无遗留债务的决策记入「决策偏离」）
 > 可定位到代码的债务须在代码处写 `TODO(tech-debt) <编号>：` 注释（AGENTS.md 编码核心约束 #6），此处只记编号、结论与未来偿还条件
