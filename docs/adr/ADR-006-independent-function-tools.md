@@ -46,5 +46,5 @@
 
 ## 关联
 
-- 规划文档：[独立函数工具与扁平参数实施计划](../archive/plan-independent-tools-schema.md)
-- 前置决策：[ADR-005](ADR-005-chat-auto-tool-budget.md)
+- 规划文档：docs/archive/plan-independent-tools-schema.md
+- 前置决策：ADR-005

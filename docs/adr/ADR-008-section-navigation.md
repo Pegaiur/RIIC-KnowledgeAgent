@@ -27,4 +27,4 @@
 
 ## 关联
 
-- 规划文档：[实施计划](../archive/plan-section-navigation.md)
+- 规划文档：docs/archive/plan-section-navigation.md

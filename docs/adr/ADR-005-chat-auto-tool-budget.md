@@ -45,5 +45,5 @@ auto 不保证首检，回馈也不保证后续一定查询；应显式记录未
 
 ## 关联
 
-- 规划文档：[Chat auto 工具循环与每题积分预算实施计划](../archive/plan-agent-auto-tool-budget.md)。
-- 既有约束：[ADR-004](ADR-004-query-agent-knowledge-layering.md)。
+- 规划文档：docs/archive/plan-agent-auto-tool-budget.md。
+- 既有约束：ADR-004。

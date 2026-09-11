@@ -33,12 +33,13 @@
 | 3 | 合并门槛：合并前一律执行 `node scripts/verify.mjs merge -- --base main`（门禁唯一入口，命令清单见 `scripts/gates.mjs`） | `docs/rules/document-lifecycle.md` |
 | 4 | 文档模板：ADR 参照 `docs/templates/adr.md`，plan 参照 `docs/templates/plan.md`，实施笔记参照 `docs/templates/notes.md`，试验参照 `docs/templates/exp.md` | — |
 | 5 | RAG 散文清洗统一使用玩家侧规范词；references 直出层保留原格式 | `docs/rules/rag-prose-terminology.md` |
+| 6 | 文档引用仓库内其他文档一律写名称（路径/编号），不使用 Markdown 链接；例外为 ADR 索引与归档索引的机械契约表格 | `docs/rules/document-lifecycle.md` |
 
 ## 工作流路由
 
 > 提交/发版等仓库工作流由 `skills/` 目录下的开放格式技能承载（`skills/<name>/SKILL.md`，不依赖宿主技能发现）；机械事实委托仓库脚本，技能只保留时机、判断与确认。
 
-脚本与临时产物的落位、tooling 用法和清理约定以 [`scripts/INDEX.md`](scripts/INDEX.md) 为准。任务完成、交接或放弃前，主动按该规范处理本轮临时产物的去留。默认搜索遵守 `.gitignore` 并限定相关模块；确需查看忽略区时只指定具体任务目录、运行目录或清单，不进行全仓 `--no-ignore`/`-uuu` 遍历。
+脚本与临时产物的落位、tooling 用法和清理约定以 `scripts/INDEX.md` 为准。任务完成、交接或放弃前，主动按该规范处理本轮临时产物的去留。默认搜索遵守 `.gitignore` 并限定相关模块；确需查看忽略区时只指定具体任务目录、运行目录或清单，不进行全仓 `--no-ignore`/`-uuu` 遍历。
 
 | 工作流 | 入口 |
 | ------- | ---- |
@@ -121,12 +122,12 @@ node scripts/verify.mjs merge -- --base main   # 合并门禁
 
 | 文档 | 用途 |
 | ---- | ---- |
-| [`docs/inbox.md`](docs/inbox.md) | 待办事项需求唯一入口 |
-| [`docs/spec/rag-answer-baseline.md`](docs/spec/rag-answer-baseline.md) | 评测/核查规格（版本与状态由 spec 自身承载，长期复用资产） |
-| [`docs/archive/exp/exp-answer-baseline-v4.md`](docs/archive/exp/exp-answer-baseline-v4.md) | 试验记录（已归档）：按 spec v4 的两次既有运行回答核查（已完成全量复核，未经独立复核） |
-| [`docs/archive/exp/exp-harness-performance.md`](docs/archive/exp/exp-harness-performance.md) | 试验记录（已归档）：性能测量与执行诊断 |
-| [`docs/rules/`](docs/rules/) | 复杂规则权威目录 |
-| [`docs/templates/`](docs/templates/) | ADR/plan/notes/exp 机械模板唯一权威目录 |
-| [`docs/adr/INDEX.md`](docs/adr/INDEX.md) | ADR 状态索引 |
-| [`docs/archive/INDEX.md`](docs/archive/INDEX.md) | 已完成计划归档索引 |
-| [`scripts/INDEX.md`](scripts/INDEX.md) | 开发脚本体系导航 |
+| `docs/inbox.md` | 待办事项需求唯一入口 |
+| `docs/spec/rag-answer-baseline.md` | 评测/核查规格（版本与状态由 spec 自身承载，长期复用资产） |
+| `docs/archive/exp/exp-answer-baseline-v4.md` | 试验记录（已归档）：按 spec v4 的两次既有运行回答核查（已完成全量复核，未经独立复核） |
+| `docs/archive/exp/exp-harness-performance.md` | 试验记录（已归档）：性能测量与执行诊断 |
+| `docs/rules/` | 复杂规则权威目录 |
+| `docs/templates/` | ADR/plan/notes/exp 机械模板唯一权威目录 |
+| `docs/adr/INDEX.md` | ADR 状态索引 |
+| `docs/archive/INDEX.md` | 已完成计划归档索引 |
+| `scripts/INDEX.md` | 开发脚本体系导航 |
