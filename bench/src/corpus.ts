@@ -241,6 +241,21 @@ export function clampTexts(chunks: DocChunk[], maxChars: number): DocChunk[] {
   })
 }
 
+/** 技能表文件判定：references/ 下九份 `技能-*.md`（ADR-013 检索范围收缩对象，不含技能等价组）。 */
+const SKILL_TABLE_FILE_RE = /^references\/技能-[^/]+\.md$/
+
+export function isSkillTableFile(file: string): boolean {
+  return SKILL_TABLE_FILE_RE.test(file)
+}
+
+/**
+ * 按检索范围装配分块：includeSkillTables=false 时排除九份技能表（ADR-013）。
+ * 过滤在建索引前执行，返回数组与索引下标配套使用；不改 knowledge 真源与 corpus-manifest 语义。
+ */
+export function selectRetrievalChunks(chunks: DocChunk[], options: { includeSkillTables: boolean }): DocChunk[] {
+  return options.includeSkillTables ? chunks : chunks.filter((chunk) => !isSkillTableFile(chunk.file))
+}
+
 /** 加载整个语料库并分块 */
 export function loadCorpus(corpusRoot: string, maxChars?: number): DocChunk[] {
   const files = collectMarkdownFiles(corpusRoot)

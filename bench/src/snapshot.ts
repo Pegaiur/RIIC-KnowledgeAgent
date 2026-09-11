@@ -84,7 +84,7 @@ const META_ALLOWED_KEYS = new Set([
   'feedbackOnNoToolAnswer', 'toolChoice', 'parallelToolCalls', 'agentInstructionsSha256',
   'inputsSchemaVersion',
   'toolSchemaVersion', 'toolSchemaSha256', 'toolNames',
-  'tokenizer', 'entityBoost', 'topK', 'maxContextChars', 'corpusDir', 'chunks', 'questions',
+  'tokenizer', 'entityBoost', 'topK', 'maxContextChars', 'corpusDir', 'chunks', 'corpusChunks', 'questions',
   'questionIds', 'questionsPath', 'questionDefinitions', 'topic', 'prices', 'source',
 ])
 const TERMINATION_REASONS = new Set<TerminationReason>([

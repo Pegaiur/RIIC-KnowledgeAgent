@@ -4,7 +4,7 @@
 import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join, relative, resolve } from 'node:path'
 import { effectiveAttachFacts, loadConfig, validateBenchConfig, type BenchConfig } from './config.js'
-import { loadCorpus } from './corpus.js'
+import { loadCorpus, selectRetrievalChunks } from './corpus.js'
 import { buildSectionDirectory } from './sections.js'
 import { buildIndex, currentEntityBoost, currentTokenizer } from './retriever.js'
 import { buildSystemPrompt, loadKnowledgeAgentInstructions, runQuery, type AgentOptions } from './agent.js'
@@ -79,8 +79,9 @@ export async function runBenchmark(
   const toolDefinitions = toolsForRetriever(config.retriever)
   const sourceAtStart = collectSourceMetadata()
 
-  // 语料 + 索引（一次构建，全部查询复用）
-  const chunks = loadCorpus(config.corpusDir, config.maxContextChars)
+  // 语料 + 索引（一次构建，全部查询复用）；检索范围按 ADR-013 在装配层过滤，真源与 manifest 不变。
+  const corpusChunks = loadCorpus(config.corpusDir, config.maxContextChars)
+  const chunks = selectRetrievalChunks(corpusChunks, { includeSkillTables: config.includeSkillTables })
   const index = buildIndex(chunks)
   // 当前全部模式（bm25/hybrid）都开放 read_section，恒构建小节目录；与检索同用白名单原文来源。
   const sections = buildSectionDirectory(config.corpusDir)
@@ -273,6 +274,7 @@ export async function runBenchmark(
         maxContextChars: config.maxContextChars,
         corpusDir: config.corpusDir,
         chunks: chunks.length,
+        corpusChunks: corpusChunks.length,
         questions: questions.length,
         questionIds: questions.map((question) => question.id),
         questionsPath: relativeQuestionPath(opts.questionsPath ?? join(process.cwd(), 'bench', 'questions.json')),

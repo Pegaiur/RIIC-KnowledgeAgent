@@ -27,6 +27,12 @@
 - **原因**：步骤 0 定位为施工前契约收口；行为接线按步骤顺序推进，保持每次提交可回归。
 - **后果**：步骤 1/2/3 各自消费对应开关；`inputsSchemaVersion` 与 meta `schemaVersion` 维持现值（字段为向后兼容追加，旧运行缺字段表示不可用）。
 
+### 2026-09-11 — 步骤 1：技能表退出检索范围
+- **plan 原文**：在检索装配层过滤九份 `references/技能-*.md`，不改 knowledge 真源与 corpus-manifest 语义；两组范围共用装配；过滤在建索引前执行，索引下标与过滤后数组配套。
+- **实际做法**：corpus.ts 新增 `isSkillTableFile` 与 `selectRetrievalChunks`；runner 先载入全量 `corpusChunks`，再按 `includeSkillTables` 装配检索 `chunks` 与索引；meta `chunks` 记为检索范围块数，新增 meta `corpusChunks` 记全量块数。小节目录、read_section 与 gold/hitrate 仍用真源原文，本阶段不动。
+- **原因**：满足「范围可辨识 + 下标配套」，把 gold/hitrate 口径变更留给步骤 5，保持每次提交可回归。
+- **后果**：默认运行 meta `chunks` 由全量降为排除技能表后的块数；历史运行缺 `corpusChunks` 表示不可用。
+
 ## 债务记录
 
 本轮未新增或修改代码技术债；施工前待决事项直接列于 plan 步骤 0。
@@ -42,9 +48,13 @@
 - **发现**：bench/src/snapshot.ts 的 sanitizeMeta 只保留 META_ALLOWED_KEYS 内的键；未登记的 meta 新字段在导出共享快照时被静默丢弃。
 - **影响**：新增 meta 字段必须同步登记白名单，否则对照快照缺配置且无报错；步骤 0 已一并登记 includeSkillTables/expandFulltext/attachFacts。
 
+### 2026-09-11 — meta.chunks 语义随范围收缩改变
+- **发现**：meta `chunks` 原为全量分块数，步骤 1 后改为检索范围块数，跨策略对比会看到该值变化；为避免歧义新增 meta `corpusChunks` 记录全量块数。
+- **影响**：步骤 5 需在报告/快照层明确检索范围与排除数量，避免把不同范围的块数直接横比。
+
 ## 阻塞与解决
 
-ADR-013 已登记，契约收口完成；容量沿用总上限 12,000，RAG 预留与 facts 附带额度按 ADR 要求待最终 renderer 离线复算后定稿。步骤 1–3 的运行时行为接线尚未开始。原始轨迹仅只读核对，本轮未新增临时产物。
+ADR-013 已登记，契约收口完成；容量沿用总上限 12,000，RAG 预留与 facts 附带额度按 ADR 要求待最终 renderer 离线复算后定稿。步骤 1 的检索范围接线已完成，步骤 2–3 的运行时行为接线尚未开始。原始轨迹仅只读核对，本轮未新增临时产物。
 
 ### 2026-09-11 — 本轮验证
 
@@ -58,3 +68,9 @@ ADR-013 已登记，契约收口完成；容量沿用总上限 12,000，RAG 预�
 - `pnpm run typecheck` 通过；`pnpm run test` 全量 439 项通过（含新增 ADR-013 三开关配置用例）。
 - `node scripts/doc-check.mjs` 仅剩本计划未完成验收项的 D1，ADR D2/D5 无错误；D1 属合并门禁、施工期预期。
 - 本轮勾选「跨模块契约 ADR 登记」一项（ADR-013）；行为接线与其余验收项继续未勾选。
+
+### 2026-09-11 — 步骤 1 验证
+
+- `pnpm run typecheck` 通过；`pnpm run test` 全量 443 项通过（新增 retrieval-range 4 项与 runner 范围断言）。
+- 真实语料断言：九份技能表文件被排除，其余 references 与 base/guides 保留；默认 `meta.chunks` 小于 `meta.corpusChunks`。
+- `node scripts/doc-check.mjs` 仍仅剩本计划未完成验收项 D1；本轮勾选「技能表范围、模式边界与排除落点确定」一项。
