@@ -29,8 +29,16 @@
 > 遗留的技术债、被牺牲的改进与延期偿还事项（纯权衡取舍、无遗留债务的决策记入「决策偏离」）
 > 可定位到代码的债务须在代码处写 `TODO(tech-debt) <编号>：` 注释（AGENTS.md 编码核心约束 #6），此处只记编号、结论与未来偿还条件
 
+### 2026-09-11 — operator notes 无指纹保护的漂移风险
+- **债务**：18 条 operator 备注不引入 expectedHash（遵守编码核心约束 #10）；references/guides 中成员练度或组合边界变更时不会触发校验，存在静默漂移。无单一定位点，故不落代码 TODO，改以指向式文案与来源注释降低风险。
+- **未来偿还**：knowledge/guides 三个组合文档或相关 references 小节变更时，人工复核对应备注；不因本任务引入哈希字段。
+
 ## 意外发现
 > 实施中发现的 plan 未覆盖的依赖/边界/风险
+
+### 2026-09-11 — notes 审计/定稿/实施记录小节超出模板五段
+- **发现**：plan 步骤 1 要求审计结果「记入本计划的 notes」，而 notes 模板只有五段；本文件新增的「步骤 1」「步骤 2」「步骤 3–4」小节不属于模板段。已核 scripts/tasks/release/archive-plan.mjs 的 buildArchivedContent 会把 notes 全文并入 `## 实施纪要`，当前不会丢失。
+- **影响**：无需更新 plan 或新建 ADR；若未来脚本按「仅合并五段」收敛，需把这些小节迁移进五段或 plan 正文。已由独立审查两次复核该脚本行为。
 
 ## 阻塞与解决
 > 遇到的阻塞问题及解决方案
@@ -140,3 +148,23 @@
 - training.ts：新增 1 条（乌尔比安），由空批次改为显式 operators 批次。
 - dormitory.ts：新增 1 条（斯卡蒂），由空批次改为显式 operators 批次。
 - 全部新增后 operatorId 合计 18 个（含既有 2 个），无重复、无落后设施批次。
+
+## 步骤 3–4 实施记录与验证
+
+### 实施内容（提交 d269b95、ccabacc）
+
+- trade.ts 新增 6 条、control.ts 新增 3 条、manufacturing.ts 新增 5 条、training.ts 新增 1 条、dormitory.ts 新增 1 条，共 16 条 OperatorCuration；每条上方带完整仓库相对路径来源注释。
+- 保留既有巫恋、孑 2 条，合计 18 个 operatorId，无重复、无孤儿。
+- 同步 bench/tests/curation.test.ts 的 `validated.operators.keys()` 断言（2→18，为使测试通过的最小必要更新）；新增 3 个代表用例：代表入口返回卡携带导航、增加备注不改变 facts_search 命中集合与路径、已有备注保留且水月导航含搜索词与三人条件。
+
+### 验证结果
+
+- TDD：先更新断言观察红灯（1 failed），实施 notes 后转绿。
+- `pnpm run test -- bench/tests/curation.test.ts`：6 passed。
+- `pnpm run typecheck`：通过。
+- `pnpm run test`：38 files / 432 tests 通过（较实施前 +3 个代表用例）。
+- `node scripts/doc-check.mjs`：工程清单勾选后 D1 清零、完整通过（施工期 D1 仅由本计划未勾选项引起，已如实记录，未虚勾）。
+
+### 临时产物
+
+- dev-temp/work/crossref-audit/ 下的一次性审计脚本与 audit.txt 为步骤 1 证据；脚本已删除，audit.txt 在本步收尾清理，未入库。
