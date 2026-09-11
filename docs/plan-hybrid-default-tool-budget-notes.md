@@ -55,6 +55,12 @@
 - **原因**：独立审查指出仅覆盖默认构建路径时，runner 预构建漏传 `config.toolAttemptLimit` 不会被测试捕获。
 - **后果**：两条路径与 inputs/meta 均有回归覆盖；测试夹具沿用 `hybrid`，不新增对已删除模式的引用。
 
+### 2026-09-11 — 步骤 6 收束范围收窄为文档同步与门禁
+- **plan 原文**：「全部交付并完成发布元数据收束、计划归档后执行合并门禁」。
+- **实际做法**：经用户确认，本轮只做文档状态同步（勾选 plan 验收清单、ADR-011/012 与 ADR 索引置「已实施」、inbox 条目标记完成）并跑通 typecheck / test / doc-check / verify merge；不执行 release/prepare 归档、不改版本号与 CHANGELOG、不打 tag、不合并 main。
+- **原因**：plan 步骤 6 的验收项只列四条命令，未含版本与发版产物；发布元数据收束与计划归档属 release 流程，须由用户显式授权后再执行。
+- **后果**：plan 保持活动状态（全勾选、未冻结、未归档），inbox 的 `[x]` 条目与 plan 归档留待发布收束时经 `node scripts/tooling.mjs run release/prepare -- --plan docs/plan-hybrid-default-tool-budget.md --apply` 一并处理，届时在最终提交上重跑合并门禁。
+
 ## 债务记录
 > 遗留的技术债、被牺牲的改进与延期偿还事项（纯权衡取舍、无遗留债务的决策记入「决策偏离」）
 > 可定位到代码的债务须在代码处写 `TODO(tech-debt) <编号>：` 注释（AGENTS.md 编码核心约束 #6），此处只记编号、结论与未来偿还条件
