@@ -74,3 +74,9 @@
 
 ## 阻塞与解决
 > 遇到的阻塞问题及解决方案
+
+### 2026-09-11 — 验收发现两处 P2 契约遗漏（提交 a413dff 后返工）
+- **症状**：① `maxContextChars=1` 时 `rag_search` 只送达截断头部（如「【」）仍判 `success`、扣 1 点并拒绝后续调用；② 历史记录含 `tools: ['grep_search']` 且缺整个 `toolBatch` 时，报告把获准尝试/成功数显示为 0，而非「不可用」。
+- **根因**：① rag_search 状态按序列化后的 `data` 是否非空判定，`buildRagData` 也按块起始偏移是否进入预算记录 `injectedIds`，头部占位文字被当成证据；② `sumOptionalField` 在 `batches.length === 0` 时直接返回 0，未区分「确实没有工具调用」与「有工具调用却缺 toolBatch」。
+- **解决方案**：① `buildRagData` 改为按「块正文（头部之后的文本）是否进入送达前缀」记录 `injectedIds` 并返回 `delivered`，`rag_search` 以 `delivered` 决定 `success`/`empty`；② `sumOptionalField` 增加 `records` 入参，存在 `tools` 非空却无 `toolBatch` 的记录时返回 `null`（渲染为「不可用」），无工具调用仍为 0。
+- **预防**：补 `tool-executor.test.ts`（头部截断判空、免扣成功额度、不拒绝后续调用）与 `report.test.ts`（有工具调用缺 toolBatch → 不可用；完全无工具调用 → 0）回归用例；两处均为 plan 状态表与历史兼容契约的既有要求，未扩大范围、未新增 ADR。

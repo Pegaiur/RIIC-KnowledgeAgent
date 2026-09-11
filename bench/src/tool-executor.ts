@@ -433,7 +433,8 @@ function runOperation(
     for (const id of built.injectedIds) {
       if (context.injectedIds && !context.injectedIds.includes(id)) context.injectedIds.push(id)
     }
-    return { data: built.data, hitIds, injectedIds: built.injectedIds }
+    // 仅有命中编号但未送达任何正文证据（如预算被截到只剩头部）时判空，不扣成功额度。
+    return { data: built.data, hitIds, injectedIds: built.injectedIds, status: built.delivered ? 'success' : 'empty' }
   }
   if (operation === 'read_section') return readSectionOperation(params, context, config)
   let store: CardStore
@@ -475,14 +476,14 @@ const NAVIGATION_LIMIT = 8
 
 /**
  * 组装 RAG 命中正文，并在预算允许时附加小节上下文、上级范围入口与导航。
- * 正文优先送达；小节标识、上级范围与导航只使用剩余空间，injectedIds 只记录真实送达的 chunk。
+ * 正文优先送达；小节标识、上级范围与导航只使用剩余空间，injectedIds 只记录正文实际送达的 chunk。
  */
 function buildRagData(
   chunks: DocChunk[],
   hits: number[],
   maxChars: number,
   sections?: SectionDirectory,
-): { data: string; injectedIds: string[] } {
+): { data: string; injectedIds: string[]; delivered: boolean } {
   const blocks: RagBlock[] = hits.map((index) => {
     const chunk = chunks[index]!
     return { chunk, section: sections?.findByChunk(chunk.file, chunk.heading, chunk.startLine) }
@@ -491,14 +492,17 @@ function buildRagData(
   let body = ''
   const injectedIds: string[] = []
   for (const block of blocks) {
-    if (body.length < maxChars) injectedIds.push(block.chunk.id)
-    body += `${body ? '\n\n' : ''}${renderRagHeader(block)}\n${block.chunk.text}`
+    const separator = body ? '\n\n' : ''
+    body += `${separator}${renderRagHeader(block)}\n${block.chunk.text}`
+    // 只有该块正文（头部之后的文本）至少一个字符进入送达前缀，才算正文证据真实送达。
+    const textStart = body.length - block.chunk.text.length
+    if (Math.min(maxChars, body.length) > textStart) injectedIds.push(block.chunk.id)
   }
   let data = body.slice(0, maxChars)
   if (sections && data.length < maxChars && blocks.some((block) => block.section)) {
     data = appendSectionContext(data, buildSectionContext(sections, blocks, new Set(injectedIds)), maxChars)
   }
-  return { data, injectedIds }
+  return { data, injectedIds, delivered: injectedIds.length > 0 }
 }
 
 /** 来源头保持既有格式；新增小节信息一律放到正文之后，只用剩余预算，避免挤占原正文送达。 */

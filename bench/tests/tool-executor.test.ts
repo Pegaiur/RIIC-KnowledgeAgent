@@ -134,6 +134,23 @@ describe('独立函数 executor：逐项结算双上限预算', () => {
     expect(result.snapshot).toMatchObject({ successLimit: 2, successUsed: 2, attemptLimit: 10, attemptUsed: 4, requested: 5, denied: 1, executed: 3, remaining: 0 })
   })
 
+  it('RAG 未送达正文证据（仅截断头部）判空并免扣成功额度，不拒绝后续调用', async () => {
+    const config = loadConfig()
+    config.retriever = 'bm25'
+    config.maxContextChars = 1
+    const executor = createKnowledgeToolExecutor({ config, query: { id: 'RAG-NO-BODY', category: 'fact', question: '制造站效率？' }, chunks, index: buildIndex(chunks) }, 1)
+
+    const result = await executor.executeBatch([
+      call('a', 'rag_search', { query: '制造站效率' }),
+      call('b', 'rag_search', { query: '制造站效率' }),
+    ])
+
+    expect(result.results.map((item) => item.status)).toEqual(['empty', 'empty'])
+    expect(result.results.every((item) => item.executed)).toBe(true)
+    expect(result.results[0]?.injectedIds).toEqual([])
+    expect(result.snapshot).toMatchObject({ successUsed: 0, attemptUsed: 2, denied: 0, executed: 2, remaining: 1 })
+  })
+
   it('尝试次数上限与成败无关：连续失败占满后拒绝，成功余额仍在', async () => {
     const config = loadConfig()
     config.retriever = 'bm25'

@@ -379,19 +379,21 @@ function aggregateToolStats(records: CostRecord[]): ToolStatsAgg {
     executed: sum(batches.map((batch) => batch.executed)),
     denied: sum(batches.map((batch) => batch.denied)),
     errors: sum(batches.map((batch) => batch.errors)),
-    attempts: sumOptionalField(batches, 'attempts'),
-    successes: sumOptionalField(batches, 'successes'),
+    attempts: sumOptionalField(records, batches, 'attempts'),
+    successes: sumOptionalField(records, batches, 'successes'),
     hitCount,
     hitUnknown,
     resultChars: sum(batches.map((batch) => batch.resultChars)),
   }
 }
 
-/** 历史批次可能缺少新统计：任一批次缺失即整体不可用（null），不以 0 伪填或由 executed 推算。 */
+/** 历史批次可能缺少新统计：存在工具调用却缺整个 toolBatch，或任一批次缺该字段，均整体不可用（null），不以 0 伪填或由 executed 推算。 */
 function sumOptionalField(
+  records: CostRecord[],
   batches: Array<NonNullable<CostRecord['toolBatch']>>,
   key: 'attempts' | 'successes',
 ): number | null {
+  if (records.some((record) => (record.tools?.length ?? 0) > 0 && !record.toolBatch)) return null
   if (batches.length === 0) return 0
   if (batches.some((batch) => batch[key] === undefined)) return null
   return sum(batches.map((batch) => batch[key]!))

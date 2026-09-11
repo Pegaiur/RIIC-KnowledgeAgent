@@ -104,6 +104,18 @@ describe('report：聚合与渲染', () => {
     expect(mixed.toolStats).toMatchObject({ attempts: null, successes: null })
   })
 
+  it('历史记录有工具调用但缺整个 toolBatch 时尝试与成功数不可用', () => {
+    const report = aggregate([rec({ tools: ['grep_search'] })])
+    expect(report.toolStats).toMatchObject({ batches: 0, attempts: null, successes: null })
+    expect(renderMarkdown(report)).toContain('获准尝试 不可用｜成功 不可用')
+  })
+
+  it('完全无工具调用的运行尝试与成功数为 0 而非不可用', () => {
+    const report = aggregate([rec({})])
+    expect(report.toolStats).toMatchObject({ batches: 0, attempts: 0, successes: 0 })
+    expect(renderMarkdown(report)).toContain('获准尝试 0｜成功 0')
+  })
+
   it('部分 usage 仍汇总已知费用，并把重试未知用量标为不完整', () => {
     const report = aggregate([rec({
       input: null,
