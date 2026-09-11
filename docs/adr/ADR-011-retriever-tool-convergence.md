@@ -2,7 +2,7 @@
 
 - 日期：2026-09-10
 - 状态：提议
-- 替代：局部替代 ADR-003（`both` 语义）、ADR-006（工具清单中的 `grep_search` 行）、ADR-007（`facts` 模式只暴露 `facts_search`）、ADR-008（暴露 `read_section` 的模式范围）
+- 替代：局部替代 ADR-003（`hybrid` 工具组成与 `both` 组合语义）、ADR-006（工具清单中的 `grep_search` 行）、ADR-007（`facts` 模式只暴露 `facts_search`）、ADR-008（暴露 `read_section` 的模式范围）
 
 ## 背景
 
@@ -10,7 +10,7 @@
 
 实测（`node dist/cli.js hitrate --topk 3,5,10`，749 切块、bigram、`entityBoost=0`）recall@3 49.7%、recall@5 58.7%；用原题原文顺序查询时，多个必答真源位居 90–210 名（`类别.md#干员组（28 条）` 第 90 位、`技能-贸易站#巫恋` 第 155 位、`技能-控制中枢#薇薇安娜` 第 162 位）。归档试验记录的「必要证据未送达」7 项中有 6 项与此对应。`facts_search` 已能精确命中干员、技能、类别词条，但默认模式下不可用，缺少独立的第二条取证通路。
 
-同时：`grep_search` 自设计即为 P3 受控对照实验组（字面命中计数，无 IDF 加权与长度归一），对照价值已由既有试验消耗完毕；`facts` 模式只暴露 `facts_search`，工具集是 `hybrid` 的真子集且无 RAG 侧；`both` 是 `rag_search` + `grep_search` 的组合，随 grep 一并失去意义。
+同时：`grep_search` 自设计即为 P3 受控对照实验组（字面命中计数，无 IDF 加权与长度归一），对照价值已由既有试验消耗完毕；`facts` 模式只暴露 `facts_search`，工具集是 `hybrid` 的真子集且无 RAG 侧；`both` 是 `rag_search` + `grep_search` + `read_section` 的组合，随 grep 一并失去意义。
 
 ## 决策
 
@@ -49,4 +49,4 @@
 ## 关联
 
 - 规划文档：docs/plan-hybrid-default-tool-budget.md。
-- 替代范围：ADR-003、ADR-006、ADR-007、ADR-008 中与模式取值、工具清单和 `read_section` 暴露范围相关的部分。
+- 替代范围：ADR-003、ADR-006、ADR-007、ADR-008 中与模式取值、工具清单（含 `hybrid` 工具组成）和 `read_section` 暴露范围相关的部分。
