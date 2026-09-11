@@ -22,7 +22,7 @@ describe('curation：九个设施独立人工优化批次', () => {
     expect(validated.skills.size).toBe(0)
     expect(validated.grants.size).toBe(0)
     expect([...validated.operators.keys()].sort()).toEqual([
-      '乌尔比安', '令', '伺夜', '多萝西', '孑', '巫恋', '摩根', '斯卡蒂', '桃金娘', '水月', '泡泡', '温蒂', '焰尾', '能天使', '迷迭香', '银灰', '陈', '龙舌兰',
+      '乌尔比安', '令', '伺夜', '多萝西', '孑', '巫恋', '摩根', '斯卡蒂', '桃金娘', '水月', '泡泡', '温蒂', '焰尾', '红云', '能天使', '迷迭香', '银灰', '陈', '龙舌兰',
     ])
     const fact = facts.skillFacts[0]
     expect(resolveSkillEffectText(fact, 'raw', validated)).toBe(fact.rawEffectText)
@@ -82,7 +82,7 @@ describe('operator notes：组合跨引用导航', () => {
   })
 
   it('增加备注不改变 facts_search 的命中集合与路径', () => {
-    for (const term of ['焰尾', '能天使', '水月', '斯卡蒂', '莱茵生命', '标准化类技能', '红松骑士团', '薇薇安娜', '蕾缪安']) {
+    for (const term of ['焰尾', '能天使', '水月', '斯卡蒂', '莱茵生命', '标准化类技能', '红松骑士团', '薇薇安娜', '蕾缪安', '红云', '红云组']) {
       const withNotes = curatedStore.factsSearch(term)
       const withoutNotes = rawStore.factsSearch(term)
       expect(withNotes.paths, term).toEqual(withoutNotes.paths)
@@ -91,6 +91,20 @@ describe('operator notes：组合跨引用导航', () => {
       expect(withNotes.matches.map((match) => match.categories), term)
         .toEqual(withoutNotes.matches.map((match) => match.categories))
     }
+  })
+
+  it('红云单卡提供两条可选分支导航，不把成员展开为本次命中', () => {
+    const result = curatedStore.factsSearch('红云')
+    expect(result.matches.map((match) => match.card.canonical)).toEqual(['红云'])
+    const output = serializeFactsMatches(result)
+    expect(output).toContain('本卡精一')
+    expect(output).toContain('同站')
+    expect(output).toContain('酒神和 Miss.Christine（均精二）')
+    expect(output).toContain('稀音、帕拉斯、刻俄柏中任选两名精二')
+    expect(output).toContain('两条分支择一即可')
+    expect(output).toContain('搜索「红云组」')
+    const followUp = curatedStore.factsSearch('红云组').matches.map((match) => match.card.canonical)
+    expect(followUp).toEqual(expect.arrayContaining(['红云', '酒神', 'Miss.Christine', '稀音', '帕拉斯', '刻俄柏']))
   })
 
   it('已有备注保留，且水月导航保留精确搜索词与三人同站条件', () => {

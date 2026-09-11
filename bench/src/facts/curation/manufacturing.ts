@@ -6,6 +6,11 @@ export const MANUFACTURING_CURATIONS: CurationBatch = {
   skills: [],
   grants: [],
   operators: [
+    // 来源：knowledge/guides/制造站组合.md「红云组」
+    {
+      operatorId: '红云',
+      notes: '红云组以本卡精一为核心；同站重要搭配任选一条：酒神和 Miss.Christine（均精二），或稀音、帕拉斯、刻俄柏中任选两名精二。两条分支择一即可，可用 facts_search 搜索「红云组」核对成员技能与解锁条件。',
+    },
     // 来源：knowledge/guides/制造站组合.md「泡泡组」
     {
       operatorId: '泡泡',
