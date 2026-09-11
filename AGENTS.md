@@ -72,12 +72,12 @@ rag-test/
 ├── docs/                           ← 过程管理文档（inbox / plan / draft / exp / spec / adr / archive）
 │   ├── inbox.md                    ← 需求唯一入口
 │   ├── plan-*.md / draft-*.md      ← 版本计划 / 未定稿工程提案
-│   ├── exp-*.md                   ← 试验过程、结果和结论
+│   ├── exp-*.md / exp/             ← 活动试验记录 / 已结束或已取消的试验记录
 │   ├── spec/                       ← 评测/核查规格（长期复用资产，如 RAG 20 题回答核查基线）
 │   ├── templates/                  ← ADR/plan/notes/exp 机械模板
 │   ├── rules/                      ← 复杂规则权威目录
 │   ├── adr/                        ← 架构决策记录（INDEX.md 为状态索引）
-│   └── archive/                    ← 已归档计划（INDEX.md）；exp/ 存已结束试验
+│   └── archive/                    ← 已归档计划（INDEX.md）
 └── dev-temp/                       ← 开发脚本临时区（不入库）
 ```
 
@@ -124,8 +124,8 @@ node scripts/verify.mjs merge -- --base main   # 合并门禁
 | ---- | ---- |
 | `docs/inbox.md` | 待办事项需求唯一入口 |
 | `docs/spec/rag-answer-baseline.md` | 评测/核查规格（版本与状态由 spec 自身承载，长期复用资产） |
-| `docs/archive/exp/exp-answer-baseline-v4.md` | 试验记录（已归档）：按 spec v4 的两次既有运行回答核查（已完成全量复核，未经独立复核） |
-| `docs/archive/exp/exp-harness-performance.md` | 试验记录（已归档）：性能测量与执行诊断 |
+| `docs/exp/exp-answer-baseline-v4.md` | 试验记录（已结束）：按 spec v4 的两次既有运行回答核查（已完成全量复核，未经独立复核） |
+| `docs/exp/exp-harness-performance.md` | 试验记录（已结束）：性能测量与执行诊断 |
 | `docs/rules/` | 复杂规则权威目录 |
 | `docs/templates/` | ADR/plan/notes/exp 机械模板唯一权威目录 |
 | `docs/adr/INDEX.md` | ADR 状态索引 |
