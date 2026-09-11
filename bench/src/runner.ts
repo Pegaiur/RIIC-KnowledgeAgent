@@ -3,7 +3,7 @@
  */
 import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join, relative, resolve } from 'node:path'
-import { loadConfig, validateBenchConfig, type BenchConfig } from './config.js'
+import { effectiveAttachFacts, loadConfig, validateBenchConfig, type BenchConfig } from './config.js'
 import { loadCorpus } from './corpus.js'
 import { buildSectionDirectory } from './sections.js'
 import { buildIndex, currentEntityBoost, currentTokenizer } from './retriever.js'
@@ -253,6 +253,9 @@ export async function runBenchmark(
         temperature: config.temperature ?? null,
         baseUrl: config.baseUrl,
         retriever: config.retriever,
+        includeSkillTables: config.includeSkillTables,
+        expandFulltext: config.expandFulltext,
+        attachFacts: effectiveAttachFacts(config),
         toolBudget: config.toolBudget,
         toolAttemptLimit: config.toolAttemptLimit,
         sessionTimeoutMs: config.sessionTimeoutMs,

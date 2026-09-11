@@ -80,6 +80,7 @@ const META_SUMMARY_KEYS = new Set([
 const META_ALLOWED_KEYS = new Set([
   'schemaVersion', 'traceSchemaVersion', 'ts', 'thinking', 'dry', 'provider', 'model',
   'temperature', 'maxTokens', 'baseUrl', 'retriever', 'minRagCalls', 'toolBudget', 'toolAttemptLimit', 'sessionTimeoutMs',
+  'includeSkillTables', 'expandFulltext', 'attachFacts',
   'feedbackOnNoToolAnswer', 'toolChoice', 'parallelToolCalls', 'agentInstructionsSha256',
   'inputsSchemaVersion',
   'toolSchemaVersion', 'toolSchemaSha256', 'toolNames',

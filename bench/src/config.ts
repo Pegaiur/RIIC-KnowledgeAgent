@@ -107,6 +107,12 @@ export interface ExperimentConfig {
   temperature?: number
   /** 检索器（bm25 | hybrid） */
   retriever: RetrieverId
+  /** 检索语料是否包含九份 references/技能-*.md 技能表（false = 排除；ADR-013） */
+  includeSkillTables: boolean
+  /** 命中的 base/guides 小节是否按文件扩展到原文文档范围（ADR-013） */
+  expandFulltext: boolean
+  /** hybrid 的 rag_search 是否自动附带内部 facts 卡；undefined = 随模式默认（hybrid 开、bm25 关） */
+  attachFacts?: boolean
   /** 语料目录（相对仓库根） */
   corpusDir: string
 }
@@ -125,6 +131,10 @@ export const EXPERIMENT: ExperimentConfig = {
   maxTokens: 4096,
   temperature: undefined,
   retriever: 'hybrid',
+  // 默认组合：排除技能表 + 扩展原文；附带 facts 随 hybrid 默认开启（ADR-013）。
+  includeSkillTables: false,
+  expandFulltext: true,
+  attachFacts: undefined,
   corpusDir: 'knowledge',
 }
 
@@ -157,6 +167,12 @@ export interface BenchConfig {
   maxContextChars: number
   /** 检索器：hybrid 同时暴露 BM25 RAG 与 facts 查询工具；bm25 保留为纯 RAG 对照 */
   retriever: RetrieverId
+  /** 检索语料是否包含九份 references/技能-*.md 技能表（false = 排除；ADR-013） */
+  includeSkillTables: boolean
+  /** 命中的 base/guides 小节是否按文件扩展到原文文档范围（ADR-013） */
+  expandFulltext: boolean
+  /** hybrid 的 rag_search 是否自动附带内部 facts 卡；undefined = 随模式默认（hybrid 开、bm25 关） */
+  attachFacts?: boolean
   /** 每题工具成功额度；仅在非空执行成功时扣 1 点，每题真实用户提问开始时重置 */
   toolBudget: number
   /** 每题工具获准尝试硬上限；与成败无关，达到后新增调用只收到拒绝 */
@@ -191,6 +207,9 @@ export function loadConfig(providerInput?: ProviderId): BenchConfig {
     topK: EXPERIMENT.topK,
     maxContextChars: EXPERIMENT.maxContextChars,
     retriever: EXPERIMENT.retriever,
+    includeSkillTables: EXPERIMENT.includeSkillTables,
+    expandFulltext: EXPERIMENT.expandFulltext,
+    attachFacts: EXPERIMENT.attachFacts,
     toolBudget: EXPERIMENT.toolBudget,
     toolAttemptLimit: EXPERIMENT.toolAttemptLimit,
     sessionTimeoutMs: EXPERIMENT.sessionTimeoutMs,
@@ -200,10 +219,22 @@ export function loadConfig(providerInput?: ProviderId): BenchConfig {
   }
 }
 
+/**
+ * 实际是否启用 RAG 内部 facts 附带：显式值优先；未显式时 hybrid 默认开启、bm25 默认关闭（ADR-013）。
+ * 该值决定运行实际行为，mode 开关本身仍由 retriever 决定工具集合。
+ */
+export function effectiveAttachFacts(config: Pick<BenchConfig, 'retriever' | 'attachFacts'>): boolean {
+  return config.attachFacts ?? config.retriever === 'hybrid'
+}
+
 /** 校验单题生命周期相关配置；CLI 覆盖参数后也必须调用。 */
-export function validateBenchConfig(config: Pick<BenchConfig, 'toolBudget' | 'toolAttemptLimit' | 'sessionTimeoutMs' | 'retriever'>): void {
+export function validateBenchConfig(config: Pick<BenchConfig, 'toolBudget' | 'toolAttemptLimit' | 'sessionTimeoutMs' | 'retriever' | 'attachFacts'>): void {
   if (config.retriever !== 'bm25' && config.retriever !== 'hybrid') {
     throw new Error(`不支持的检索模式：${String(config.retriever)}（可选 bm25 | hybrid）`)
+  }
+  // 显式在 bm25 请求附带 facts 属参数错误；未显式时 bm25 默认不附带，不应报错（ADR-013）。
+  if (config.retriever === 'bm25' && config.attachFacts === true) {
+    throw new Error('bm25 模式不支持 RAG 自动附带 facts；请使用 hybrid，或取消显式附带。')
   }
   for (const [name, value] of [
     ['toolBudget', config.toolBudget],

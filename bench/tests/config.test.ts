@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { loadConfig, validateBenchConfig } from '../src/config.js'
+import { effectiveAttachFacts, loadConfig, validateBenchConfig } from '../src/config.js'
 
 describe('配置：工具预算与单题生命周期', () => {
   it('DeepSeek 使用官方端点和精确实验型号', () => {
@@ -53,5 +53,30 @@ describe('配置：工具预算与单题生命周期', () => {
     config.sessionTimeoutMs = 1_000
 
     expect(() => validateBenchConfig(config)).not.toThrow()
+  })
+})
+
+describe('配置：检索范围、原文扩展与 facts 附带（ADR-013）', () => {
+  it('默认排除技能表、扩展原文，hybrid 有效附带 facts', () => {
+    const config = loadConfig()
+
+    expect(config.includeSkillTables).toBe(false)
+    expect(config.expandFulltext).toBe(true)
+    expect(config.attachFacts).toBeUndefined()
+    expect(effectiveAttachFacts(config)).toBe(true)
+  })
+
+  it('bm25 未显式附带时校验通过且有效附带为关', () => {
+    const bm25 = { ...loadConfig(), retriever: 'bm25' as const }
+
+    expect(effectiveAttachFacts(bm25)).toBe(false)
+    expect(() => validateBenchConfig(bm25)).not.toThrow()
+    expect(effectiveAttachFacts({ ...bm25, attachFacts: false })).toBe(false)
+  })
+
+  it('显式在 bm25 请求附带 facts 报中文参数错误', () => {
+    const bm25 = { ...loadConfig(), retriever: 'bm25' as const, attachFacts: true }
+
+    expect(() => validateBenchConfig(bm25)).toThrow('bm25 模式不支持 RAG 自动附带 facts')
   })
 })
