@@ -303,6 +303,7 @@ export async function runBenchmark(
         toolErrors: runReport.toolStats.errors,
         toolAttempts: runReport.toolStats.attempts,
         toolSuccesses: runReport.toolStats.successes,
+        ragDeliveryStats: runReport.ragDeliveryStats,
         toolResultChars: runReport.toolStats.resultChars,
         toolHitCount: runReport.toolStats.hitCount,
         toolHitUnknown: runReport.toolStats.hitUnknown,

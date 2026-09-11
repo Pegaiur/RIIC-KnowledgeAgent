@@ -188,3 +188,12 @@ ADR-013 已登记，契约收口完成；容量沿用总上限 12,000，RAG 预�
   - 排除技能表（检索 145）：recall 47.7 / 59.7 / 64.1%，precision 45.0 / 35.0 / 19.0%，nDCG 0.603 / 0.629 / 0.647。
   - 结论：排除技能表未抬高纯 BM25 hitrate——recall@3/@10 与全部 K 的 precision、nDCG 小幅下降（recall@5 微升），因 23 个被排除 gold 键（全在 S 题）原为技能表块、现计未命中且保留分母；F04、F10 逐题改善与 plan 证据表一致，S02/S07 明显下降。该对比只反映排序与覆盖率，不代表工具或回答质量，跨范围不直接横比。
 - **验证**：`pnpm run typecheck` 通过；`pnpm run test` 全量 488 项通过（较步骤 5 的 485 新增 3 项）；`node scripts/doc-check.mjs` 通过。以上均为本地离线，无 provider 调用。
+
+### 2026-09-11 — 实施验收缺口修复与复验
+
+- 根据用户“进行修复后提交”，修复本任务验收提出的三项实现问题；未启动实体标记探针、付费对照或作答优化。
+- 原文扩展完整/分页分支均保留此前已组装正文；跨文件测试同时断言最终正文存在、顺序与实际送达区间，避免仅检查 fulltextRanges 造成虚假通过。
+- 送达观测沿用 trace 的完整路径，新增 CostRecord.ragDelivery（每次外部 RAG 的 callId/status/fulltextRanges/attachedFacts）；路径持久化保留 kind/term/memberIds/category，完整来源登记仍由 trace/inputs 承载。runner 的 records.jsonl 写入台账，meta.ragDeliveryStats 与 report 共同聚合内部查询、实际附带调用、未附带词条、卡次及原文范围；快照按嵌套白名单保留台账、从 records 重算汇总。injected.json 保持旧 chunk ID 口径，answers 与 inputs 的原有职责不变，不能用 injected.json 单独核查扩展/facts 送达。
+- 同次跨词共享卡只计一次送达卡次，跨次重复送达仍计入；未执行的拒绝/参数错误可确认为零，执行异常缺观测与旧记录缺字段保持不可用，不反推零查询。外部工具额度、模型调用与费用计量均不变。
+- nDCG 的 DCG/IDCG 均按实际分块计量：理想相关块数为 gold 解析的去重目录下标数；多个 gold 键指同一实际块只计一次，重复标题对应多个实际块则分别计数。更正上文将“多个 gold 键指同一块”称为“重复标题块”的混淆；新增真正重复标题双块用例，nDCG@2=1。
+- 验证：pnpm run typecheck 通过；pnpm run test 全量 493 项通过（新增 5 项并增强原用例）；包括模拟 provider 的真实 runner→records/meta→snapshot 导出读回→report 聚合链路。测试临时目录均由 finally 清理，未新增需交接的临时产物。

@@ -6,6 +6,7 @@
 import { existsSync, readFileSync, mkdirSync, writeFileSync } from 'node:fs'
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import type { BenchQuery, CostRecord, HttpAttempt, LlmUsage, TerminationReason } from './types.js'
+import type { RagDeliveryRecord } from './delivery.js'
 
 export const SNAPSHOT_SCHEMA_VERSION = 1 as const
 
@@ -64,11 +65,12 @@ const RECORD_KEYS = [
   'ts', 'queryId', 'category', 'round', 'thinking', 'provider', 'model',
   'input', 'output', 'knownInput', 'knownOutput', 'cached', 'reasoning',
   'costIn', 'costOut', 'costTotal', 'usageCompleteness', 'usageAggregation',
-  'httpAttempts', 'truncated', 'tools', 'toolBatch',
+  'httpAttempts', 'truncated', 'tools', 'toolBatch', 'ragDelivery',
 ]
 const TOOL_BATCH_KEYS = ['requested', 'granted', 'executed', 'denied', 'errors', 'attempts', 'successes', 'hitCount', 'hitUnknown', 'budgetBefore', 'budgetAfter', 'resultChars']
 const OPTIONAL_TOOL_BATCH_KEYS = new Set(['attempts', 'successes', 'hitCount', 'hitUnknown'])
 const META_SUMMARY_KEYS = new Set([
+  'ragDeliveryStats',
   'records', 'inputTokens', 'outputTokens', 'inputTokensExact', 'outputTokensExact',
   'totalCostIn', 'totalCostOut', 'totalCost', 'costComplete', 'incompleteUsageCalls',
   'unknownUsageCalls', 'failed', 'modelSteps', 'toolBatches', 'toolCallsRequested',
@@ -376,6 +378,8 @@ function pickRecord(record: CostRecord): CostRecord {
     if (value === undefined) continue
     if (key === 'httpAttempts' && Array.isArray(value)) {
       out[key] = value.map((attempt) => pickAttempt(attempt as HttpAttempt))
+    } else if (key === 'ragDelivery') {
+      out[key] = pickRagDelivery(value)
     } else if (key === 'tools' && Array.isArray(value)) {
       out[key] = value.filter((item): item is string => typeof item === 'string')
     } else if (key === 'toolBatch' && isRecord(value)) {
@@ -389,6 +393,58 @@ function pickRecord(record: CostRecord): CostRecord {
   // 兼容最早没有截断标记的历史 JSONL；缺省不改变既有聚合含义。
   if (out.truncated === undefined) out.truncated = false
   return out as unknown as CostRecord
+}
+
+/** 送达台账使用嵌套白名单，不复制正文、密钥或未知扩展字段。 */
+function pickRagDelivery(value: unknown): RagDeliveryRecord[] {
+  const objects = (input: unknown): Record<string, unknown>[] => {
+    if (!Array.isArray(input) || !input.every(isRecord)) throw new Error('基准快照格式错误：ragDelivery 嵌套字段必须是对象数组')
+    return input
+  }
+  const text = (input: unknown): string => {
+    if (typeof input !== 'string') throw new Error('基准快照格式错误：ragDelivery 文本字段必须是字符串')
+    return redactText(input)
+  }
+  const number = (input: unknown): number => positiveOrZero(input, 'ragDelivery 数值')
+  return objects(value).map((call) => ({
+    callId: text(call.callId),
+    status: text(call.status),
+    ...(call.fulltextRanges === undefined ? {} : { fulltextRanges: objects(call.fulltextRanges).map((range) => {
+      const offset = number(range.offset)
+      const endOffset = number(range.endOffset)
+      const complete = booleanValue(range.complete, 'ragDelivery.complete')
+      const nextOffset = range.nextOffset === null ? null : number(range.nextOffset)
+      if (endOffset < offset || (complete ? nextOffset !== null : nextOffset !== endOffset)) {
+        throw new Error('基准快照格式错误：ragDelivery 原文范围与续读位置不一致')
+      }
+      return {
+        file: text(range.file), docId: text(range.docId), offset, endOffset,
+        startLine: number(range.startLine), endLine: number(range.endLine), complete, nextOffset,
+      }
+    }) }),
+    ...(call.attachedFacts === undefined ? {} : { attachedFacts: objects(call.attachedFacts).map((fact) => {
+      const start = number(fact.start)
+      const end = number(fact.end)
+      if (end < start) throw new Error('基准快照格式错误：ragDelivery 词条范围倒置')
+      return {
+        term: text(fact.term), start, end,
+        matched: stringArray(fact.matched, 'ragDelivery.matched').map(redactText),
+        delivered: stringArray(fact.delivered, 'ragDelivery.delivered').map(redactText),
+        omittedReason: fact.omittedReason === null ? null : text(fact.omittedReason),
+        chars: number(fact.chars), elapsedMs: number(fact.elapsedMs),
+        paths: objects(fact.paths).map((path) => {
+          const kind = path.kind
+          if (kind !== 'exact' && kind !== 'alias' && kind !== 'substring' && kind !== 'combo') {
+            throw new Error('基准快照格式错误：ragDelivery 解析路径类型无效')
+          }
+          return {
+            kind, term: text(path.term), memberIds: stringArray(path.memberIds, 'ragDelivery.memberIds').map(redactText),
+            ...(path.category === undefined ? {} : { category: text(path.category) }),
+          }
+        }),
+      }
+    }) }),
+  }))
 }
 
 function pickAttempt(attempt: HttpAttempt): HttpAttempt {

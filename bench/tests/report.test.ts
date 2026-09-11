@@ -116,6 +116,18 @@ describe('report：聚合与渲染', () => {
     expect(renderMarkdown(report)).toContain('获准尝试 0｜证据送达（成功） 0')
   })
 
+  it('内部附带按查询、调用与去重卡次分别聚合，历史和异常观测不补零', () => {
+    const fact = { term: '测试', start: 0, end: 2, matched: ['甲'], delivered: ['甲'], omittedReason: null, chars: 20, elapsedMs: 0, paths: [] }
+    const current = rec({ tools: ['rag_search'], ragDelivery: [{ callId: 'a', status: 'success', fulltextRanges: [], attachedFacts: [fact, { ...fact, term: '别名' }] }] })
+    expect(aggregate([current, { ...current, round: 2 }]).ragDeliveryStats).toEqual({
+      internalFactsQueries: 4, attachedCalls: 2, omittedTerms: 0, deliveredCards: 2, expandedRanges: 0,
+    })
+    expect(aggregate([current, rec({ tools: ['rag_search'] })]).ragDeliveryStats.internalFactsQueries).toBeNull()
+    expect(aggregate([rec({ tools: ['rag_search'], ragDelivery: [{ callId: 'a', status: 'error' }] })]).ragDeliveryStats.internalFactsQueries).toBeNull()
+    const omitted = { ...fact, delivered: [], omittedReason: '容量不足' }
+    expect(aggregate([rec({ tools: ['rag_search'], ragDelivery: [{ callId: 'a', status: 'empty', fulltextRanges: [], attachedFacts: [omitted] }] })]).ragDeliveryStats).toMatchObject({ internalFactsQueries: 1, attachedCalls: 0, omittedTerms: 1, deliveredCards: 0 })
+  })
+
   it('仅 facts 送达的 rag_search 计入证据送达，但不计入旧 chunk 命中口径', () => {
     // facts-only 成功：hitIds 为空（hitCount 0），但 status=success（successes 1）。
     const report = aggregate([

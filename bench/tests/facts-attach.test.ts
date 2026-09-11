@@ -1,4 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { loadConfig, type BenchConfig } from '../src/config.js'
 import { buildIndex } from '../src/retriever.js'
 import { buildCardStore } from '../src/facts/store.js'
@@ -10,6 +13,9 @@ import {
 } from '../src/tool-executor.js'
 import { createQueryTrace } from '../src/trace.js'
 import { runQuery } from '../src/agent.js'
+import { runBenchmark } from '../src/runner.js'
+import { snapshotFromRunDir, writeSnapshot, readSnapshot } from '../src/snapshot.js'
+import { aggregateSnapshot } from '../src/report.js'
 import { aggregate, renderMarkdown } from '../src/report.js'
 import type { RecordCard } from '../src/facts/card.js'
 import type { TermCurations } from '../src/facts/terms.js'
@@ -298,6 +304,8 @@ describe('rag_search 内部 facts 附带集成（hybrid 真实 store）', () => 
     // 端到端聚合：证据送达 1，旧 chunk 命中 0（不把 facts-only 成功读成没有证据）
     const report = aggregate(result.records)
     expect(report.toolStats).toMatchObject({ attempts: 1, successes: 1, hitCount: 0 })
+    expect(result.records[0]?.ragDelivery?.[0]?.attachedFacts?.[0]).toMatchObject({ term: '刻俄柏', delivered: ['刻俄柏'] })
+    expect(report.ragDeliveryStats).toMatchObject({ internalFactsQueries: 1, attachedCalls: 1, deliveredCards: 1, expandedRanges: 0 })
     const markdown = renderMarkdown(report)
     expect(markdown).toContain('证据送达（成功） 1')
     expect(markdown).toContain('有命中（旧 chunk 口径，不含 facts-only 送达） 0')
@@ -305,6 +313,34 @@ describe('rag_search 内部 facts 附带集成（hybrid 真实 store）', () => 
 })
 
 afterEach(() => vi.restoreAllMocks())
+
+it('真实 runner 产物与共享快照保留 RAG 送达台账并重算相同汇总（模拟 provider）', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'rag-delivery-runner-'))
+  try {
+    mockCall.mockReset()
+    mockCall.mockResolvedValueOnce(providerResult({ toolCalls: [call('a', 'rag_search', { query: '温蒂 自动化组' })] }))
+      .mockResolvedValueOnce(providerResult({ content: '已读取记录卡。' }))
+    const output = await runBenchmark([{ id: 'DELIVERY', category: 'fact', question: '温蒂 自动化组' }],
+      { thinking: 'off', dry: false, outDir: dir, config: { ...loadConfig(), apiKey: '', attachFacts: true } })
+    const persisted = JSON.parse(readFileSync(output.jsonlPath, 'utf8').trim().split('\n')[0]!)
+    const delivery = persisted.ragDelivery[0]
+    expect(delivery.fulltextRanges.length).toBeGreaterThan(0)
+    expect(delivery.attachedFacts.some((fact: { delivered: string[] }) => fact.delivered.includes('温蒂'))).toBe(true)
+    const meta = JSON.parse(readFileSync(output.metaPath, 'utf8'))
+    const report = aggregate(output.records)
+    expect(meta.ragDeliveryStats).toEqual(report.ragDeliveryStats)
+    expect(meta.ragDeliveryStats.internalFactsQueries).toBe(2)
+    const file = join(dir, 'shared.json')
+    writeSnapshot(file, snapshotFromRunDir(output.runDir))
+    const restored = readSnapshot(file)
+    expect(restored.records[0]?.ragDelivery).toEqual(persisted.ragDelivery)
+    expect(aggregateSnapshot(restored).ragDeliveryStats).toEqual(report.ragDeliveryStats)
+    expect(restored.meta).not.toHaveProperty('ragDeliveryStats')
+    expect(mockCall).toHaveBeenCalledTimes(2)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
 
 describe('rag_search 内部 facts 异常原子性与预算拒绝（ADR-013 步骤 5）', () => {
   const ATOMIC_CHUNKS = [{ id: 'base/甲.md#温蒂', file: 'base/甲.md', heading: '温蒂', text: '温蒂制造站技能说明。', startLine: 1, endLine: 1 }]

@@ -2,6 +2,8 @@
  * 独立函数工具 schema 与按批次预算执行器。
  * 工具函数名直接完成路由；执行器仍共用一套预算、校验和底层检索门面。
  */
+import type { AttachedFactsObservation, FulltextRange } from './delivery.js'
+export type { AttachedFactsObservation, FulltextRange } from './delivery.js'
 import { createHash } from 'node:crypto'
 import { effectiveAttachFacts, loadConfig, type BenchConfig, type RetrieverId } from './config.js'
 import { isFulltextFile } from './corpus.js'
@@ -58,27 +60,6 @@ export const FACTS_RESULT_VERSION = 5 as const
  */
 export const RAG_ATTACH_FACTS_QUOTA_CHARS = 4_000 as const
 
-/** RAG 内部 facts 附带的单触发词观测（ADR-013 步骤 3）：触发、匹配与送达分开记录。 */
-export interface AttachedFactsObservation {
-  /** 触发词（完整登记词）。 */
-  term: string
-  /** 触发词在本次实际检索 query 中的 UTF-16 起止区间 [start, end)；工具参数层已 trim 首尾，识别函数对未 trim 输入自行校正偏移。 */
-  start: number
-  end: number
-  /** 该词的解析路径并集（exact/alias/substring/combo）；未附带时仍保留匹配到的路径。 */
-  paths: ResolutionPath[]
-  /** factsSearch 命中的 canonical（按 store 稳定卡序去重）。 */
-  matched: string[]
-  /** 本次实际送达的 canonical；整组未附带时为空。 */
-  delivered: string[]
-  /** 未附带原因；完整附带时为 null。 */
-  omittedReason: string | null
-  /** 该词实际写入的附带正文 UTF-16 字符数：已附带为整组块，未附带为提示行长度（提示也未写入时为 0）。 */
-  chars: number
-  /** 该次内部 factsSearch 耗时（毫秒）。 */
-  elapsedMs: number
-}
-
 /**
  * TODO(tech-debt) R5-5：协议层直接内嵌 store 的 ResolutionPath 联合类型，路径种类变更会牵动 wire 契约；
  * 待协议与领域类型分层后把该类型下沉到共享 terms 模块（只沉 wire 契约，不沉内部行形状）。
@@ -90,20 +71,6 @@ export interface FactsResultMetadata {
   complete: true
   scope: Record<string, unknown>
   resolution: { paths: ResolutionPath[] }
-}
-
-/** 原文扩展的实际送达范围（ADR-013）：offset/行范围对应原文，用于观测与续读。 */
-export interface FulltextRange {
-  file: string
-  /** 可调用续读的文档范围 ID（read_section 可解析）。 */
-  docId: string
-  /** 已送达正文在文档正文中的起止 UTF-16 offset。 */
-  offset: number
-  endOffset: number
-  startLine: number
-  endLine: number
-  complete: boolean
-  nextOffset: number | null
 }
 
 export interface ToolExecutionResult {
@@ -707,7 +674,7 @@ function appendFulltextBlock(body: string, separator: string, doc: SectionEntry,
   if (remaining >= doc.body.length) {
     return {
       kind: 'complete',
-      text: `${prefix}${doc.body}`,
+      text: `${body}${prefix}${doc.body}`,
       range: {
         file: doc.file,
         docId: doc.sectionId,
@@ -731,7 +698,7 @@ function appendFulltextBlock(body: string, separator: string, doc: SectionEntry,
   const endLine = doc.startLine + countNewlines(page)
   return {
     kind: 'partial',
-    text: `${prefix}${page}\n${meta}`,
+    text: `${body}${prefix}${page}\n${meta}`,
     range: {
       file: doc.file,
       docId: doc.sectionId,

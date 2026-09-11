@@ -38,6 +38,34 @@ function record(queryId = 'Q1'): CostRecord {
 }
 
 describe('共享基准快照', () => {
+  it('送达台账导出读回保留范围与解析成员，过滤未知字段并拒绝非法范围', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'rag-delivery-snapshot-'))
+    try {
+      const range = { file: 'base/甲.md', docId: 'doc:base/甲.md', offset: 0, endOffset: 12, startLine: 1, endLine: 2, complete: false, nextOffset: 12 }
+      const delivery = [{ callId: 'a', status: 'success', fulltextRanges: [range], attachedFacts: [{
+        term: '甲', start: 0, end: 1, matched: ['甲'], delivered: ['甲'], omittedReason: null, chars: 20, elapsedMs: 0,
+        paths: [{ kind: 'exact' as const, category: 'operator', term: '甲', memberIds: ['甲'] }],
+      }], unexpected: 'must-drop' }]
+      const input = { runId: 'delivery', topic: '送达', meta: {}, queries: [{
+        id: 'Q1', category: 'fact', question: '甲', answer: '甲', status: 'completed' as const, terminationReason: 'answer' as const,
+        rounds: 1, toolRounds: 1, toolTrace: ['rag_search'], feedbackUsed: false, budgetUsed: 1, budgetRemaining: 4, injectedIds: [],
+      }], records: [{ ...record(), tools: ['rag_search' as const], ragDelivery: delivery }] }
+      const snapshot = createSnapshot(input)
+      const file = join(dir, 'snapshot.json')
+      writeSnapshot(file, snapshot)
+      const restored = readSnapshot(file)
+      expect(restored.records[0]?.ragDelivery?.[0]?.fulltextRanges).toEqual([range])
+      expect(restored.records[0]?.ragDelivery?.[0]?.attachedFacts).toEqual(delivery[0]!.attachedFacts)
+      expect(readFileSync(file, 'utf8')).not.toContain('must-drop')
+      expect(aggregateSnapshot(restored).ragDeliveryStats).toMatchObject({ internalFactsQueries: 1, attachedCalls: 1, deliveredCards: 1, expandedRanges: 1 })
+      expect(createSnapshot({ ...input, records: [record()] }).records[0]).not.toHaveProperty('ragDelivery')
+      range.nextOffset = 11
+      expect(() => createSnapshot(input)).toThrow('原文范围与续读位置不一致')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
   it('只保留白名单字段并对文本脱敏，重复写入幂等且冲突拒绝覆盖', () => {
     const dir = mkdtempSync(join(tmpdir(), 'rag-snapshot-'))
     try {

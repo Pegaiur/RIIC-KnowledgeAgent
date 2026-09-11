@@ -177,6 +177,9 @@ export function runHitrate(
     // 每个 golden 键 → 稳定原键（chunk.id）集合；映射不依赖过滤后的数组下标，resolved 与 entry.golden 一一对应。
     const goldenIdsByKey = resolved.map((idxs) => new Set(idxs.map((di) => directory[di]!.id)))
     const goldenIds = new Set(goldenIdsByKey.flatMap((ids) => [...ids]))
+    // nDCG 按实际分块计量：同文件重复标题可共用 id，但仍占不同检索槽位。
+    // 多个 gold 键指向同一块只计一次，多个实际块共用 id 则分别计入理想排序。
+    const goldenBlockCount = new Set(resolved.flat()).size
 
     const ranked = search(index, q.question, viewK)
     const rankOf = new Map<string, number>()
@@ -196,7 +199,7 @@ export function runHitrate(
         if (id !== undefined && goldenIds.has(id)) dcg += 1 / Math.log2(pos + 1)
       }
       let idcg = 0
-      for (let i = 1; i <= Math.min(goldenIds.size, k); i++) idcg += 1 / Math.log2(i + 1)
+      for (let i = 1; i <= Math.min(goldenBlockCount, k); i++) idcg += 1 / Math.log2(i + 1)
       return idcg === 0 ? 0 : dcg / idcg
     })
     topKs.forEach((k, ki) => {

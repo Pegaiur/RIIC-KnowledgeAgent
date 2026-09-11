@@ -161,6 +161,26 @@ describe('原文扩展：命中文件扩展到文档范围（ADR-013 步骤 2）
     const item = await run(executorFor(corpus), 'rag_search', { query: '关键词' })
 
     expect(item.fulltextRanges!.map((range) => range.file)).toEqual(['base/甲.md', 'base/乙.md'])
+    const bodies = item.fulltextRanges!.map((range) => corpus.directory.documentRange(range.file)!.body)
+    for (const body of bodies) expect(item.data).toContain(body)
+    expect(item.data.indexOf(bodies[0]!)).toBeLessThan(item.data.indexOf(bodies[1]!))
+  })
+
+  it('后续文件分页时保留此前整篇正文，送达区间与最终响应一致', async () => {
+    const corpus = buildCorpus({
+      'base/甲.md': `# 甲\n\n${'关键词 '.repeat(10)}甲尾部。\n`,
+      'guides/乙.md': `# 乙\n\n关键词。\n${'乙长文正文。\n'.repeat(180)}`,
+    })
+    const item = await run(executorFor(corpus, { maxContextChars: 400 }), 'rag_search', { query: '关键词' })
+    expect(item.fulltextRanges!.map((range) => [range.file, range.complete])).toEqual([
+      ['base/甲.md', true], ['guides/乙.md', false],
+    ])
+    for (const range of item.fulltextRanges!) {
+      const doc = corpus.directory.documentRange(range.file)!
+      expect(item.data).toContain(doc.body.slice(range.offset, range.endOffset))
+    }
+    expect(item.data).toContain('续读：ID doc:guides/乙.md')
+    expect(item.data.length).toBeLessThanOrEqual(400)
   })
 })
 

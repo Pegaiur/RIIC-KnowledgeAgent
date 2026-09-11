@@ -19,6 +19,12 @@
 5. **预算与观测分层**：一次外部 rag_search 获准仍只计 1 次 attempt；执行无错误且 RAG/facts 任一部分实际送达非空证据才计 1 次 success，两者均无正文证据判 empty，提示与路径元数据本身不扣成功额度。内部 facts 查询不额外消耗工具额度，重复返回证据仍沿用 ADR-012 的扣点规则。trace 保留一条外部 rag_search 调用，另记触发词、触发词在本次实际检索 query（工具层已 trim）中的位置、解析路径、匹配/送达 canonical、未附带原因、字符数与耗时。
 6. **schema 分层**：工具定义版本（TOOL_SCHEMA_VERSION）与 facts 结果版本（FACTS_RESULT_VERSION）相互独立、按各自协议变更递增。本次 rag_search 返回数据的语义扩展（原文扩展送达、内部附带卡）随协议变更递增工具定义版本：步骤 2 的原文扩展与步骤 3 的内部附带卡合并为一次递增，`TOOL_SCHEMA_VERSION` 由 9 升至 10；`FACTS_RESULT_VERSION` 保持 5，不因内部实现改动盲目重编号。运行输入与 meta 的本次新增字段为向后兼容追加：旧运行缺字段表示不可用，不补零、不据缺失推断，`inputsSchemaVersion` 与 meta `schemaVersion` 维持现值。
 
+### 2026-09-11 验收补充：观测消费者契约
+
+- CostRecord 追加可选 ragDelivery 台账，按外部调用保存 callId/status、原文 fulltextRanges 和附带 attachedFacts。路径保留 kind/term/memberIds/category；完整来源登记仍在 trace/inputs。旧记录缺字段保持不可用；异常时未取得的观测不补零。
+- runner 的 records.jsonl、meta.ragDeliveryStats 与 report 接通同源聚合：内部 facts 查询次数、实际附带调用数、未附带词条数、送达卡次和原文范围数；显式 facts_search 仍按外部工具调用统计。同次卡去重、跨次重复计卡次，不改变工具预算。
+- snapshot 保留台账的有类型字段，过滤未知字段与正文、校验嵌套值并脱敏；汇总从 records 重算，不复制 meta 汇总。原 injected.json 仍为 chunk ID 列表，完整证据核查使用台账及 trace。均为向后兼容追加，不改工具返回、输入或快照版本。
+
 ## 理由
 
 - 排除技能表主要降低注入噪声；机制证据送达主要由原文扩展承担，而非引入新打分塔。

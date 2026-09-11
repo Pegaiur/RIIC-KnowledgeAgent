@@ -121,7 +121,7 @@ describe('runHitrate', () => {
     expect(result.perQuestion[0].misses[0]).toMatchObject({ excluded: false, bestRank: null })
   })
 
-  it('chunk.id 复用（多个 golden 键解析到同一 id）时 nDCG 的 IDCG 按唯一 id 集合而非 golden 键计', () => {
+  it('多个 golden 键解析到同一实际块时，nDCG 的 IDCG 不重复计块', () => {
     // 仅一个分块，但两个 golden 键都解析到它（一个走清洗标题回退、一个走精确 id），id 被复用。
     const index = buildIndex(chunks)
     const gold = { Q1: { golden: ['a.md#电力', 'a.md### 电力'] } }
@@ -138,6 +138,19 @@ describe('runHitrate', () => {
     const index = buildIndex(chunks)
     const gold = { Q1: { golden: ['a.md#电力'] } }
     expect(() => runHitrate(index, chunks, questions, gold, [3])).toThrow(/Q2/)
+  })
+
+  it('同文件重复标题生成相同 id 时，DCG 与 IDCG 均按实际块计量', () => {
+    const repeated = [1, 2].map((line) => ({
+      id: 'base/重复.md### 标题', file: 'base/重复.md', heading: '标题',
+      text: '共同关键词', startLine: line, endLine: line,
+    }))
+    const result = runHitrate(buildIndex(repeated), repeated,
+      [{ id: '重复', category: 'fact', question: '共同关键词' }],
+      { '重复': { golden: ['base/重复.md#标题'] } }, [2])
+    expect(result.ndcgMacro).toEqual([1])
+    expect(result.precisionMacro).toEqual([1])
+    expect(result.recallMacro).toEqual([1])
   })
 
   it('golden 键不可解析即抛错（防 recall 分母静默缩小）', () => {
