@@ -82,7 +82,7 @@ describe('operator notes：组合跨引用导航', () => {
   })
 
   it('增加备注不改变 facts_search 的命中集合与路径', () => {
-    for (const term of ['焰尾', '能天使', '水月', '斯卡蒂', '莱茵生命', '标准化类技能', '红松骑士团', '薇薇安娜', '蕾缪安', '红云', '红云组']) {
+    for (const term of ['焰尾', '能天使', '水月', '斯卡蒂', '莱茵生命', '标准化类技能', '红松骑士团', '薇薇安娜', '蕾缪安', '红云', '红云组', '鸿雪', '鸿雪杜林组', '乌有', '人间烟火组', '黑键', '感知信息组', '琴柳', '夕', '砾', '自动化组', '泡泡组', '推进之王', '格拉斯哥帮组', '能天使组', '企鹅物流', '深海猎人组', '深巡＋乌尔比安', '赤金工艺组']) {
       const withNotes = curatedStore.factsSearch(term)
       const withoutNotes = rawStore.factsSearch(term)
       expect(withNotes.paths, term).toEqual(withoutNotes.paths)
@@ -107,15 +107,73 @@ describe('operator notes：组合跨引用导航', () => {
     expect(followUp).toEqual(expect.arrayContaining(['红云', '酒神', 'Miss.Christine', '稀音', '帕拉斯', '刻俄柏']))
   })
 
-  it('已有备注保留，且水月导航保留精确搜索词与三人同站条件', () => {
+  it('合并保留：既有机制解释与组合导航并存，且水月导航保留精确搜索词与三人同站条件', () => {
     const wulian = curatedStore.factsSearch('巫恋').matches.find((match) => match.card.canonical === '巫恋')!.card
     expect(wulian.notes).toContain('低语')
+    expect(wulian.notes).toContain('龙舌兰组')
     const jie = curatedStore.factsSearch('孑').matches.find((match) => match.card.canonical === '孑')!.card
     expect(jie.notes).toContain('摊贩经济')
+    expect(jie.notes).toContain('喀兰贸易组')
+
+    const ling = curatedStore.factsSearch('令').matches.find((match) => match.card.canonical === '令')!.card
+    expect(ling.notes).toContain('桑葚')
+    expect(ling.notes).toContain('琴柳')
+    expect(ling.notes).toContain('不是启动必需')
 
     const shuiyue = serializeFactsMatches(curatedStore.factsSearch('水月'))
     expect(shuiyue).toContain('标准化类技能')
     expect(shuiyue).toContain('另配两名')
     expect(shuiyue).toContain('共三人')
+  })
+
+  it('新增核心卡在返回结果中含精确组合名', () => {
+    const cases = [
+      { term: '鸿雪', combo: '鸿雪杜林组' },
+      { term: '绮良', combo: '鸿雪杜林组' },
+      { term: '图耶', combo: '鸿雪杜林组' },
+      { term: '乌有', combo: '人间烟火组' },
+      { term: '黑键', combo: '感知信息组' },
+      { term: '八幡海铃', combo: '叙拉古' },
+      { term: '灵知', combo: '喀兰贸易组' },
+      { term: '戴菲恩', combo: '格拉斯哥帮组' },
+      { term: '重岳', combo: '人间烟火组' },
+      { term: '薇薇安娜', combo: '红松骑士团组' },
+      { term: '歌蕾蒂娅', combo: '深海猎人组' },
+      { term: '斩业星熊', combo: '龙门中枢组' },
+      { term: '清流', combo: '自动化组' },
+      { term: '火神', combo: '泡泡组' },
+      { term: '推进之王', combo: '格拉斯哥帮组' },
+    ]
+    for (const { term, combo } of cases) {
+      const card = curatedStore.factsSearch(term).matches.find((match) => match.card.canonical === term)?.card
+      expect(card, term).toBeDefined()
+      expect(card!.notes, term).toContain(combo)
+      expect(serializeFactsMatches(curatedStore.factsSearch(term)), term).toContain(combo)
+    }
+  })
+
+  it('沿备注的组合名跟进查询返回成员角色与关键条件', () => {
+    const output = serializeFactsMatches(curatedStore.factsSearch('鸿雪杜林组'))
+    expect(output).toContain('鸿雪（核心）')
+    expect(output).toContain('鸿雪、绮良、图耶均达到精二')
+    expect(output).toContain('五名挂件中放满四名')
+    const followUp = curatedStore.factsSearch('鸿雪杜林组').matches.map((match) => match.card.canonical)
+    expect(followUp).toEqual(expect.arrayContaining(['鸿雪', '绮良', '图耶', '桃金娘']))
+  })
+
+  it('跨组合卡同时显示两个组合身份', () => {
+    const cases = [
+      { term: '能天使', combos: ['能天使组', '企鹅物流'] },
+      { term: '乌尔比安', combos: ['深巡＋乌尔比安', '深海猎人组'] },
+      { term: '令', combos: ['人间烟火组', '感知信息组'] },
+      { term: '琴柳', combos: ['人间烟火组', '感知信息组'] },
+      { term: '夕', combos: ['人间烟火组', '感知信息组'] },
+      { term: '砾', combos: ['赤金工艺组', '红松骑士团组'] },
+    ]
+    for (const { term, combos } of cases) {
+      const card = curatedStore.factsSearch(term).matches.find((match) => match.card.canonical === term)?.card
+      expect(card, term).toBeDefined()
+      for (const combo of combos) expect(card!.notes, `${term} → ${combo}`).toContain(combo)
+    }
   })
 })
