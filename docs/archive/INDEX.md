@@ -8,6 +8,9 @@
 | 完成日期 | 版本 | 文件 | 摘要 |
 |----------|------|------|------|
 
+| 2026-09-11 | — | [plan-facts-crossref-navigation.md](plan-facts-crossref-navigation.md) | plan-facts-crossref-navigation |
+| 2026-09-11 | — | [plan-facts-operator-notes-expansion.md](plan-facts-operator-notes-expansion.md) | plan-facts-operator-notes-expansion |
+| 2026-09-11 | — | [plan-hybrid-default-tool-budget.md](plan-hybrid-default-tool-budget.md) | plan-hybrid-default-tool-budget |
 | 2026-09-10 | — | [plan-facts-legacy-purge.md](plan-facts-legacy-purge.md) | plan-facts-legacy-purge |
 | 2026-09-10 | — | [plan-facts-substring-pairs.md](plan-facts-substring-pairs.md) | plan-facts-substring-pairs |
 | 2026-09-10 | — | [plan-facts-term-alias.md](plan-facts-term-alias.md) | plan-facts-term-alias |
