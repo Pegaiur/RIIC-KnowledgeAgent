@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseArgs } from '../src/cli-args.js'
+import { ignoredHitrateFlags, parseArgs } from '../src/cli-args.js'
 
 describe('CLI 参数：工具预算与回馈兼容入口', () => {
   it('保留 --min-rag 0，不把零吞掉，并解析新参数', () => {
@@ -69,5 +69,14 @@ describe('CLI 参数：四组对照三开关', () => {
   it('缺少数值时保留 NaN，让 CLI 以中文错误拒绝', () => {
     expect(parseArgs(['run', '--attach-facts']).attachFacts).toBeNaN()
     expect(parseArgs(['run', '--include-skill-tables']).includeSkillTables).toBeNaN()
+  })
+})
+
+describe('CLI 参数：hitrate 忽略开关提示', () => {
+  it('hitrate 显式传入扩展/附带开关时列出被忽略项，未传或仅范围开关时为空', () => {
+    expect(ignoredHitrateFlags(parseArgs(['hitrate']))).toEqual([])
+    expect(ignoredHitrateFlags(parseArgs(['hitrate', '--include-skill-tables', '1']))).toEqual([])
+    expect(ignoredHitrateFlags(parseArgs(['hitrate', '--expand-fulltext', '0', '--attach-facts', '1'])))
+      .toEqual(['--expand-fulltext', '--attach-facts'])
   })
 })

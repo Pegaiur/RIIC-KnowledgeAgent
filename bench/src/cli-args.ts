@@ -127,3 +127,14 @@ export function parseArgs(argv: string[]): ParsedArgs {
   }
   return parsed
 }
+
+/**
+ * hitrate 只在检索范围上使用 --include-skill-tables；显式传入的 --expand-fulltext / --attach-facts
+ * 对该命令无作用，需返回供 CLI 提示，而非静默忽略。
+ */
+export function ignoredHitrateFlags(args: Pick<ParsedArgs, 'expandFulltext' | 'attachFacts'>): string[] {
+  const ignored: string[] = []
+  if (args.expandFulltext !== null) ignored.push('--expand-fulltext')
+  if (args.attachFacts !== null) ignored.push('--attach-facts')
+  return ignored
+}

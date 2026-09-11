@@ -117,6 +117,21 @@ describe('runHitrate', () => {
     const result = runHitrate(index, chunks, [questions[1]], gold, [3])
     expect(result.recallMacro[0]).toBe(0)
     expect(result.perQuestion[0].misses).toHaveLength(1)
+    // 真源可达但未进视野 → 记视野外，而非范围排除
+    expect(result.perQuestion[0].misses[0]).toMatchObject({ excluded: false, bestRank: null })
+  })
+
+  it('chunk.id 复用（多个 golden 键解析到同一 id）时 nDCG 的 IDCG 按唯一 id 集合而非 golden 键计', () => {
+    // 仅一个分块，但两个 golden 键都解析到它（一个走清洗标题回退、一个走精确 id），id 被复用。
+    const index = buildIndex(chunks)
+    const gold = { Q1: { golden: ['a.md#电力', 'a.md### 电力'] } }
+    const result = runHitrate(index, chunks, [questions[0]], gold, [2])
+    const q1 = result.perQuestion[0]!
+
+    expect(q1.total).toBe(2) // recall 分母按 golden 键计，保留 2
+    expect(q1.hits[0]).toBe(2) // 同一可达块令两个键都命中
+    // IDCG 按唯一 id 集合（1）计：golden 块居首位 → nDCG=1；若按键/索引集合（2）则约 0.613
+    expect(q1.ndcg[0]).toBeCloseTo(1, 3)
   })
 
   it('gold 缺题即抛错', () => {
@@ -146,7 +161,7 @@ describe('renderHitrate', () => {
         precHits: [0, 1],
         precSlots: [0, 4],
         ndcg: [0, 0.5],
-        misses: [{ key: 'docs#缺失片段', bestRank: null }],
+        misses: [{ key: 'docs#缺失片段', bestRank: null, excluded: false }],
         excludedKeys: 0,
       }],
       scope: { directoryChunks: 3, retrievalChunks: 3, excludedChunks: 0, excludedGoldenKeys: 0 },
@@ -173,14 +188,13 @@ describe('renderHitrate', () => {
         precHits: [0],
         precSlots: [1],
         ndcg: [0],
-        misses: [{ key: 'references/技能-甲.md#技能', bestRank: null }],
+        misses: [{ key: 'references/技能-甲.md#技能', bestRank: null, excluded: true }],
         excludedKeys: 1,
       }],
       scope: { directoryChunks: 5, retrievalChunks: 4, excludedChunks: 1, excludedGoldenKeys: 1 },
     })
 
-    expect(markdown).toContain('references/技能-甲.md#技能（视野外）')
-    expect(markdown).toContain('其中 1 项被检索范围排除')
+    expect(markdown).toContain('references/技能-甲.md#技能（被检索范围排除）')
   })
 })
 
@@ -209,6 +223,8 @@ describe('runHitrate 范围口径（ADR-013 步骤 5）', () => {
     expect(q1.total).toBe(2) // 分母保留，不因排除删减
     expect(q1.hits[0]).toBe(1) // 仅可达键命中
     expect(q1.excludedKeys).toBe(1)
+    // 逐题明细按键区分：被范围排除的键标 excluded，不混同为「视野外」
+    expect(q1.misses).toEqual([{ key: 'references/技能-甲.md#电力', bestRank: null, excluded: true }])
     expect(result.scope).toEqual({
       directoryChunks: 4,
       retrievalChunks: 3,

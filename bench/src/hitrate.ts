@@ -104,8 +104,9 @@ export interface QuestionHit {
   precSlots: number[]
   /** 各 topK 下的 nDCG（binary relevance，块级） */
   ndcg: number[]
-  /** 检索视野（max(topKs, 20)）内未进入任何 topK 的键及其最佳位次（1 基；视野外或范围排除为 null） */
-  misses: { key: string; bestRank: number | null }[]
+  /** 检索视野（max(topKs, 20)）内未进入任何 topK 的键及其最佳位次（1 基）；
+   *  bestRank 为 null 时用 excluded 区分「被检索范围排除」与「进入视野但排名在 topK 之外」。 */
+  misses: { key: string; bestRank: number | null; excluded: boolean }[]
   /** 真源存在但被检索范围排除、因而不可达的 golden 键数（计入未命中，保留在 total 分母） */
   excludedKeys: number
 }
@@ -205,22 +206,24 @@ export function runHitrate(
       }
     })
 
-    const misses: { key: string; bestRank: number | null }[] = []
+    const misses: { key: string; bestRank: number | null; excluded: boolean }[] = []
     let excludedKeys = 0
     goldenIdsByKey.forEach((ids, i) => {
       const reachable = [...ids].filter((id) => retrievalIds.has(id))
       // 被策略排除但真源存在的键计未命中，仍保留在 recall 分母（total=resolved.length）中。
-      if (reachable.length === 0) excludedKeys++
-      const bestRank = reachable.length === 0
+      const excluded = reachable.length === 0
+      if (excluded) excludedKeys++
+      const bestRank = excluded
         ? Number.POSITIVE_INFINITY
         : Math.min(...reachable.map((id) => rankOf.get(id) ?? Number.POSITIVE_INFINITY))
       topKs.forEach((k, ki) => {
         if (bestRank <= k) hits[ki]++
       })
+      // bestRank 为 null 时用 excluded 区分范围排除与真正视野外，避免逐题明细只靠行末总数。
       if (bestRank > viewK) {
-        misses.push({ key: entry.golden[i], bestRank: null })
+        misses.push({ key: entry.golden[i], bestRank: null, excluded })
       } else if (bestRank > Math.max(...topKs)) {
-        misses.push({ key: entry.golden[i], bestRank })
+        misses.push({ key: entry.golden[i], bestRank, excluded: false })
       }
     })
     excludedGoldenKeys += excludedKeys
@@ -274,14 +277,15 @@ export function renderHitrate(result: HitrateResult): string {
     )
   })
 
-  lines.push('', '## 逐题明细', '', '| 题目 | golden 数 | ' + result.topKs.map((k) => `@${k}（R/P/nDCG）`).join(' | ') + ' | 未命中（最大视野最佳位次） |', `|---|---|${result.topKs.map(() => '---').join('|')}|---|`)
+  lines.push('', '## 逐题明细', '', '| 题目 | golden 数 | ' + result.topKs.map((k) => `@${k}（R/P/nDCG）`).join(' | ') + ' | 未命中（最大视野最佳位次／被检索范围排除） |', `|---|---|${result.topKs.map(() => '---').join('|')}|---|`)
   for (const qh of result.perQuestion) {
     const cells = qh.hits.map((h, i) => {
       const precision = qh.precSlots[i] === 0 ? 0 : qh.precHits[i] / qh.precSlots[i]
       return `R ${h}/${qh.total}; P ${(precision * 100).toFixed(1)}% (${qh.precHits[i]}/${qh.precSlots[i]}); nDCG ${qh.ndcg[i].toFixed(3)}`
     }).join(' | ')
-    const missParts = qh.misses.map((m) => `${m.key}（${m.bestRank === null ? '视野外' : `第 ${m.bestRank} 位`}）`)
-    if (qh.excludedKeys > 0) missParts.push(`其中 ${qh.excludedKeys} 项被检索范围排除`)
+    const missParts = qh.misses.map((m) =>
+      `${m.key}（${m.excluded ? '被检索范围排除' : m.bestRank === null ? '视野外' : `第 ${m.bestRank} 位`}）`,
+    )
     const missStr = missParts.length === 0 ? '—' : missParts.join('；')
     lines.push(`| ${qh.id} | ${qh.total} | ${cells} | ${missStr} |`)
   }

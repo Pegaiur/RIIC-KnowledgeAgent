@@ -19,7 +19,7 @@ import { runBenchmark } from './runner.js'
 import { aggregate, aggregateSnapshot, renderCrossProvider, renderCsv, renderMarkdown, type BenchReport } from './report.js'
 import type { BenchQuery, CostRecord } from './types.js'
 import { validateBenchmarkIntegrity } from './benchmark-integrity.js'
-import { parseArgs } from './cli-args.js'
+import { ignoredHitrateFlags, parseArgs } from './cli-args.js'
 import { readSnapshot, snapshotFromRunDir, writeSnapshot } from './snapshot.js'
 
 /** 散文 RAG 与 hitrate 均直接使用 knowledge/白名单语料，共用 questions 的题号和问题定义。 */
@@ -151,6 +151,11 @@ async function main(): Promise<void> {
     const config = loadConfig()
     // hitrate 与 run 共用同一范围开关：允许 CLI 覆盖，保证 runner/CLI 范围配置在默认与显式覆盖下都一致。
     if (args.includeSkillTables !== null) config.includeSkillTables = readBinarySwitch('--include-skill-tables', args.includeSkillTables)
+    // 显式传入扩展/附带开关时给出提示，避免静默忽略（hitrate 只按检索范围排序）。
+    const ignored = ignoredHitrateFlags(args)
+    if (ignored.length > 0) {
+      process.stderr.write(`提示：hitrate 仅用 --include-skill-tables 控制检索范围，忽略 ${ignored.join('、')}（该命令不执行原文扩展与 facts 附带）\n`)
+    }
     const goldPath = args.gold ?? join(process.cwd(), 'bench', 'gold.json')
     const gold = loadGold(goldPath)
     // gold 与 checkGold 一律在完整、未截断的定位目录解析，分母不因检索范围收缩而删减（ADR-013 步骤 5）。

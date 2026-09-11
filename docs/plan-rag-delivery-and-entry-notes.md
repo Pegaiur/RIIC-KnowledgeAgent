@@ -175,3 +175,16 @@ ADR-013 已登记，契约收口完成；容量沿用总上限 12,000，RAG 预�
 - 首次隔离子代理审查结论 PASS。非阻塞项处置：① hitrate 分支原先只吃 config 默认范围、忽略 `--include-skill-tables` → 已补读取该开关；② plan「gold/hitrate 影响评估」括注「实现与兼容验证仍待完成」已过时 → 改为「2026-09-11 实现与兼容验证完成」；③ 容量错误 `message` 与 `data` 同源重复序列化，沿用 catch 分支既有口径，接受不改；④ 排除键与「视野外」逐题合并展示，保留现状（行末已给排除计数）。
 - 因涉及代码行为与文档结论变化，按「须重新审查」重新派生未参与此前审查、上下文隔离的子代理复审最终内容；二次复审结论 PASS。
 - 二次复审非阻塞项处置：① hitrate 用法行补 `--include-skill-tables 0|1`；② 修正 report 中 `hitCount` 注释对原文扩展的误述，明确「不含仅由内部附带 facts（hitIds 为空）送达的 rag_search」。两项均为非逻辑文案改动，按复审豁免沿用二次 PASS。③ hitrate 对 `--expand-fulltext`/`--attach-facts` 静默忽略、④ 排除键与视野外逐键区分、重复标题 `chunk.id` 复用的 nDCG 最小用例，均记录为不阻塞、留待后续。
+
+### 2026-09-11 — 步骤 5 契约缺口补齐与 hitrate 跨范围数值对比
+
+- **补齐非阻塞缺口**（对应上文二次复审 ③④ 及交接记录的契约缺口，均为离线改动）：
+  - ③ hitrate 静默忽略开关：新增 `ignoredHitrateFlags`，hitrate 分支对显式 `--expand-fulltext`/`--attach-facts` 输出中文提示（stderr），不再静默；补纯函数测试。
+  - ④ 逐题明细逐键区分：`QuestionHit.misses` 新增 `excluded`，被范围排除的键标注「被检索范围排除」、与「视野外」分开，去掉行末冗余总数。
+  - nDCG IDCG 口径最小用例：多个 golden 键解析到同一 `chunk.id`（id 复用）时，IDCG 按唯一 id 集合（`goldenIds.size`）计，`total` 仍按 golden 键保留分母。
+  - facts-only 端到端聚合：新增 agent（mock provider）→ `CostRecord.toolBatch` → `aggregate` → `renderMarkdown` 断言——facts-only rag_search 计「证据送达 1」、旧 chunk 命中 0。
+- **hitrate 跨范围数值对比**（离线，bigram / entityBoost=0 / topK 3,5,10；`node dist/cli.js hitrate --include-skill-tables 0|1`）：
+  - 含技能表（检索 749）：recall 49.7 / 58.7 / 65.3%，precision 51.7 / 38.0 / 21.0%，nDCG 0.657 / 0.646 / 0.673。
+  - 排除技能表（检索 145）：recall 47.7 / 59.7 / 64.1%，precision 45.0 / 35.0 / 19.0%，nDCG 0.603 / 0.629 / 0.647。
+  - 结论：排除技能表未抬高纯 BM25 hitrate——recall@3/@10 与全部 K 的 precision、nDCG 小幅下降（recall@5 微升），因 23 个被排除 gold 键（全在 S 题）原为技能表块、现计未命中且保留分母；F04、F10 逐题改善与 plan 证据表一致，S02/S07 明显下降。该对比只反映排序与覆盖率，不代表工具或回答质量，跨范围不直接横比。
+- **验证**：`pnpm run typecheck` 通过；`pnpm run test` 全量 488 项通过（较步骤 5 的 485 新增 3 项）；`node scripts/doc-check.mjs` 通过。以上均为本地离线，无 provider 调用。

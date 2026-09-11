@@ -10,6 +10,7 @@ import {
 } from '../src/tool-executor.js'
 import { createQueryTrace } from '../src/trace.js'
 import { runQuery } from '../src/agent.js'
+import { aggregate, renderMarkdown } from '../src/report.js'
 import type { RecordCard } from '../src/facts/card.js'
 import type { TermCurations } from '../src/facts/terms.js'
 import type { ProviderResult, ToolCall } from '../src/types.js'
@@ -274,6 +275,32 @@ describe('rag_search 内部 facts 附带集成（hybrid 真实 store）', () => 
       attachedFacts: [expect.objectContaining({ term: '刻俄柏', delivered: ['刻俄柏'] })],
     })
     expect(JSON.parse(toolEvent.writtenContent ?? '{}')).toMatchObject({ data: expect.stringContaining(HEADER) })
+  })
+
+  it('facts-only rag_search 经 toolBatch 汇总到报告：计证据送达但不计旧 chunk 命中', async () => {
+    const config = { ...loadConfig(), retriever: 'hybrid' as const }
+    mockCall.mockReset()
+    mockCall
+      .mockResolvedValueOnce(providerResult({ toolCalls: [call('call_rag', 'rag_search', { query: '刻俄柏' })] }))
+      .mockResolvedValueOnce(providerResult({ content: '刻俄柏可进驻制造站。' }))
+
+    const result = await runQuery(
+      { id: 'FACTS-ONLY', category: 'fact', question: '刻俄柏有哪些技能？' },
+      { config, thinking: 'off', dry: false },
+      [],
+      buildIndex([]),
+    )
+
+    // rag_search 仅附带 facts（hitIds 为空）→ 该批次 successes=1、hitCount=0
+    expect(result.status).toBe('completed')
+    expect(result.records[0]?.toolBatch).toMatchObject({ attempts: 1, successes: 1, hitCount: 0, hitUnknown: 0 })
+
+    // 端到端聚合：证据送达 1，旧 chunk 命中 0（不把 facts-only 成功读成没有证据）
+    const report = aggregate(result.records)
+    expect(report.toolStats).toMatchObject({ attempts: 1, successes: 1, hitCount: 0 })
+    const markdown = renderMarkdown(report)
+    expect(markdown).toContain('证据送达（成功） 1')
+    expect(markdown).toContain('有命中（旧 chunk 口径，不含 facts-only 送达） 0')
   })
 })
 
