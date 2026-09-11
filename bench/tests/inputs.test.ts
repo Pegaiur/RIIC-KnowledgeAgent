@@ -41,7 +41,7 @@ describe('运行输入记录', () => {
     const outDir = mkdtempSync(join(tmpdir(), 'rag-inputs-run-'))
     try {
       const config = loadConfig('qwen')
-      config.retriever = 'facts'
+      config.retriever = 'hybrid'
       config.feedbackOnNoToolAnswer = false
       config.apiKey = 'synthetic-secret'
       mockCall.mockImplementation(async (
@@ -56,7 +56,7 @@ describe('运行输入记录', () => {
         expect(inputs.systemPrompt.text).toBe(messages[0]?.content)
         expect(inputs.toolSchema.definitions).toEqual(tools)
         expect(messages[0]?.role).toBe('system')
-        expect(tools).toHaveLength(1)
+        expect(tools).toHaveLength(3)
         expect(providerOptions.config.maxTokens).toBe(4096)
         expect(providerOptions.config.temperature).toBeUndefined()
         return providerResult({ content: '完成' })
@@ -70,7 +70,7 @@ describe('运行输入记录', () => {
       expect(inputs.captureStatus).toBe('complete')
       expect(inputs.systemPrompt.text).toBe((mockCall.mock.calls[0]?.[0] as Array<{ role: string; content: string }>)[0]?.content)
       expect(inputs.toolSchema.definitions).toEqual(mockCall.mock.calls[0]?.[1])
-      expect(inputs.config).toMatchObject({ maxTokens: 4096, temperature: null, retriever: 'facts' })
+      expect(inputs.config).toMatchObject({ maxTokens: 4096, temperature: null, retriever: 'hybrid' })
       expect(inputs.facts).toEqual({ status: 'not_used' })
       const meta = JSON.parse(readFileSync(output.metaPath, 'utf-8')) as Record<string, unknown>
       expect(meta).toMatchObject({ maxTokens: 4096, inputsSchemaVersion: 1 })
@@ -229,7 +229,7 @@ describe('运行输入记录', () => {
       expect(failures).toHaveLength(0)
 
       const facts = createKnowledgeToolExecutor({
-        config: { ...config, retriever: 'facts' },
+        config: { ...config, retriever: 'hybrid' },
         query: { id: 'LAZY-FACTS', category: 'fact', question: '事实' },
         chunks: [],
         index: buildIndex([]),
@@ -257,7 +257,7 @@ describe('运行输入记录', () => {
     try {
       const { runBenchmark: isolatedRunBenchmark } = await import('../src/runner.js')
       const config = loadConfig()
-      config.retriever = 'facts'
+      config.retriever = 'hybrid'
       config.feedbackOnNoToolAnswer = false
       config.apiKey = 'opaque-runner-secret'
       mockCall

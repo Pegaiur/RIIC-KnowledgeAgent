@@ -15,7 +15,6 @@ import { loadConfig, validateBenchConfig } from './config.js'
 import { corpusStats, loadCorpus } from './corpus.js'
 import { checkGold, loadGold, renderHitrate, runHitrate } from './hitrate.js'
 import { buildIndex } from './retriever.js'
-import { getCardStore } from './facts/store.js'
 import { runBenchmark } from './runner.js'
 import { aggregate, aggregateSnapshot, renderCrossProvider, renderCsv, renderMarkdown, type BenchReport } from './report.js'
 import type { BenchQuery, CostRecord } from './types.js'
@@ -23,11 +22,7 @@ import { validateBenchmarkIntegrity } from './benchmark-integrity.js'
 import { parseArgs } from './cli-args.js'
 import { readSnapshot, snapshotFromRunDir, writeSnapshot } from './snapshot.js'
 
-/**
- * 非 facts 模式的散文 RAG 与 hitrate 均直接使用 knowledge/白名单语料。
- * facts 模式旁路散文加载，使用 facts_search 读取全量记录卡；
- * 两种模式共用 questions 的题号和问题定义。
- */
+/** 散文 RAG 与 hitrate 均直接使用 knowledge/白名单语料，共用 questions 的题号和问题定义。 */
 
 function printUsage(): void {
   process.stdout.write(
@@ -35,7 +30,7 @@ function printUsage(): void {
       'rag-test bench —— LLM 查询输出成本基准（Hy3 / Qwen3.7-Flash / GLM-5.3-Flash / DeepSeek-V4-Flash-Vision-Exp）',
       '',
       '用法：',
-      '  node dist/cli.js run [--provider hy3|qwen|glm|deepseek] [--thinking off|low|high] [--temperature N] [--retriever bm25|grep|both|facts|hybrid] [--tool-budget N] [--session-timeout-ms N] [--min-rag 0|1] [--limit N] [--dry] [--questions <path>] [--out <dir>]',
+      '  node dist/cli.js run [--provider hy3|qwen|glm|deepseek] [--thinking off|low|high] [--temperature N] [--retriever bm25|hybrid] [--tool-budget N] [--session-timeout-ms N] [--min-rag 0|1] [--limit N] [--dry] [--questions <path>] [--out <dir>]',
       '  node dist/cli.js export <runDir> [--questions <path>] [--topic <name>] [--out <path>]',
       '  node dist/cli.js report <runDir|snapshot> [--out <path>]',
       '  node dist/cli.js compare <runDir|snapshot> <runDir|snapshot> [--out <path>]',
@@ -45,8 +40,8 @@ function printUsage(): void {
       '示例：',
       '  node dist/cli.js run --dry --limit 2          # 干跑验证管线（不发请求）',
       '  node dist/cli.js run --provider qwen --thinking low   # 真实跑（需 DASHSCOPE_API_KEY）',
-      '  node dist/cli.js run --provider qwen --thinking low --retriever grep --min-rag 1   # grep 对照（P3）',
-      '  node dist/cli.js run --retriever hybrid --thinking off   # BM25 RAG + facts 混合工具',
+      '  node dist/cli.js run --retriever hybrid --thinking off   # BM25 RAG + facts 混合工具（默认模式）',
+      '  node dist/cli.js run --retriever bm25 --thinking off   # 纯 RAG 对照',
       '  node dist/cli.js report bench/results/<run-id>.json        # 从共享快照生成报告',
       '  node dist/cli.js compare bench/results/<hy3>.json bench/results/<qwen>.json   # 跨模型对比',
       '  node dist/cli.js hitrate --check-gold         # 仅校验 gold ↔ 语料对应关系',
@@ -91,8 +86,9 @@ async function main(): Promise<void> {
 
   if (args.command === 'run') {
     if (!args.questions) validateBenchmarkIntegrity(process.cwd())
+    if (args.retrieverMissingValue) throw new Error('--retriever 缺少取值（可选 bm25 | hybrid）')
     const config = loadConfig(args.provider)
-    if (args.retriever) config.retriever = args.retriever
+    if (args.retriever !== null) config.retriever = args.retriever
     if (args.toolBudget !== null) config.toolBudget = args.toolBudget
     if (args.sessionTimeoutMs !== null) config.sessionTimeoutMs = args.sessionTimeoutMs
     if (args.minRag !== null) {
@@ -108,9 +104,8 @@ async function main(): Promise<void> {
       }
       config.temperature = args.temperature
     }
-    const isFacts = config.retriever === 'facts'
-    const stats = isFacts ? { files: 0 } : corpusStats(config.corpusDir)
-    if (!isFacts && stats.files === 0) {
+    const stats = corpusStats(config.corpusDir)
+    if (stats.files === 0) {
       throw new Error(`语料目录为空：${config.corpusDir}（相对仓库根运行）`)
     }
 
@@ -119,7 +114,7 @@ async function main(): Promise<void> {
     const picked = args.limit ? questions.slice(0, args.limit) : questions
 
     process.stdout.write(
-      `Provider：${config.providerLabel}｜语料：${isFacts ? `记录卡 ×${getCardStore().cards.length}` : `${stats.files} 个文件`}｜问题：${picked.length}/${questions.length}｜档位：${args.thinking}｜temperature：${config.temperature ?? '服务端默认'}｜检索器：${config.retriever}｜工具预算：${config.toolBudget}｜总超时：${config.sessionTimeoutMs}ms｜未调用工具回馈：${config.feedbackOnNoToolAnswer ? '开' : '关'}｜dry：${args.dry}\n`,
+      `Provider：${config.providerLabel}｜语料：${stats.files} 个文件｜问题：${picked.length}/${questions.length}｜档位：${args.thinking}｜temperature：${config.temperature ?? '服务端默认'}｜检索器：${config.retriever}｜工具预算：${config.toolBudget}｜总超时：${config.sessionTimeoutMs}ms｜未调用工具回馈：${config.feedbackOnNoToolAnswer ? '开' : '关'}｜dry：${args.dry}\n`,
     )
 
     const out = await runBenchmark(picked, {

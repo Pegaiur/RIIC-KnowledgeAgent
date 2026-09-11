@@ -407,33 +407,6 @@ function dryResult(messages: ChatMessage[], opts: ProviderOptions): ProviderResu
   const round = messages.filter((m) => m.role === 'assistant').length + 1
   const model = opts.config.model
   const truncated = false
-  if (opts.config.retriever === 'facts') {
-    if (round === 1) {
-      return {
-        content: null,
-        toolCalls: [{ id: 'call_dry_1', name: 'facts_search', arguments: '{"query":"刻俄柏"}' }],
-        usage: dryUsage(6000, 620),
-        model,
-        truncated,
-      }
-    }
-    if (round === 2) {
-      return {
-        content: null,
-        toolCalls: [{ id: 'call_dry_2', name: 'facts_search', arguments: '{"query":"制造站"}' }],
-        usage: dryUsage(6000 + round * 1800, 700),
-        model,
-        truncated,
-      }
-    }
-    return {
-      content: '（dry 模拟回答）基于记录卡，制造站相关干员为……',
-      toolCalls: [],
-      usage: dryUsage(6000 + round * 1800, 1480),
-      model,
-      truncated,
-    }
-  }
   if (opts.config.retriever === 'hybrid') {
     if (round === 1) {
       return {
@@ -456,25 +429,16 @@ function dryResult(messages: ChatMessage[], opts: ProviderOptions): ProviderResu
     return {
       content: '（dry 模拟回答）基于机制语料与记录卡，结论为……',
       toolCalls: [],
-        usage: dryUsage(6000 + round * 1800, 1480),
+      usage: dryUsage(6000 + round * 1800, 1480),
       model,
       truncated,
     }
   }
-    if (round === 1) {
-      return {
-        content: null,
-        toolCalls: opts.config.retriever === 'both'
-          ? [
-              { id: 'call_dry_1', name: 'rag_search', arguments: '{"query":"占位查询"}' },
-              { id: 'call_dry_2', name: 'grep_search', arguments: '{"query":"占位查询"}' },
-            ]
-          : [{
-              id: 'call_dry_1',
-              name: opts.config.retriever === 'grep' ? 'grep_search' : 'rag_search',
-              arguments: '{"query":"占位查询"}',
-            }],
-        usage: dryUsage(6000, 620),
+  if (round === 1) {
+    return {
+      content: null,
+      toolCalls: [{ id: 'call_dry_1', name: 'rag_search', arguments: '{"query":"占位查询"}' }],
+      usage: dryUsage(6000, 620),
       model,
       truncated,
     }

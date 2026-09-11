@@ -3,7 +3,7 @@
  */
 import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join, relative, resolve } from 'node:path'
-import { loadConfig, type BenchConfig } from './config.js'
+import { loadConfig, validateBenchConfig, type BenchConfig } from './config.js'
 import { loadCorpus } from './corpus.js'
 import { buildSectionDirectory } from './sections.js'
 import { buildIndex, currentEntityBoost, currentTokenizer } from './retriever.js'
@@ -11,7 +11,7 @@ import { buildSystemPrompt, loadKnowledgeAgentInstructions, runQuery, type Agent
 import type { BenchQuery, CostRecord, TerminationReason, ThinkingMode } from './types.js'
 import { createQueryTrace, markTraceFailed, serializeTrace } from './trace.js'
 import { aggregate } from './report.js'
-import { supportsReadSection, toolSchemaMetadata, toolsForRetriever } from './tool-executor.js'
+import { toolSchemaMetadata, toolsForRetriever } from './tool-executor.js'
 import {
   collectSourceMetadata,
   completeRunInputs,
@@ -64,6 +64,8 @@ export async function runBenchmark(
   opts: { thinking: ThinkingMode; dry: boolean; outDir?: string; questionsPath?: string; config?: BenchConfig },
 ): Promise<RunOutput> {
   const config = opts.config ?? loadConfig()
+  // 程序化入口与 CLI 共用同一份校验，避免在写盘前用失效/未知模式构建工具与 meta。
+  validateBenchConfig(config)
   const started = Date.now()
   const agentInstructions = loadKnowledgeAgentInstructions()
   const systemPrompt = buildSystemPrompt(config.retriever, agentInstructions, config.toolBudget)
@@ -71,11 +73,11 @@ export async function runBenchmark(
   const toolDefinitions = toolsForRetriever(config.retriever)
   const sourceAtStart = collectSourceMetadata()
 
-  // 语料 + 索引（一次构建，全部查询复用；facts 模式不依赖散文语料——语料目录已删除，跳过加载以空占位）
-  const chunks = config.retriever === 'facts' ? [] : loadCorpus(config.corpusDir, config.maxContextChars)
+  // 语料 + 索引（一次构建，全部查询复用）
+  const chunks = loadCorpus(config.corpusDir, config.maxContextChars)
   const index = buildIndex(chunks)
-  // 小节目录仅在开放阅读能力的模式（bm25/hybrid/both）加载；与检索同用白名单原文来源。
-  const sections = supportsReadSection(config.retriever) ? buildSectionDirectory(config.corpusDir) : undefined
+  // 当前全部模式（bm25/hybrid）都开放 read_section，恒构建小节目录；与检索同用白名单原文来源。
+  const sections = buildSectionDirectory(config.corpusDir)
 
   const temperatureTag = config.temperature === undefined ? 'default' : `t${config.temperature}`
   const runTag = `${new Date().toISOString().replace(/[:.]/g, '-')}-${config.provider}-${opts.thinking}-${temperatureTag}`

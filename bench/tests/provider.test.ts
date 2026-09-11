@@ -68,14 +68,14 @@ describe('provider：请求体参数映射', () => {
   })
 
   it.each([
-    ['bm25', 'rag_search'],
-    ['grep', 'grep_search'],
-  ] as const)('dry %s 使用独立函数工具与扁平参数', async (retriever, operation) => {
+    ['bm25', 'rag_search', '占位查询'],
+    ['hybrid', 'rag_search', '发电站 充能机制'],
+  ] as const)('dry %s 使用独立函数工具与扁平参数', async (retriever, operation, query) => {
     const config = loadConfig('qwen')
     config.retriever = retriever
     const result = await callLLM(messages, [], { config, thinking: 'off', dry: true })
     expect(result.toolCalls[0]).toMatchObject({ name: operation })
-    expect(JSON.parse(result.toolCalls[0]!.arguments)).toMatchObject({ query: '占位查询' })
+    expect(JSON.parse(result.toolCalls[0]!.arguments)).toMatchObject({ query })
   })
 
   it('响应头已返回但正文挂起时，取消仍传播到真实请求信号并拒绝读取', async () => {

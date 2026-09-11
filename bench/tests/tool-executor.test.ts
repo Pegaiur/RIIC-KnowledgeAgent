@@ -22,9 +22,6 @@ function call(id: string, name: string, params: unknown): ToolCall {
 describe('独立函数工具 schema', () => {
   it.each([
     ['bm25', ['rag_search', 'read_section']],
-    ['grep', ['grep_search']],
-    ['both', ['rag_search', 'grep_search', 'read_section']],
-    ['facts', ['facts_search']],
     ['hybrid', ['rag_search', 'facts_search', 'read_section']],
   ] as const)('%s 只暴露当前模式允许的函数工具', (retriever, names) => {
     const tools = toolsForRetriever(retriever)
@@ -37,7 +34,7 @@ describe('独立函数工具 schema', () => {
   })
 
   it('facts_search schema 只有 query 一个必填字段，不暴露分类或组合参数', () => {
-    const facts = toolsForRetriever('facts')[0]!
+    const facts = toolsForRetriever('hybrid').find((tool) => (tool.function as { name: string }).name === 'facts_search')!
     const fn = facts.function as { name: string; description: string; parameters: { properties: Record<string, unknown>; required: string[]; additionalProperties: boolean; anyOf?: unknown[] } }
     expect(fn.name).toBe('facts_search')
     expect(fn.description).toContain('完整词条')
@@ -52,14 +49,14 @@ describe('独立函数工具 schema', () => {
   })
 
   it('schema 指纹只由当前实际工具数组决定', () => {
-    expect(toolSchemaMetadata('bm25')).toMatchObject({ toolSchemaVersion: 8, toolNames: ['rag_search', 'read_section'] })
+    expect(toolSchemaMetadata('bm25')).toMatchObject({ toolSchemaVersion: 9, toolNames: ['rag_search', 'read_section'] })
     expect(toolSchemaMetadata('bm25').toolSchemaSha256).toMatch(/^[a-f0-9]{64}$/)
     expect(toolSchemaMetadata('bm25').toolSchemaSha256).not.toBe(toolSchemaMetadata('hybrid').toolSchemaSha256)
   })
 
   it('拼接的多个名称仍是合法 facts_search，未命中时执行为空查并扣点', async () => {
     const config = loadConfig()
-    config.retriever = 'facts'
+    config.retriever = 'hybrid'
     const executor = createKnowledgeToolExecutor({
       config,
       query: { id: 'LOOKUP-CONCAT', category: 'fact', question: '拼接名称边界' },
@@ -92,7 +89,7 @@ describe('独立函数工具 schema', () => {
     expect(used).toHaveLength(0)
     expect(failed).toHaveLength(0)
 
-    config.retriever = 'facts'
+    config.retriever = 'hybrid'
     const baseline = createKnowledgeToolExecutor({
       config,
       query: { id: 'OBSERVE-FACTS', category: 'fact', question: '事实' },
@@ -119,7 +116,7 @@ describe('独立函数工具 schema', () => {
 describe('独立函数 executor：按批次预占工具预算', () => {
   it('剩余 2 点收到 3 个调用时按响应顺序执行前两个并拒绝第三个', async () => {
     const config = loadConfig()
-    config.retriever = 'both'
+    config.retriever = 'hybrid'
     const executor = createKnowledgeToolExecutor({
       config,
       query: { id: 'BATCH-2', category: 'fact', question: '制造站效率？' },
@@ -129,7 +126,7 @@ describe('独立函数 executor：按批次预占工具预算', () => {
 
     const result = await executor.executeBatch([
       call('a', 'rag_search', { query: '制造站效率' }),
-      call('b', 'grep_search', { query: '制造站' }),
+      call('b', 'rag_search', { query: '制造站' }),
       call('c', 'rag_search', { query: '超额查询' }),
     ])
 
@@ -156,7 +153,7 @@ describe('独立函数 executor：按批次预占工具预算', () => {
 
   it('facts 第五次合法空查仍执行，第六次才拒绝，并按卡计数', async () => {
     const config = loadConfig()
-    config.retriever = 'facts'
+    config.retriever = 'hybrid'
     const executor = createKnowledgeToolExecutor({ config, query: { id: 'FACTS-BUDGET', category: 'fact', question: '预算边界' }, chunks, index: buildIndex(chunks) }, 5)
     const calls = [
       call('fact-1', 'facts_search', { query: '刻俄柏' }),
@@ -177,7 +174,7 @@ describe('独立函数 executor：按批次预占工具预算', () => {
 
   it('facts 第五次坏参数消耗准入点但不执行，第六次仍按预算拒绝', async () => {
     const config = loadConfig()
-    config.retriever = 'facts'
+    config.retriever = 'hybrid'
     const executor = createKnowledgeToolExecutor({ config, query: { id: 'FACTS-INVALID-BUDGET', category: 'fact', question: '预算参数边界' }, chunks, index: buildIndex(chunks) }, 5)
     const calls = [
       call('invalid-fact-1', 'facts_search', { query: '刻俄柏' }),
@@ -197,7 +194,7 @@ describe('独立函数 executor：按批次预占工具预算', () => {
 
   it('T12 facts 宽查按完整卡集合返回，计数按卡去重且不套 RAG 字符上限', async () => {
     const config = loadConfig()
-    config.retriever = 'facts'
+    config.retriever = 'hybrid'
     const executor = createKnowledgeToolExecutor({ config, query: { id: 'FACTS-WIDE', category: 'fact', question: '进驻设施的干员' }, chunks, index: buildIndex(chunks) }, 5)
     const result = await executor.executeBatch([call('wide', 'facts_search', { query: '制造站' })])
     const item = result.results[0]!
@@ -214,7 +211,7 @@ describe('独立函数 executor：按批次预占工具预算', () => {
 
   it('facts 结果元数据携带查询级 resolution，序列化与正文保持同源', async () => {
     const config = loadConfig()
-    config.retriever = 'facts'
+    config.retriever = 'hybrid'
     const executor = createKnowledgeToolExecutor({ config, query: { id: 'FACTS-RESOLUTION', category: 'fact', question: '别名查询' }, chunks, index: buildIndex(chunks) }, 2)
     const result = await executor.executeBatch([call('alias', 'facts_search', { query: '维娜' })])
     const item = result.results[0]!
@@ -242,7 +239,7 @@ describe('独立函数 executor：按批次预占工具预算', () => {
     expect(result.snapshot).toMatchObject({ used: 1, executed: 0 })
   })
 
-  it.each(['facts', 'hybrid'] as const)('%s 模式收到历史 lookup 或 query_operators 名称时拒绝执行，不暗中转译', async (retriever) => {
+  it.each(['hybrid'] as const)('%s 模式收到历史 lookup 或 query_operators 名称时拒绝执行，不暗中转译', async (retriever) => {
     const config = loadConfig()
     config.retriever = retriever
     const executor = createKnowledgeToolExecutor({ config, query: { id: 'LEGACY-FACTS', category: 'fact', question: '历史入口' }, chunks, index: buildIndex(chunks) }, 2)
@@ -261,7 +258,7 @@ describe('独立函数 executor：按批次预占工具预算', () => {
 
   it('未知字段、空白、错误类型和只有 excludeIds 都拒绝且不执行底层检索', async () => {
     const config = loadConfig()
-    config.retriever = 'facts'
+    config.retriever = 'hybrid'
     const executor = createKnowledgeToolExecutor({ config, query: { id: 'INVALID', category: 'fact', question: '查询' }, chunks, index: buildIndex(chunks) }, 5)
     const result = await executor.executeBatch([
       call('a', 'facts_search', { query: '   ' }),

@@ -12,7 +12,7 @@ describe('runBenchmark：trace 逐题落盘', () => {
     const outDir = mkdtempSync(join(tmpdir(), 'rag-trace-runner-'))
     try {
       const config = loadConfig()
-      config.retriever = 'facts'
+      config.retriever = 'hybrid'
       config.apiKey = undefined
       const output = await runBenchmark(
         [
@@ -30,8 +30,8 @@ describe('runBenchmark：trace 逐题落盘', () => {
         toolBudget: 5,
         sessionTimeoutMs: 300000,
         feedbackOnNoToolAnswer: true,
-        toolSchemaVersion: 8,
-        toolNames: ['facts_search'],
+        toolSchemaVersion: 9,
+        toolNames: ['rag_search', 'facts_search', 'read_section'],
         modelSteps: 2,
         toolBatches: 0,
         toolCallsRequested: 0,
@@ -62,7 +62,7 @@ describe('runBenchmark：trace 逐题落盘', () => {
     const outDir = mkdtempSync(join(tmpdir(), 'rag-meta-runner-'))
     try {
       const config = loadConfig('qwen')
-      config.retriever = 'facts'
+      config.retriever = 'hybrid'
       config.feedbackOnNoToolAnswer = false
       const output = await runBenchmark(
         [{ id: 'RUN-DRY-1', category: 'fact', question: '第一题' }],

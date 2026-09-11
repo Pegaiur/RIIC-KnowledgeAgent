@@ -23,4 +23,19 @@ describe('CLI 参数：工具预算与回馈兼容入口', () => {
 
     expect(args.toolBudget).toBeNaN()
   })
+
+  it('--retriever 解析取值；未传时为 null 且不标记缺值', () => {
+    expect(parseArgs(['run', '--retriever', 'hybrid']).retriever).toBe('hybrid')
+    expect(parseArgs(['run', '--retriever', 'bm25']).retriever).toBe('bm25')
+    const absent = parseArgs(['run'])
+    expect(absent.retriever).toBeNull()
+    expect(absent.retrieverMissingValue).toBe(false)
+  })
+
+  it('--retriever 缺值被标记为缺值，区别于未传选项', () => {
+    const args = parseArgs(['run', '--retriever'])
+
+    expect(args.retriever).toBeNull()
+    expect(args.retrieverMissingValue).toBe(true)
+  })
 })

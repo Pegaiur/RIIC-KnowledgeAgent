@@ -6,7 +6,7 @@ import { createKnowledgeToolExecutor, serializeToolResult, type ToolExecutionRes
 
 function executor(limit = 1) {
   const config = loadConfig()
-  config.retriever = 'facts'
+  config.retriever = 'hybrid'
   return createKnowledgeToolExecutor({
     config, query: { id: 'RESOLUTION', category: 'fact', question: '词条协议回归' },
     chunks: [], index: buildIndex([]),

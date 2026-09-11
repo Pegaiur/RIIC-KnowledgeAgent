@@ -170,15 +170,6 @@ describe('RAG 展示：标题上下文与导航', () => {
     expect(item.data).toContain('【base/制造.md | 效率 | L11-11】')
   })
 
-  it('grep 结果格式不受小节目录影响', async () => {
-    const result = await makeExecutor({ retriever: 'grep' }).executeBatch([call('a', 'grep_search', { query: '制造站效率' })])
-    const item = result.results[0]!
-    expect(item.status).toBe('success')
-    expect(item.data).not.toContain('sec-')
-    expect(item.data).not.toContain('【小节上下文】')
-    expect(item.data).toContain('命中')
-  })
-
   it('上级范围入口映射直接父级，同父级按命中顺序去重', async () => {
     rebuildCorpus({
       'base/父章.md': [

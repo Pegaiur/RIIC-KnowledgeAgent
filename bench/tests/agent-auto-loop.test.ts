@@ -31,10 +31,9 @@ describe('Agent auto 主循环', () => {
   beforeEach(() => mockCall.mockReset())
 
   it('能力块只暴露当前独立工具，并描述工具与积分预算', () => {
-    const prompt = buildSystemPrompt('both', '规则', 2)
+    const prompt = buildSystemPrompt('hybrid', '规则', 2)
 
-    expect(prompt).toContain('可用工具：rag_search、grep_search')
-    expect(prompt).toContain('rag_search、grep_search')
+    expect(prompt).toContain('可用工具：rag_search、facts_search、read_section')
     expect(prompt).toContain('工具积分预算：2 点')
     expect(prompt).toContain('每个准入工具调用占 1 点，参数错误也占点')
     expect(prompt).toContain('同批调用分别计费')
@@ -44,13 +43,13 @@ describe('Agent auto 主循环', () => {
 
   it('同批 3 个调用只执行预算内的前 2 个，并按原顺序回写结果', async () => {
     const config = loadConfig()
-    config.retriever = 'both'
+    config.retriever = 'hybrid'
     config.toolBudget = 2
     const trace = createQueryTrace({ id: 'AUTO-BATCH', category: 'fact', question: '制造站？' })
     mockCall
       .mockResolvedValueOnce(result({ toolCalls: [
         toolCall('a', 'rag_search'),
-        toolCall('b', 'grep_search'),
+        toolCall('b', 'read_section', { section_id: 'sec-不存在' }),
         toolCall('c', 'rag_search', { query: '超额' }),
       ] }))
       .mockResolvedValueOnce(result({ content: '最终答案' }))
@@ -82,7 +81,7 @@ describe('Agent auto 主循环', () => {
       feedbackUsed: false,
       budget: { used: 2, remaining: 0 },
     })
-    expect(agentResult.toolTrace[0]).toEqual(['rag_search', 'grep_search', 'rag_search'])
+    expect(agentResult.toolTrace[0]).toEqual(['rag_search', 'read_section', 'rag_search'])
     const toolMessages = (mockCall.mock.calls[1]?.[0] as Array<{ role: string; tool_call_id?: string; content: string }>).filter((message) => message.role === 'tool')
     expect(toolMessages.map((message) => message.tool_call_id)).toEqual(['a', 'b', 'c'])
     expect(JSON.parse(toolMessages[2]!.content)).toMatchObject({ status: 'budget_exhausted', executed: false, budget_remaining: 0 })

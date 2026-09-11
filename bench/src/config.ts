@@ -74,7 +74,7 @@ export const PROVIDERS: Record<ProviderId, ProviderSpec> = {
   },
 }
 
-export type RetrieverId = 'bm25' | 'grep' | 'both' | 'facts' | 'hybrid'
+export type RetrieverId = 'bm25' | 'hybrid'
 
 /**
  * 实验参数集中配置（默认无污染）。
@@ -103,7 +103,7 @@ export interface ExperimentConfig {
   maxTokens: number
   /** 采样温度；undefined 表示沿用服务端默认值，不在请求中发送 */
   temperature?: number
-  /** 检索器（bm25 | grep | both | facts | hybrid） */
+  /** 检索器（bm25 | hybrid） */
   retriever: RetrieverId
   /** 语料目录（相对仓库根） */
   corpusDir: string
@@ -121,8 +121,7 @@ export const EXPERIMENT: ExperimentConfig = {
   maxContextChars: 12000,
   maxTokens: 4096,
   temperature: undefined,
-  retriever: 'bm25',
-  // 非 facts 模式仍使用 knowledge 语料；facts 模式由 getCardStore() 的全量门禁与记录卡投影承载。
+  retriever: 'hybrid',
   corpusDir: 'knowledge',
 }
 
@@ -153,7 +152,7 @@ export interface BenchConfig {
   topK: number
   /** 单次注入检索片段的最大字符数 */
   maxContextChars: number
-  /** 检索器：hybrid 同时暴露 BM25 RAG 与 facts 查询工具；其余值保持原实验语义 */
+  /** 检索器：hybrid 同时暴露 BM25 RAG 与 facts 查询工具；bm25 保留为纯 RAG 对照 */
   retriever: RetrieverId
   /** 每题工具调用积分上限；每次真实用户提问开始时重置 */
   toolBudget: number
@@ -196,7 +195,10 @@ export function loadConfig(providerInput?: ProviderId): BenchConfig {
 }
 
 /** 校验单题生命周期相关配置；CLI 覆盖参数后也必须调用。 */
-export function validateBenchConfig(config: Pick<BenchConfig, 'toolBudget' | 'sessionTimeoutMs'>): void {
+export function validateBenchConfig(config: Pick<BenchConfig, 'toolBudget' | 'sessionTimeoutMs' | 'retriever'>): void {
+  if (config.retriever !== 'bm25' && config.retriever !== 'hybrid') {
+    throw new Error(`不支持的检索模式：${String(config.retriever)}（可选 bm25 | hybrid）`)
+  }
   for (const [name, value] of [
     ['toolBudget', config.toolBudget],
     ['sessionTimeoutMs', config.sessionTimeoutMs],

@@ -11,8 +11,10 @@ export interface ParsedArgs {
   questions: string | null
   out: string | null
   runDir: string | null
-  /** 检索器（bm25 | grep | both | facts | hybrid） */
+  /** 检索器（bm25 | hybrid） */
   retriever: RetrieverId | null
+  /** --retriever 显式出现但缺少取值；与未传选项区分，由 CLI 报中文错误 */
+  retrieverMissingValue: boolean
   /** 兼容旧入口：0 关闭未调用工具回馈，1 开启一次回馈 */
   minRag: number | null
   /** 每题工具积分预算 */
@@ -52,6 +54,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
     out: null,
     runDir: null,
     retriever: null,
+    retrieverMissingValue: false,
     minRag: null,
     toolBudget: null,
     sessionTimeoutMs: null,
@@ -72,7 +75,11 @@ export function parseArgs(argv: string[]): ParsedArgs {
     else if (arg === '--gold') parsed.gold = argv[++i] ?? null
     else if (arg === '--provider') parsed.provider = argv[++i] as ProviderId | undefined
     else if (arg === '--thinking') parsed.thinking = (argv[++i] as ThinkingMode) ?? 'off'
-    else if (arg === '--retriever') parsed.retriever = (argv[++i] as RetrieverId) ?? null
+    else if (arg === '--retriever') {
+      const value = argv[++i]
+      if (value === undefined) parsed.retrieverMissingValue = true
+      else parsed.retriever = value as RetrieverId
+    }
     else if (arg === '--min-rag') {
       parsed.minRag = readNumber(argv, i)
       i++

@@ -15,7 +15,7 @@
     "test": "vitest run",
     "build": "tsc -p tsconfig.build.json",
     "bench": "node dist/cli.js",
-    "bench:dry": "pnpm run build && node dist/cli.js run --dry --limit 2 --retriever facts"
+    "bench:dry": "pnpm run build && node dist/cli.js run --dry --limit 2"
   },
   "devDependencies": {
     "@types/node": "^22.5.0",

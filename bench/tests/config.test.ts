@@ -22,6 +22,17 @@ describe('配置：工具预算与单题生命周期', () => {
     expect(config.feedbackOnNoToolAnswer).toBe(true)
   })
 
+  it('默认检索模式为 hybrid，显式 bm25 仍作为对照通过校验', () => {
+    expect(loadConfig().retriever).toBe('hybrid')
+    expect(() => validateBenchConfig({ ...loadConfig(), retriever: 'hybrid' })).not.toThrow()
+    expect(() => validateBenchConfig({ ...loadConfig(), retriever: 'bm25' })).not.toThrow()
+  })
+
+  it.each(['grep', 'both', 'facts', 'unknown'])('已删除或未知的检索模式 %s 被校验拒绝', (value) => {
+    expect(() => validateBenchConfig({ ...loadConfig(), retriever: value as 'hybrid' }))
+      .toThrow('不支持的检索模式')
+  })
+
   it.each([
     ['toolBudget', { toolBudget: 0 }],
     ['toolBudget', { toolBudget: 1.5 }],

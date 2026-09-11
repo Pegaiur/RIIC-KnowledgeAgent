@@ -88,7 +88,7 @@ export function loadKnowledgeAgentInstructions(root = process.cwd()): string {
 
 /** 构建系统提示；人工规则只来自 AGENTS.md，模式差异由实际工具 schema 描述。 */
 export function buildSystemPrompt(
-  retriever: RetrieverId = 'bm25',
+  retriever: RetrieverId = 'hybrid',
   agentInstructions = loadKnowledgeAgentInstructions(),
   toolBudget = 5,
 ): string {

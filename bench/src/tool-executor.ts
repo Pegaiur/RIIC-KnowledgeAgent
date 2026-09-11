@@ -4,16 +4,16 @@
  */
 import { createHash } from 'node:crypto'
 import { loadConfig, type BenchConfig, type RetrieverId } from './config.js'
-import { grepSearch, buildGrepResult } from './grep-retriever.js'
 import { search, type IndexEntry } from './retriever.js'
 import type { SectionDirectory, SectionEntry } from './sections.js'
-import { isFactTool, type BenchQuery, type DocChunk, type ToolCall, type ToolId } from './types.js'
+import { isFactTool, type BenchQuery, type DocChunk, type ToolCall } from './types.js'
 import { getCardStore, serializeFactsMatches, type CardStore, type ResolutionPath } from './facts/store.js'
 
-export type KnowledgeOperation = ToolId
+/** 当前可下发的工具集合；grep_search 等历史名不在其中。 */
+export type CurrentToolId = 'rag_search' | 'facts_search' | 'read_section'
 
 /** 工具 schema 发生协议变化时递增；快照保留该值供对照分组。 */
-export const TOOL_SCHEMA_VERSION = 8 as const
+export const TOOL_SCHEMA_VERSION = 9 as const
 
 export interface ToolBudgetState {
   limit: number
@@ -91,7 +91,6 @@ export interface KnowledgeToolExecutor {
 const BUDGET_ANSWER_HINT = '工具预算已用尽，请依据已有证据作答；未覆盖部分明确说明。'
 
 type JsonObject = Record<string, unknown>
-type CurrentToolId = Exclude<ToolId, 'lookup' | 'query_operators'>
 
 const TOOL_DEFINITIONS: Record<CurrentToolId, JsonObject> = {
   rag_search: {
@@ -103,21 +102,6 @@ const TOOL_DEFINITIONS: Record<CurrentToolId, JsonObject> = {
         type: 'object',
         properties: {
           query: { type: 'string', minLength: 1, description: '非空自然语言查询' },
-        },
-        required: ['query'],
-        additionalProperties: false,
-      },
-    },
-  },
-  grep_search: {
-    type: 'function',
-    function: {
-      name: 'grep_search',
-      description: '按关键词查找知识库原文片段。',
-      parameters: {
-        type: 'object',
-        properties: {
-          query: { type: 'string', minLength: 1, description: '非空关键词或短语' },
         },
         required: ['query'],
         additionalProperties: false,
@@ -158,28 +142,22 @@ const TOOL_DEFINITIONS: Record<CurrentToolId, JsonObject> = {
 }
 
 function allowedOperations(retriever: RetrieverId): CurrentToolId[] {
-  if (retriever === 'hybrid') return ['rag_search', 'facts_search', 'read_section']
-  if (retriever === 'facts') return ['facts_search']
-  if (retriever === 'both') return ['rag_search', 'grep_search', 'read_section']
-  return retriever === 'grep' ? ['grep_search'] : ['rag_search', 'read_section']
-}
-
-/** 当前模式是否开放原文小节阅读（bm25 / hybrid / both）。 */
-export function supportsReadSection(retriever: RetrieverId): boolean {
-  return allowedOperations(retriever).includes('read_section')
+  return retriever === 'hybrid'
+    ? ['rag_search', 'facts_search', 'read_section']
+    : ['rag_search', 'read_section']
 }
 
 /** 返回当前模式实际发送的独立函数工具数组。 */
-export function toolsForRetriever(retriever: RetrieverId = 'bm25'): Record<string, unknown>[] {
+export function toolsForRetriever(retriever: RetrieverId = 'hybrid'): Record<string, unknown>[] {
   return allowedOperations(retriever).map((name) => cloneJson(TOOL_DEFINITIONS[name]))
 }
 
-export function toolNamesForRetriever(retriever: RetrieverId = 'bm25'): CurrentToolId[] {
+export function toolNamesForRetriever(retriever: RetrieverId = 'hybrid'): CurrentToolId[] {
   return allowedOperations(retriever)
 }
 
 /** 供运行 meta 与离线探针使用的稳定 schema 指纹。 */
-export function toolSchemaMetadata(retriever: RetrieverId = 'bm25'): {
+export function toolSchemaMetadata(retriever: RetrieverId = 'hybrid'): {
   toolSchemaVersion: number
   toolSchemaSha256: string
   toolNames: CurrentToolId[]
@@ -257,21 +235,21 @@ function validateCallIds(calls: ToolCall[]): string | undefined {
 
 async function executeOne(
   call: ToolCall,
-  allowed: Set<KnowledgeOperation>,
+  allowed: Set<CurrentToolId>,
   context: KnowledgeToolContext,
   config: BenchConfig,
   state: ToolBudgetState,
 ): Promise<ToolExecutionResult> {
-  if (!allowed.has(call.name as KnowledgeOperation)) {
+  if (!allowed.has(call.name as CurrentToolId)) {
     return result(call, call.name, 'unknown_operation', false, `当前检索模式不开放工具：${call.name}`, state)
   }
-  const parsed = parseToolParams(call.name as KnowledgeOperation, call.arguments)
+  const parsed = parseToolParams(call.name as CurrentToolId, call.arguments)
   if (!parsed.value) {
     return result(call, call.name, 'invalid_params', false, parsed.reason, state)
   }
 
   try {
-    const output = runOperation(call.name as KnowledgeOperation, parsed.value, context, config)
+    const output = runOperation(call.name as CurrentToolId, parsed.value, context, config)
     const status: ToolResultStatus = output.status
       ?? (isFactTool(call.name)
         ? output.hitIds.length > 0 ? 'success' : 'empty'
@@ -341,7 +319,7 @@ function result(
 }
 
 function parseToolParams(
-  tool: KnowledgeOperation,
+  tool: CurrentToolId,
   args: string,
 ): { value?: Record<string, unknown>; reason: string } {
   let raw: unknown
@@ -395,37 +373,25 @@ function parseRequiredString(
   return { value: { [field]: (input[field] as string).trim() }, reason: '' }
 }
 
-function exampleFor(tool: KnowledgeOperation): string {
+function exampleFor(tool: CurrentToolId): string {
   return tool === 'read_section' ? '{"section_id":"检索结果中的小节 ID"}' : '{"query":"查询"}'
 }
 
 function runOperation(
-  operation: KnowledgeOperation,
+  operation: CurrentToolId,
   params: Record<string, unknown>,
   context: KnowledgeToolContext,
   config: BenchConfig,
 ): { data: string; hitIds: string[]; injectedIds: string[]; factsResolution?: { paths: ResolutionPath[] }; status?: ToolResultStatus } {
-  if (operation === 'rag_search' || operation === 'grep_search') {
+  if (operation === 'rag_search') {
     const query = params.query as string
-    const hits = operation === 'grep_search'
-      ? grepSearch(context.chunks, query, config.topK)
-      : search(context.index, query, config.topK)
+    const hits = search(context.index, query, config.topK)
     const hitIds = hits.map((index) => context.chunks[index]?.id).filter((id): id is string => Boolean(id))
-    let data: string
-    let injectedIds: string[]
-    if (operation === 'grep_search') {
-      // grep 结果格式本轮保持原样，不附加小节上下文。
-      data = buildGrepResult(context.chunks, hits, query, config.maxContextChars)
-      injectedIds = hitIds
-    } else {
-      const built = buildRagData(context.chunks, hits, config.maxContextChars, context.sections)
-      data = built.data
-      injectedIds = built.injectedIds
-    }
-    for (const id of injectedIds) {
+    const built = buildRagData(context.chunks, hits, config.maxContextChars, context.sections)
+    for (const id of built.injectedIds) {
       if (context.injectedIds && !context.injectedIds.includes(id)) context.injectedIds.push(id)
     }
-    return { data, hitIds, injectedIds }
+    return { data: built.data, hitIds, injectedIds: built.injectedIds }
   }
   if (operation === 'read_section') return readSectionOperation(params, context, config)
   let store: CardStore
