@@ -51,6 +51,12 @@
 - **原因**：复用既有 store 与卡片序列化，保持「同一套事实解析规则」，不新增 LLM 请求、不新增哈希字段；facts 用独立额外额度，避免改变纯 RAG 对照行为。
 - **后果**：hybrid 默认 rag_search 会（首次）加载 facts store 并按入口附带记录卡；RAG 与 facts 任一实际送达非空证据即计一次 success，提示与路径元数据不扣点；工具描述与 knowledge/AGENTS.md 首版不改（保持四组对照同一指令与工具描述），仅 schema 版本递增，`FACTS_RESULT_VERSION` 保持 5。
 
+### 2026-09-11 — 步骤 5：测量口径与观测消费者收敛
+- **plan 原文**：保留 gold/spec 事实要求与真源锚点，不以移除技能表为由删减分母；区分小节排序命中、扩展原文送达、附带 facts 送达与回答覆盖；明确过滤后索引与 gold 解析目录映射，runner/CLI hitrate 范围一致；保留旧 hitCount 口径并说明局限，新增实际证据送达计数；消费者检查覆盖 tool-executor→agent/trace→runner 与 report、snapshot；沿用旧 chunk ID 字段，新增有类型的范围/卡附带观测。
+- **实际做法**：hitrate.ts 新增 `HitrateOptions.directoryChunks` 与 `HitrateScope`：gold 在完整、未截断定位目录解析，检索范围只决定可达性，候选块映射回稳定原键 `chunk.id`；被排除但真源存在的键计未命中、仍保留 recall 分母，precision/nDCG 用全部 gold 原块定义；`QuestionHit.excludedKeys` 与 `scope` 如实输出排除数量，renderHitrate 打印范围计数。cli.ts hitrate 改为「未截断目录解析 + 与 runner 同源（maxContextChars + includeSkillTables）的检索装配」，checkGold 用完整目录。cli-args/cli 新增 `--include-skill-tables`/`--expand-fulltext`/`--attach-facts`（0|1，其他取值中文报错），dry 启动行与 meta/inputs 记录有效值，用于复现步骤 6 四组对照。report.ts 将 `successes` 明确标注为「证据送达（成功）」（ADR-013 决策 5 定义 success 即实际送达非空证据），并把旧 `hitCount` 标注为「旧 chunk 口径，不含 facts-only 送达」，避免只附带的成功被读成没有证据。
+- **原因**：测量口径须先于对照固定，且范围收缩不能悄悄删减 gold 分母；四组对照缺少可复现的运行期开关。
+- **后果**：CLI `hitrate` 默认在排除技能表的 145 块上排序、以 749 块完整目录解析 gold，输出「定位目录 749｜检索范围 145｜排除 604｜被排除 gold 键 23」；历史 `runHitrate(index, chunks, …)` 调用（缺省 directoryChunks）保持单范围口径。观测消费者未改字段契约，仅收敛标签与范围输出。
+
 ## 债务记录
 
 本轮未新增或修改代码技术债；施工前待决事项直接列于 plan 步骤 0。
@@ -65,6 +71,12 @@
 ### 2026-09-11 — 步骤 3 审查遗留（归步骤 5）
 - **债务**：hybrid rag_search 的 facts store 加载/查询异常缺直接回归测试（应断言 status=error、fatal、`context.injectedIds` 不残留）；当前仅覆盖 facts_search 的异常路径。plan 验收项「长文续读、空/错误/预算拒绝、附带容量与共享注入状态、历史格式及全部观测消费者通过契约测试」保持未勾选。
 - **未来偿还**：随步骤 5 观测消费者与错误文本收敛一并补齐；不影响本步运行正确性。
+
+### 2026-09-11 — 步骤 5 偿还步骤 2/3 遗留
+- **步骤 3 遗留（facts 异常原子性）已偿还**：facts-attach.test.ts 新增三项——store 加载失败与内部 factsSearch 抛错均断言 `status=error`、`fatal=true`、`context.injectedIds` 与结果 `injectedIds/fulltextRanges/attachedFacts` 不残留、`successUsed=0`；预算拒绝的 rag_search 不触发内部查询、不改动共享注入列表。
+- **步骤 2 债务②（容量错误观测）已偿还**：tool-executor 对操作直接返回的 `status=error`（原文扩展容量不足）写入 `message`，trace `error` 不再为空；仍非 fatal、不扣成功额度，与 catch 分支口径一致。
+- **步骤 2 债务③（边界测试）已偿还**：fulltext-expansion.test.ts 补「恰好容纳整篇判 complete」「多文件命中按首次命中顺序跨文件稳定排序」「read_section 从正文中段读到尾部、offset 对应原文」三项。
+- **未改动的既有债务**：`docs/plan-facts-crossref-navigation.md` R5 系列、report A2、hitrate D1 与步骤 2 的「设施大集合整组先渲染再判额度」均属既有登记，本轮不改。
 
 ## 意外发现
 
@@ -149,3 +161,17 @@ ADR-013 已登记，契约收口完成；容量沿用总上限 12,000，RAG 预�
   2. **前导空行**：仅 facts 送达（RAG 正文为空）时 data 以 2 字符分区分隔符开头 → 分隔符仅在 RAG 正文非空时前置，并补「data 以分区头开头」断言。
 - 余项：hybrid rag_search 的 facts 异常原子性直接测试仍归步骤 5（见「债务记录」）；doc-check D1 为施工期预期。
 - 上述改动按 commit-convention「须重新审查」再派生隔离子代理复审最终内容。
+
+### 2026-09-11 — 步骤 5 验证
+
+- `pnpm run typecheck` 通过；`pnpm run test` 全量 485 项通过（新增 hitrate 范围口径 5 项、report 证据送达 1 项、cli-args 三开关 3 项、facts 异常原子性与预算拒绝 3 项、原文扩展边界 3 项；另更新 renderHitrate 与 report 渲染断言）。
+- 真实语料核对：`node dist/cli.js hitrate --topk 5` 输出「定位目录 749｜检索范围 145｜排除 604｜被排除 gold 键 23」，与 plan 证据表一致；`--check-gold` 仍以完整目录校验 20 题 / 69 项全部可解析。
+- dry 构造核对：`node dist/cli.js run --dry --limit 1 --include-skill-tables 1 --expand-fulltext 1 --attach-facts 1` 启动行与 meta/inputs 均记录有效开关；临时运行目录已按 scripts/INDEX 约定清除。
+- `node scripts/doc-check.mjs` 在 plan 验收清单勾选后通过（D1 归零）。
+- 本轮勾选「统一配置可复现四组工程对照」「契约测试」「typecheck」「test」「doc-check」五项；步骤 4/6 仍为未执行的独立试验与付费对照。
+
+### 2026-09-11 — 步骤 5 独立审查处置
+
+- 首次隔离子代理审查结论 PASS。非阻塞项处置：① hitrate 分支原先只吃 config 默认范围、忽略 `--include-skill-tables` → 已补读取该开关；② plan「gold/hitrate 影响评估」括注「实现与兼容验证仍待完成」已过时 → 改为「2026-09-11 实现与兼容验证完成」；③ 容量错误 `message` 与 `data` 同源重复序列化，沿用 catch 分支既有口径，接受不改；④ 排除键与「视野外」逐题合并展示，保留现状（行末已给排除计数）。
+- 因涉及代码行为与文档结论变化，按「须重新审查」重新派生未参与此前审查、上下文隔离的子代理复审最终内容；二次复审结论 PASS。
+- 二次复审非阻塞项处置：① hitrate 用法行补 `--include-skill-tables 0|1`；② 修正 report 中 `hitCount` 注释对原文扩展的误述，明确「不含仅由内部附带 facts（hitIds 为空）送达的 rag_search」。两项均为非逻辑文案改动，按复审豁免沿用二次 PASS。③ hitrate 对 `--expand-fulltext`/`--attach-facts` 静默忽略、④ 排除键与视野外逐键区分、重复标题 `chunk.id` 复用的 nDCG 最小用例，均记录为不阻塞、留待后续。

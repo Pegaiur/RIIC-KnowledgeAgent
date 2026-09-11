@@ -16,7 +16,7 @@
 2. **原文扩展**：取 topK 命中后，base/guides 命中小节按文件去重并扩展到该文件的原文文档范围；顺序取首次命中位置，不在去重后自动补满 K。扩展内容取运行级原文快照，不拼接 clampTexts 后的片段。references 仍按原块返回。
 3. **RAG 内部 facts 附带**：仅 hybrid 的 rag_search 启用。query 命中精确入口时，内部调用 store.factsSearch 并在同一次响应附带记录卡，不伪造额外工具调用、不新增 LLM 请求。入口规则：整条 query 精确匹配优先；未匹配时按空白边界识别已登记完整搜索词，多关键词分支只接纳 ≥2 字的干员名、技能名、技能组、阵营及已登记 alias/substring/combo；仅命中设施或职业的搜索词不在该分支展开。首版不解析未分隔自然句、不补删「组」字、不做近义改写或任意子串扫描。bm25 不附带；显式在 bm25 请求附带属参数错误。
 4. **容量契约**：工具 `data` 的 UTF-16 长度分批计量，外层 JSON 长度单独观测，不冒充同一上限。RAG 正文（来源头、导航、续读元数据与正文）沿用 `maxContextChars`（首版 12,000）；RAG 内部 facts 附带在 `maxContextChars` 之外另给独立额度 4,000 字符，两部分不互相回收，合并 `data` 上限为 maxContextChars + 4,000。facts 附带只计分区头、未附带提示等必要元数据与卡正文，以单个触发词的完整匹配集合为原子单位：整组放得下才附带，放不下则整组暂不附带并返回可复制的词条与原因；不截断卡正文、不挑单卡消除同名歧义。RAG 与 facts 的正文均实际送达非空证据才计一次成功；这些额度只约束单次工具 `data`，不改变模型后续携带证据的累计 token 与费用。
-5. **预算与观测分层**：一次外部 rag_search 获准仍只计 1 次 attempt；执行无错误且 RAG/facts 任一部分实际送达非空证据才计 1 次 success，两者均无正文证据判 empty，提示与路径元数据本身不扣成功额度。内部 facts 查询不额外消耗工具额度，重复返回证据仍沿用 ADR-012 的扣点规则。trace 保留一条外部 rag_search 调用，另记触发词、原 query 位置、解析路径、匹配/送达 canonical、未附带原因、字符数与耗时。
+5. **预算与观测分层**：一次外部 rag_search 获准仍只计 1 次 attempt；执行无错误且 RAG/facts 任一部分实际送达非空证据才计 1 次 success，两者均无正文证据判 empty，提示与路径元数据本身不扣成功额度。内部 facts 查询不额外消耗工具额度，重复返回证据仍沿用 ADR-012 的扣点规则。trace 保留一条外部 rag_search 调用，另记触发词、触发词在本次实际检索 query（工具层已 trim）中的位置、解析路径、匹配/送达 canonical、未附带原因、字符数与耗时。
 6. **schema 分层**：工具定义版本（TOOL_SCHEMA_VERSION）与 facts 结果版本（FACTS_RESULT_VERSION）相互独立、按各自协议变更递增。本次 rag_search 返回数据的语义扩展（原文扩展送达、内部附带卡）随协议变更递增工具定义版本：步骤 2 的原文扩展与步骤 3 的内部附带卡合并为一次递增，`TOOL_SCHEMA_VERSION` 由 9 升至 10；`FACTS_RESULT_VERSION` 保持 5，不因内部实现改动盲目重编号。运行输入与 meta 的本次新增字段为向后兼容追加：旧运行缺字段表示不可用，不补零、不据缺失推断，`inputsSchemaVersion` 与 meta `schemaVersion` 维持现值。
 
 ## 理由
