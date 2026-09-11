@@ -11,8 +11,8 @@
  */
 import { existsSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
-import { loadConfig, validateBenchConfig } from './config.js'
-import { corpusStats, loadCorpus } from './corpus.js'
+import { effectiveAttachFacts, loadConfig, validateBenchConfig } from './config.js'
+import { corpusStats, loadCorpus, selectRetrievalChunks } from './corpus.js'
 import { checkGold, loadGold, renderHitrate, runHitrate } from './hitrate.js'
 import { buildIndex } from './retriever.js'
 import { runBenchmark } from './runner.js'
@@ -30,11 +30,11 @@ function printUsage(): void {
       'rag-test bench —— LLM 查询输出成本基准（Hy3 / Qwen3.7-Flash / GLM-5.3-Flash / DeepSeek-V4-Flash-Vision-Exp）',
       '',
       '用法：',
-      '  node dist/cli.js run [--provider hy3|qwen|glm|deepseek] [--thinking off|low|high] [--temperature N] [--retriever bm25|hybrid] [--tool-budget N] [--tool-attempt-limit N] [--session-timeout-ms N] [--min-rag 0|1] [--limit N] [--dry] [--questions <path>] [--out <dir>]',
+      '  node dist/cli.js run [--provider hy3|qwen|glm|deepseek] [--thinking off|low|high] [--temperature N] [--retriever bm25|hybrid] [--include-skill-tables 0|1] [--expand-fulltext 0|1] [--attach-facts 0|1] [--tool-budget N] [--tool-attempt-limit N] [--session-timeout-ms N] [--min-rag 0|1] [--limit N] [--dry] [--questions <path>] [--out <dir>]',
       '  node dist/cli.js export <runDir> [--questions <path>] [--topic <name>] [--out <path>]',
       '  node dist/cli.js report <runDir|snapshot> [--out <path>]',
       '  node dist/cli.js compare <runDir|snapshot> <runDir|snapshot> [--out <path>]',
-      '  node dist/cli.js hitrate [--topk 3,5,10] [--gold <path>] [--check-gold] [--out <path>]',
+      '  node dist/cli.js hitrate [--topk 3,5,10] [--gold <path>] [--check-gold] [--include-skill-tables 0|1] [--out <path>]',
       '  node dist/cli.js validate',
       '',
       '示例：',
@@ -69,6 +69,12 @@ function loadRecords(runDir: string): CostRecord[] {
     .map((l) => JSON.parse(l) as CostRecord)
 }
 
+/** 三开关只接受 0/1；其他取值按中文参数错误拒绝，避免静默按默认运行。 */
+function readBinarySwitch(flag: string, value: number): boolean {
+  if (value !== 0 && value !== 1) throw new Error(`${flag} 仅支持 0 或 1：${value}`)
+  return value === 1
+}
+
 function loadReportInput(inputPath: string): BenchReport {
   if (existsSync(inputPath) && statSync(inputPath).isFile()) {
     const snapshot = readSnapshot(inputPath)
@@ -89,6 +95,9 @@ async function main(): Promise<void> {
     if (args.retrieverMissingValue) throw new Error('--retriever 缺少取值（可选 bm25 | hybrid）')
     const config = loadConfig(args.provider)
     if (args.retriever !== null) config.retriever = args.retriever
+    if (args.includeSkillTables !== null) config.includeSkillTables = readBinarySwitch('--include-skill-tables', args.includeSkillTables)
+    if (args.expandFulltext !== null) config.expandFulltext = readBinarySwitch('--expand-fulltext', args.expandFulltext)
+    if (args.attachFacts !== null) config.attachFacts = readBinarySwitch('--attach-facts', args.attachFacts)
     if (args.toolBudget !== null) config.toolBudget = args.toolBudget
     if (args.toolAttemptLimit !== null) config.toolAttemptLimit = args.toolAttemptLimit
     if (args.sessionTimeoutMs !== null) config.sessionTimeoutMs = args.sessionTimeoutMs
@@ -115,7 +124,7 @@ async function main(): Promise<void> {
     const picked = args.limit ? questions.slice(0, args.limit) : questions
 
     process.stdout.write(
-      `Provider：${config.providerLabel}｜语料：${stats.files} 个文件｜问题：${picked.length}/${questions.length}｜档位：${args.thinking}｜temperature：${config.temperature ?? '服务端默认'}｜检索器：${config.retriever}｜成功额度：${config.toolBudget}｜获准尝试上限：${config.toolAttemptLimit}｜总超时：${config.sessionTimeoutMs}ms｜未调用工具回馈：${config.feedbackOnNoToolAnswer ? '开' : '关'}｜dry：${args.dry}\n`,
+      `Provider：${config.providerLabel}｜语料：${stats.files} 个文件｜问题：${picked.length}/${questions.length}｜档位：${args.thinking}｜temperature：${config.temperature ?? '服务端默认'}｜检索器：${config.retriever}｜包含技能表：${config.includeSkillTables ? '是' : '否'}｜扩展原文：${config.expandFulltext ? '是' : '否'}｜附带 facts：${effectiveAttachFacts(config) ? '是' : '否'}｜成功额度：${config.toolBudget}｜获准尝试上限：${config.toolAttemptLimit}｜总超时：${config.sessionTimeoutMs}ms｜未调用工具回馈：${config.feedbackOnNoToolAnswer ? '开' : '关'}｜dry：${args.dry}\n`,
     )
 
     const out = await runBenchmark(picked, {
@@ -140,13 +149,15 @@ async function main(): Promise<void> {
   if (args.command === 'hitrate') {
     if (!args.questions && !args.gold) validateBenchmarkIntegrity(process.cwd())
     const config = loadConfig()
+    // hitrate 与 run 共用同一范围开关：允许 CLI 覆盖，保证 runner/CLI 范围配置在默认与显式覆盖下都一致。
+    if (args.includeSkillTables !== null) config.includeSkillTables = readBinarySwitch('--include-skill-tables', args.includeSkillTables)
     const goldPath = args.gold ?? join(process.cwd(), 'bench', 'gold.json')
     const gold = loadGold(goldPath)
-    // 语料加载与 runner 生产路径一致（maxContextChars 同源，当前语料不会触发截断）
-    const chunks = loadCorpus(config.corpusDir, config.maxContextChars)
+    // gold 与 checkGold 一律在完整、未截断的定位目录解析，分母不因检索范围收缩而删减（ADR-013 步骤 5）。
+    const directoryChunks = loadCorpus(config.corpusDir)
 
     if (args.checkGold) {
-      const { missing } = checkGold(gold, chunks)
+      const { missing } = checkGold(gold, directoryChunks)
       if (missing.length > 0) {
         process.stderr.write(`gold ↔ 语料校验失败（${missing.length} 项无法解析）：\n`)
         for (const m of missing) process.stderr.write(`  - ${m.queryId}: ${m.key}\n`)
@@ -160,6 +171,11 @@ async function main(): Promise<void> {
 
     const questionsPath = args.questions ?? join(process.cwd(), 'bench', 'questions.json')
     const questions = loadQuestions(questionsPath)
+    // 检索范围与 runner 生产路径一致（同 maxContextChars 与 includeSkillTables）；排除键只影响可达性。
+    const retrievalChunks = selectRetrievalChunks(
+      loadCorpus(config.corpusDir, config.maxContextChars),
+      { includeSkillTables: config.includeSkillTables },
+    )
     const topKs = (args.topk ?? '3,5,10')
       .split(',')
       .map((s) => Number(s.trim()))
@@ -168,14 +184,15 @@ async function main(): Promise<void> {
     }
 
     const result = runHitrate(
-      buildIndex(chunks),
-      chunks,
+      buildIndex(retrievalChunks),
+      retrievalChunks,
       questions,
       gold,
       topKs,
+      { directoryChunks },
     )
-    // 落盘/输出携带运行参数上下文，保证 --out 文件可复现（分词器 + 实体加权）
-    const contextLine = `分词器：${config.tokenizer}｜实体加权：${config.entityBoost === 0 ? '关' : `×${config.entityBoost}`}｜语料 chunks：${chunks.length}｜问题：${questions.length}`
+    // 落盘/输出携带运行参数上下文，保证 --out 文件可复现（分词器 + 实体加权 + 检索范围）
+    const contextLine = `分词器：${config.tokenizer}｜实体加权：${config.entityBoost === 0 ? '关' : `×${config.entityBoost}`}｜检索范围：${config.includeSkillTables ? '含技能表' : '排除技能表'}｜检索 chunks：${retrievalChunks.length}｜定位目录 chunks：${directoryChunks.length}｜问题：${questions.length}`
     result.note = contextLine
     process.stdout.write(`${contextLine}\n`)
     const md = renderHitrate(result)

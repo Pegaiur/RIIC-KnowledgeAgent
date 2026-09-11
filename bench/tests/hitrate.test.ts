@@ -147,7 +147,9 @@ describe('renderHitrate', () => {
         precSlots: [0, 4],
         ndcg: [0, 0.5],
         misses: [{ key: 'docs#缺失片段', bestRank: null }],
+        excludedKeys: 0,
       }],
+      scope: { directoryChunks: 3, retrievalChunks: 3, excludedChunks: 0, excludedGoldenKeys: 0 },
     })
 
     expect(markdown).toContain('@1（R/P/nDCG）')
@@ -155,6 +157,80 @@ describe('renderHitrate', () => {
     expect(markdown).toContain('R 1/2; P 0.0% (0/0); nDCG 0.000')
     expect(markdown).toContain('R 2/2; P 25.0% (1/4); nDCG 0.500')
     expect(markdown).toContain('docs#缺失片段（视野外）')
+    expect(markdown).toContain('定位目录 3 块｜检索范围 3 块｜排除 0 块｜被排除 gold 键 0 项')
+  })
+
+  it('范围排除键逐题标注，不进入任何 topK', () => {
+    const markdown = renderHitrate({
+      topKs: [1],
+      recallMacro: [0],
+      precisionMacro: [0],
+      ndcgMacro: [0],
+      perQuestion: [{
+        id: 'Q9',
+        total: 1,
+        hits: [0],
+        precHits: [0],
+        precSlots: [1],
+        ndcg: [0],
+        misses: [{ key: 'references/技能-甲.md#技能', bestRank: null }],
+        excludedKeys: 1,
+      }],
+      scope: { directoryChunks: 5, retrievalChunks: 4, excludedChunks: 1, excludedGoldenKeys: 1 },
+    })
+
+    expect(markdown).toContain('references/技能-甲.md#技能（视野外）')
+    expect(markdown).toContain('其中 1 项被检索范围排除')
+  })
+})
+
+describe('runHitrate 范围口径（ADR-013 步骤 5）', () => {
+  const skillChunks: DocChunk[] = [
+    ...chunks,
+    {
+      id: 'references/技能-甲.md### 电力',
+      file: 'references/技能-甲.md',
+      heading: '电力',
+      text: '发电站无人机充能机制 电力 电力 电力 电力 电力',
+      startLine: 2,
+      endLine: 4,
+    },
+  ]
+
+  it('被范围排除的真源键计未命中，但保留 recall 分母并计入范围计数', () => {
+    const retrieval = skillChunks.filter((chunk) => chunk.file !== 'references/技能-甲.md')
+    const index = buildIndex(retrieval)
+    // golden 指向被排除的技能表块；真源存在（directory 解析成功），检索范围内不可达。
+    const gold = { Q1: { golden: ['references/技能-甲.md#电力', 'a.md#电力'] } }
+
+    const result = runHitrate(index, retrieval, [questions[0]], gold, [3], { directoryChunks: skillChunks })
+    const q1 = result.perQuestion[0]!
+
+    expect(q1.total).toBe(2) // 分母保留，不因排除删减
+    expect(q1.hits[0]).toBe(1) // 仅可达键命中
+    expect(q1.excludedKeys).toBe(1)
+    expect(result.scope).toEqual({
+      directoryChunks: 4,
+      retrievalChunks: 3,
+      excludedChunks: 1,
+      excludedGoldenKeys: 1,
+    })
+  })
+
+  it('真源不存在的键仍抛错，不被范围排除掩盖', () => {
+    const retrieval = skillChunks.filter((chunk) => chunk.file !== 'references/技能-甲.md')
+    const index = buildIndex(retrieval)
+    expect(() => runHitrate(index, retrieval, [questions[0]], { Q1: { golden: ['a.md#幽灵节'] } }, [3], { directoryChunks: skillChunks }))
+      .toThrow(/幽灵节/)
+  })
+
+  it('缺省 directoryChunks 时退化为单范围历史口径（排除数为 0）', () => {
+    const index = buildIndex(chunks)
+    const gold = { Q1: { golden: ['a.md#电力', 'a.md#贸易'] }, Q2: { golden: ['b.md#宿舍'] } }
+    const result = runHitrate(index, chunks, questions, gold, [1])
+
+    expect(result.scope).toEqual({ directoryChunks: 3, retrievalChunks: 3, excludedChunks: 0, excludedGoldenKeys: 0 })
+    expect(result.perQuestion.every((q) => q.excludedKeys === 0)).toBe(true)
   })
 })
 

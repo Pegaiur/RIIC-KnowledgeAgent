@@ -379,6 +379,9 @@ async function executeOne(
       fulltextRanges: output.fulltextRanges,
       attachedFacts: output.attachedFacts,
       factsResult,
+      // 操作直接返回的 error（如原文扩展容量不足）需带上文本，供 trace.error 与复盘定位；
+      // 与 catch 分支的错误口径一致，非 fatal，不扣成功额度。
+      ...(status === 'error' ? { message: output.data } : {}),
     }
   } catch (error) {
     state.executed++

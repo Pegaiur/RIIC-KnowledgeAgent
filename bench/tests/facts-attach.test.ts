@@ -1,7 +1,8 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { loadConfig, type BenchConfig } from '../src/config.js'
 import { buildIndex } from '../src/retriever.js'
 import { buildCardStore } from '../src/facts/store.js'
+import * as stores from '../src/facts/store.js'
 import {
   buildFactsAttachment,
   createKnowledgeToolExecutor,
@@ -273,6 +274,73 @@ describe('rag_search 内部 facts 附带集成（hybrid 真实 store）', () => 
       attachedFacts: [expect.objectContaining({ term: '刻俄柏', delivered: ['刻俄柏'] })],
     })
     expect(JSON.parse(toolEvent.writtenContent ?? '{}')).toMatchObject({ data: expect.stringContaining(HEADER) })
+  })
+})
+
+afterEach(() => vi.restoreAllMocks())
+
+describe('rag_search 内部 facts 异常原子性与预算拒绝（ADR-013 步骤 5）', () => {
+  const ATOMIC_CHUNKS = [{ id: 'base/甲.md#温蒂', file: 'base/甲.md', heading: '温蒂', text: '温蒂制造站技能说明。', startLine: 1, endLine: 1 }]
+
+  function atomicExecutor(question: string, injectedIds: string[], overrides: Partial<BenchConfig> = {}) {
+    const config = { ...loadConfig(), retriever: 'hybrid' as const, ...overrides }
+    return createKnowledgeToolExecutor({
+      config,
+      query: { id: 'ATOM', category: 'fact', question },
+      chunks: ATOMIC_CHUNKS,
+      index: buildIndex(ATOMIC_CHUNKS),
+      injectedIds,
+    }, 5)
+  }
+
+  it('facts store 加载失败：整次 rag_search 报 error、fatal，共享注入列表不残留', async () => {
+    const getStore = vi.spyOn(stores, 'getCardStore').mockImplementation(() => { throw new Error('测试 store 加载失败') })
+    const injectedIds: string[] = []
+
+    const batch = await atomicExecutor('温蒂', injectedIds).executeBatch([call('a', 'rag_search', { query: '温蒂' })])
+    const item = batch.results[0]!
+
+    expect(item).toMatchObject({ status: 'error', executed: true, fatal: true })
+    expect(item.data).toContain('测试 store 加载失败')
+    // 原子组装：RAG 正文已算出但分支抛错，不得留下本次未发送的注入记录。
+    expect(item.injectedIds).toBeUndefined()
+    expect(item.fulltextRanges).toBeUndefined()
+    expect(item.attachedFacts).toBeUndefined()
+    expect(injectedIds).toEqual([])
+    expect(batch.snapshot).toMatchObject({ successUsed: 0, attemptUsed: 1 })
+    expect(getStore).toHaveBeenCalledTimes(1)
+  })
+
+  it('内部 factsSearch 抛错：整次 rag_search 报 error、fatal，已算出的 RAG 送达不写入共享列表', async () => {
+    vi.spyOn(stores, 'getCardStore').mockReturnValue(STORE)
+    const searchSpy = vi.spyOn(STORE, 'factsSearch').mockImplementation(() => { throw new Error('测试 facts 查询失败') })
+    const injectedIds: string[] = []
+
+    const batch = await atomicExecutor('温蒂', injectedIds).executeBatch([call('a', 'rag_search', { query: '温蒂' })])
+    const item = batch.results[0]!
+
+    expect(item).toMatchObject({ status: 'error', executed: true, fatal: true })
+    expect(item.data).toContain('测试 facts 查询失败')
+    expect(searchSpy).toHaveBeenCalledWith('温蒂')
+    expect(injectedIds).toEqual([])
+    expect(item.injectedIds).toBeUndefined()
+    expect(batch.snapshot).toMatchObject({ successUsed: 0, attemptUsed: 1 })
+  })
+
+  it('预算拒绝的 rag_search 不触发内部 facts 查询，也不改动共享注入列表', async () => {
+    const getStore = vi.spyOn(stores, 'getCardStore').mockReturnValue(STORE)
+    const injectedIds: string[] = []
+    const executor = atomicExecutor('温蒂', injectedIds, { toolAttemptLimit: 1 })
+
+    const batch = await executor.executeBatch([
+      call('a', 'rag_search', { query: '温蒂' }),
+      call('b', 'rag_search', { query: '温蒂' }),
+    ])
+
+    expect(batch.results[1]).toMatchObject({ status: 'budget_exhausted', executed: false })
+    // 只有获准执行的第一次调用加载 store 并查询。
+    expect(getStore).toHaveBeenCalledTimes(1)
+    expect(injectedIds).toEqual(['base/甲.md#温蒂'])
   })
 })
 

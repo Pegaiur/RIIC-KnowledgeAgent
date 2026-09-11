@@ -137,6 +137,31 @@ describe('原文扩展：命中文件扩展到文档范围（ADR-013 步骤 2）
     expect(item.fulltextRanges).toEqual([])
     expect(item.data).toContain('制造站引言，关键词甲。')
   })
+
+  it('恰好容纳整篇原文时判 complete，不产生续读元数据', async () => {
+    const corpus = buildCorpus({ 'base/制造.md': DOC })
+    const doc = corpus.directory.documentRange('base/制造.md')!
+    const header = `【base/制造.md｜原文扩展｜L${doc.startLine}-${doc.endLine}】`
+    const maxChars = header.length + 1 + doc.body.length
+
+    const item = await run(executorFor(corpus, { maxContextChars: maxChars }), 'rag_search', { query: '制造站' })
+
+    expect(item.status).toBe('success')
+    expect(item.data).toBe(`${header}\n${doc.body}`)
+    expect(item.fulltextRanges).toEqual([
+      expect.objectContaining({ file: 'base/制造.md', complete: true, nextOffset: null, endOffset: doc.body.length }),
+    ])
+  })
+
+  it('多文件命中按首次命中顺序扩展，跨文件稳定', async () => {
+    const corpus = buildCorpus({
+      'base/甲.md': '# 甲\n\n## 甲节\n\n关键词 关键词 关键词 关键词。\n',
+      'base/乙.md': '# 乙\n\n## 乙节\n\n关键词。\n',
+    })
+    const item = await run(executorFor(corpus), 'rag_search', { query: '关键词' })
+
+    expect(item.fulltextRanges!.map((range) => range.file)).toEqual(['base/甲.md', 'base/乙.md'])
+  })
 })
 
 describe('原文扩展：容量不足时按可续读连续原文送达（ADR-013 步骤 2）', () => {
@@ -186,8 +211,25 @@ describe('原文扩展：容量不足时按可续读连续原文送达（ADR-013
 
     expect(item.status).toBe('error')
     expect(item.data).toContain(`无法在 maxContextChars=${maxChars} 内返回原文扩展`)
+    // 操作返回的错误也写入 message，供 trace.error 与复盘定位；非 fatal，不扣成功额度。
+    expect(item.message).toContain(`无法在 maxContextChars=${maxChars} 内返回原文扩展`)
+    expect(item.fatal).toBeFalsy()
     expect(item.injectedIds).toEqual([])
     expect(item.fulltextRanges).toEqual([])
+  })
+
+  it('read_section 从正文中段读到尾部，offset 与原文对应', async () => {
+    const corpus = buildCorpus({ 'base/长.md': longDocument(40) })
+    const doc = corpus.directory.documentRange('base/长.md')!
+    const mid = Math.floor(doc.body.length / 2)
+
+    const item = await run(executorFor(corpus), 'read_section', { section_id: doc.sectionId, offset: mid })
+
+    expect(item.status).toBe('success')
+    const page = parseReadSection(item.data)
+    expect(page.length).toBeGreaterThan(0)
+    // 中段页必须是原文从 offset 起的连续前缀，不得跳过正文。
+    expect(doc.body.startsWith(page, mid)).toBe(true)
   })
 
   it('超长行按行边界截断且不截断 UTF-16 代理对（非 BMP 字符）', async () => {

@@ -98,9 +98,11 @@ export interface ToolStatsAgg {
   errors: number
   /** 获准尝试数；历史记录缺该字段时为 null（不可用）。 */
   attempts: number | null
-  /** 非空执行成功扣点数；历史记录缺该字段时为 null（不可用），不由 executed 推算。 */
+  /** 非空执行成功扣点数；历史记录缺该字段时为 null（不可用），不由 executed 推算。
+   *  按 ADR-013 决策 5，success 即「RAG/facts 任一部分实际送达非空证据」，故本字段就是实际证据送达计数。 */
   successes: number | null
-  /** 已执行且明确有命中的结果数。 */
+  /** 已执行且 hitIds 非空的结果数。旧 chunk 命中口径：只统计 RAG 分块/facts 卡命中，
+   *  不含仅由内部附带 facts 送达（hitIds 为空）的 rag_search，故不能等同于证据送达；仅作兼容与诊断保留。 */
   hitCount: number
   /** 已执行但旧记录或异常缺少 hitIds 的结果数。 */
   hitUnknown: number
@@ -418,7 +420,7 @@ export function renderMarkdown(report: BenchReport): string {
     `- 费用状态：${report.costComplete ? '完整' : '不完整'}｜不完整 usage 调用：${report.incompleteUsageCalls}｜用量未知调用：${report.unknownUsageCalls}`,
     `- HTTP 尝试：${report.totalHttpAttempts}｜重试：${report.retryAttempts}`,
     `- 每查询输出 tokens：均值 ${avgOut}｜P95 ${p95Out.toLocaleString()}`,
-    `- 工具批次：${report.toolStats.batches}｜提出 ${report.toolStats.requested}｜准入 ${report.toolStats.granted}｜执行 ${report.toolStats.executed}｜拒绝 ${report.toolStats.denied}｜错误 ${report.toolStats.errors}｜获准尝试 ${nullable(report.toolStats.attempts)}｜成功 ${nullable(report.toolStats.successes)}｜有命中 ${report.toolStats.hitCount}｜命中未知 ${report.toolStats.hitUnknown}`,
+    `- 工具批次：${report.toolStats.batches}｜提出 ${report.toolStats.requested}｜准入 ${report.toolStats.granted}｜执行 ${report.toolStats.executed}｜拒绝 ${report.toolStats.denied}｜错误 ${report.toolStats.errors}｜获准尝试 ${nullable(report.toolStats.attempts)}｜证据送达（成功） ${nullable(report.toolStats.successes)}｜有命中（旧 chunk 口径，不含 facts-only 送达） ${report.toolStats.hitCount}｜命中未知 ${report.toolStats.hitUnknown}`,
     ...(report.toolUsage.length > 0
       ? [`- 工具调用：${report.toolUsage.map((u) => `${u.tool} ${u.calls} 次`).join('｜')}`]
       : []),
