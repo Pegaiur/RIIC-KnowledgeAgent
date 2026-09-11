@@ -22,7 +22,7 @@ describe('curation：九个设施独立人工优化批次', () => {
     expect(validated.skills.size).toBe(0)
     expect(validated.grants.size).toBe(0)
     expect([...validated.operators.keys()].sort()).toEqual([
-      '乌尔比安', '令', '伺夜', '多萝西', '孑', '巫恋', '摩根', '斯卡蒂', '桃金娘', '水月', '泡泡', '温蒂', '焰尾', '红云', '能天使', '迷迭香', '银灰', '陈', '龙舌兰',
+      '乌尔比安', '乌有', '令', '伺夜', '八幡海铃', '图耶', '夕', '多萝西', '孑', '巫恋', '戴菲恩', '推进之王', '摩根', '斩业星熊', '斯卡蒂', '桃金娘', '歌蕾蒂娅', '水月', '泡泡', '清流', '温蒂', '火神', '灵知', '焰尾', '琴柳', '砾', '红云', '绮良', '能天使', '薇薇安娜', '迷迭香', '重岳', '银灰', '陈', '鸿雪', '黑键', '龙舌兰',
     ])
     const fact = facts.skillFacts[0]
     expect(resolveSkillEffectText(fact, 'raw', validated)).toBe(fact.rawEffectText)

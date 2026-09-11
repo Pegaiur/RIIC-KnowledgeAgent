@@ -6,10 +6,10 @@ export const TRAINING_CURATIONS: CurationBatch = {
   skills: [],
   grants: [],
   operators: [
-    // 来源：knowledge/guides/贸易站组合.md「深巡＋乌尔比安」
+    // 来源：knowledge/guides/贸易站组合.md「深巡＋乌尔比安」；knowledge/guides/制造站组合.md「深海猎人组」
     {
       operatorId: '乌尔比安',
-      notes: '本卡在基建内时为「深巡＋乌尔比安」关系中的挂件，触发深巡（精二、贸易站）的额外贸易收益；本卡不作为贸易站散件理解。',
+      notes: '本卡同时属「深巡＋乌尔比安」与「深海猎人组」：在基建内时为深巡（精二、贸易站）的挂件，触发额外贸易收益，不作为贸易站散件；同时是深海猎人组的重要成员（精零即可，该组以歌蕾蒂娅精二为核心、进驻控制中枢）。',
     },
   ],
 }
