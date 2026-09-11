@@ -129,21 +129,21 @@
 
 ## 验收清单
 
-- [ ] `RetrieverId` 收缩为 `bm25 | hybrid`，`grep_search` 不再下发且历史名仍可读
-- [ ] 默认检索模式为 `hybrid`，`facts`/`grep`/`both` 分支与 `grep-retriever.ts` 已清除
-- [ ] CLI 与程序化配置拒绝失效/未知模式，CLI 缺值报错，未传时沿用 hybrid
-- [ ] `TOOL_SCHEMA_VERSION` 升至 9，工具指纹与本轮输入快照一致
-- [ ] 仅非空执行成功扣 1 点、默认上限 5；empty/invalid_params/unknown_operation/error 不扣，获准尝试默认上限 10
-- [ ] 批内逐项准入与结算，无整批预扣；混合批次、每项余额、两种超限和完整结果回写均正确
-- [ ] 请求不再开启并行工具调用，批内多调用按序串行执行；既有 fatal/协议终止与耗尽后循环行为保留
-- [ ] `answers.md` / `meta.json` / `inputs.json` / trace / snapshot 与批次统计同步新账本及实际尝试上限
-- [ ] 旧快照和旧运行目录可读，历史新增字段缺失保持不可用，新格式导出与往返读取不丢计数
-- [ ] `bench:dry` 只暴露 `rag_search`、`read_section`、`facts_search`
-- [ ] ADR-011、ADR-012 与 ADR 索引、inbox 条目已落位
-- [ ] `pnpm run typecheck` 全通过
-- [ ] `pnpm run test` 全通过
-- [ ] `node scripts/doc-check.mjs` 全通过
-- [ ] `node scripts/verify.mjs merge -- --base main` 全通过
+- [x] `RetrieverId` 收缩为 `bm25 | hybrid`，`grep_search` 不再下发且历史名仍可读
+- [x] 默认检索模式为 `hybrid`，`facts`/`grep`/`both` 分支与 `grep-retriever.ts` 已清除
+- [x] CLI 与程序化配置拒绝失效/未知模式，CLI 缺值报错，未传时沿用 hybrid
+- [x] `TOOL_SCHEMA_VERSION` 升至 9，工具指纹与本轮输入快照一致
+- [x] 仅非空执行成功扣 1 点、默认上限 5；empty/invalid_params/unknown_operation/error 不扣，获准尝试默认上限 10
+- [x] 批内逐项准入与结算，无整批预扣；混合批次、每项余额、两种超限和完整结果回写均正确
+- [x] 请求不再开启并行工具调用，批内多调用按序串行执行；既有 fatal/协议终止与耗尽后循环行为保留
+- [x] `answers.md` / `meta.json` / `inputs.json` / trace / snapshot 与批次统计同步新账本及实际尝试上限
+- [x] 旧快照和旧运行目录可读，历史新增字段缺失保持不可用，新格式导出与往返读取不丢计数
+- [x] `bench:dry` 只暴露 `rag_search`、`read_section`、`facts_search`
+- [x] ADR-011、ADR-012 与 ADR 索引、inbox 条目已落位
+- [x] `pnpm run typecheck` 全通过
+- [x] `pnpm run test` 全通过
+- [x] `node scripts/doc-check.mjs` 全通过
+- [x] `node scripts/verify.mjs merge -- --base main` 全通过
 
 ## 关联 ADR
 

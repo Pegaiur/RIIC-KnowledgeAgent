@@ -1,7 +1,7 @@
 # ADR-011：检索模式与工具集合收敛
 
 - 日期：2026-09-10
-- 状态：提议
+- 状态：已实施
 - 替代：局部替代 ADR-003（`hybrid` 工具组成与 `both` 组合语义）、ADR-006（工具清单中的 `grep_search` 行）、ADR-007（`facts` 模式只暴露 `facts_search`）、ADR-008（暴露 `read_section` 的模式范围）
 
 ## 背景
