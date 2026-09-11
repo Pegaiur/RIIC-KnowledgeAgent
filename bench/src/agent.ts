@@ -308,6 +308,7 @@ export async function runQuery(
             toolEvent.hitIds = item.hitIds
             toolEvent.injectedIds = item.injectedIds
             toolEvent.fulltextRanges = item.fulltextRanges
+            toolEvent.attachedFacts = item.attachedFacts
             toolEvent.writtenContent = writtenContent
             toolEvent.reason = item.message
             if (isToolErrorStatus(item.status)) toolEvent.error = item.message

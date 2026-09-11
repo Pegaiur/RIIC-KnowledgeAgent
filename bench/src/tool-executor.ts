@@ -3,18 +3,28 @@
  * 工具函数名直接完成路由；执行器仍共用一套预算、校验和底层检索门面。
  */
 import { createHash } from 'node:crypto'
-import { loadConfig, type BenchConfig, type RetrieverId } from './config.js'
+import { effectiveAttachFacts, loadConfig, type BenchConfig, type RetrieverId } from './config.js'
 import { isFulltextFile } from './corpus.js'
 import { search, type IndexEntry } from './retriever.js'
 import type { SectionDirectory, SectionEntry } from './sections.js'
 import { isFactTool, type BenchQuery, type DocChunk, type ToolCall } from './types.js'
-import { getCardStore, serializeFactsMatches, type CardStore, type ResolutionPath } from './facts/store.js'
+import {
+  getCardStore,
+  serializeCard,
+  serializeFactsMatches,
+  serializeResolutionPaths,
+  type CardStore,
+  type FactsEntryDictionary,
+  type FactsMatch,
+  type FactsMatchCategory,
+  type ResolutionPath,
+} from './facts/store.js'
 
 /** 当前可下发的工具集合；grep_search 等历史名不在其中。 */
 export type CurrentToolId = 'rag_search' | 'facts_search' | 'read_section'
 
 /** 工具 schema 发生协议变化时递增；快照保留该值供对照分组。 */
-export const TOOL_SCHEMA_VERSION = 9 as const
+export const TOOL_SCHEMA_VERSION = 10 as const
 
 export interface ToolBudgetState {
   /** 非空执行成功额度上限（每题默认 5） */
@@ -41,6 +51,33 @@ export type ToolResultStatus =
   | 'budget_exhausted'
 
 export const FACTS_RESULT_VERSION = 5 as const
+
+/**
+ * RAG 内部附带 facts 的独立额度（UTF-16 字符，ADR-013 决策 4 定稿）：
+ * 在 maxContextChars 之外单独分配，不与之互相回收；以单触发词完整匹配集合为原子单位。
+ */
+export const RAG_ATTACH_FACTS_QUOTA_CHARS = 4_000 as const
+
+/** RAG 内部 facts 附带的单触发词观测（ADR-013 步骤 3）：触发、匹配与送达分开记录。 */
+export interface AttachedFactsObservation {
+  /** 触发词（完整登记词）。 */
+  term: string
+  /** 触发词在本次实际检索 query 中的 UTF-16 起止区间 [start, end)；工具参数层已 trim 首尾，识别函数对未 trim 输入自行校正偏移。 */
+  start: number
+  end: number
+  /** 该词的解析路径并集（exact/alias/substring/combo）；未附带时仍保留匹配到的路径。 */
+  paths: ResolutionPath[]
+  /** factsSearch 命中的 canonical（按 store 稳定卡序去重）。 */
+  matched: string[]
+  /** 本次实际送达的 canonical；整组未附带时为空。 */
+  delivered: string[]
+  /** 未附带原因；完整附带时为 null。 */
+  omittedReason: string | null
+  /** 该词实际写入的附带正文 UTF-16 字符数：已附带为整组块，未附带为提示行长度（提示也未写入时为 0）。 */
+  chars: number
+  /** 该次内部 factsSearch 耗时（毫秒）。 */
+  elapsedMs: number
+}
 
 /**
  * TODO(tech-debt) R5-5：协议层直接内嵌 store 的 ResolutionPath 联合类型，路径种类变更会牵动 wire 契约；
@@ -82,6 +119,8 @@ export interface ToolExecutionResult {
   factsResult?: FactsResultMetadata
   /** rag_search 原文扩展的实际送达范围；未扩展时为 undefined。 */
   fulltextRanges?: FulltextRange[]
+  /** rag_search 内部 facts 附带的触发/匹配/送达观测；无触发词时为 undefined。 */
+  attachedFacts?: AttachedFactsObservation[]
   message?: string
   fatal?: boolean
 }
@@ -338,6 +377,7 @@ async function executeOne(
       hitIds: output.hitIds,
       injectedIds: output.injectedIds,
       fulltextRanges: output.fulltextRanges,
+      attachedFacts: output.attachedFacts,
       factsResult,
     }
   } catch (error) {
@@ -442,20 +482,81 @@ function runOperation(
   params: Record<string, unknown>,
   context: KnowledgeToolContext,
   config: BenchConfig,
-): { data: string; hitIds: string[]; injectedIds: string[]; factsResolution?: { paths: ResolutionPath[] }; fulltextRanges?: FulltextRange[]; status?: ToolResultStatus } {
-  if (operation === 'rag_search') {
-    const query = params.query as string
-    const hits = search(context.index, query, config.topK)
-    const hitIds = hits.map((index) => context.chunks[index]?.id).filter((id): id is string => Boolean(id))
-    const built = buildRagData(context.chunks, hits, config.maxContextChars, context.sections, config.expandFulltext)
-    for (const id of built.injectedIds) {
-      if (context.injectedIds && !context.injectedIds.includes(id)) context.injectedIds.push(id)
-    }
-    // 仅有命中编号但未送达任何正文证据（如预算被截到只剩头部）时判空；极小上限放不下必要元数据时报容量错误。
-    const status: ToolResultStatus = built.capacityError ? 'error' : built.delivered ? 'success' : 'empty'
-    return { data: built.data, hitIds, injectedIds: built.injectedIds, fulltextRanges: built.fulltextRanges, status }
-  }
+): {
+  data: string
+  hitIds: string[]
+  injectedIds: string[]
+  factsResolution?: { paths: ResolutionPath[] }
+  fulltextRanges?: FulltextRange[]
+  attachedFacts?: AttachedFactsObservation[]
+  status?: ToolResultStatus
+} {
+  if (operation === 'rag_search') return ragSearchOperation(params, context, config)
   if (operation === 'read_section') return readSectionOperation(params, context, config)
+  const store = loadFactsStore(context)
+  const query = params.query as string
+  const searchResult = store.factsSearch(query)
+  const hits = searchResult.matches.map((match) => match.card)
+  return {
+    data: serializeFactsMatches(searchResult),
+    hitIds: hits.map((card) => card.canonical),
+    injectedIds: hits.map((card) => card.canonical),
+    factsResolution: { paths: searchResult.paths },
+  }
+}
+
+/**
+ * rag_search：RAG 检索与原文扩展，并在 hybrid 下按 ADR-013 步骤 3 附加内部 facts。
+ * 组装为原子过程：全部分支（含 facts store 加载与 factsSearch）算完并确认最终输出后，
+ * 才更新共享送达列表并返回；任一步抛错都不留下本次未发送的注入记录。
+ */
+function ragSearchOperation(
+  params: Record<string, unknown>,
+  context: KnowledgeToolContext,
+  config: BenchConfig,
+): {
+  data: string
+  hitIds: string[]
+  injectedIds: string[]
+  fulltextRanges: FulltextRange[]
+  attachedFacts?: AttachedFactsObservation[]
+  status: ToolResultStatus
+} {
+  const query = params.query as string
+  const hits = search(context.index, query, config.topK)
+  const hitIds = hits.map((index) => context.chunks[index]?.id).filter((id): id is string => Boolean(id))
+  const built = buildRagData(context.chunks, hits, config.maxContextChars, context.sections, config.expandFulltext)
+
+  let attachment: FactsAttachment | undefined
+  if (effectiveAttachFacts(config)) {
+    const store = loadFactsStore(context)
+    const triggers = recognizeEntryTriggers(store.entryDictionary, query)
+    attachment = buildFactsAttachment(store, triggers, RAG_ATTACH_FACTS_QUOTA_CHARS)
+  }
+
+  for (const id of built.injectedIds) {
+    if (context.injectedIds && !context.injectedIds.includes(id)) context.injectedIds.push(id)
+  }
+  // RAG 正文为空时不再前置分区分隔符，避免附带区开头出现空行。
+  const data = attachment?.text
+    ? built.data ? `${built.data}${FACTS_ATTACH_SEPARATOR}${attachment.text}` : attachment.text
+    : built.data
+  // 仅有命中编号但未送达任何正文证据时判空；极小上限放不下必要元数据时报容量错误。
+  // RAG 与内部 facts 任一部分实际送达非空证据即计成功；提示与路径元数据本身不算证据。
+  const delivered = built.delivered || Boolean(attachment?.delivered)
+  const status: ToolResultStatus = built.capacityError ? 'error' : delivered ? 'success' : 'empty'
+  return {
+    data,
+    hitIds,
+    injectedIds: built.injectedIds,
+    fulltextRanges: built.fulltextRanges,
+    attachedFacts: attachment && attachment.observations.length > 0 ? attachment.observations : undefined,
+    status,
+  }
+}
+
+/** 取运行时 facts store；加载失败沿用工具执行错误的 fatal 语义，不静默降级，也不增加隐式重试。 */
+function loadFactsStore(context: KnowledgeToolContext): CardStore {
   let store: CardStore
   try {
     store = getCardStore()
@@ -472,15 +573,7 @@ function runOperation(
   } catch {
     // 观测回调不得改变 facts 工具的执行语义。
   }
-  const query = params.query as string
-  const searchResult = store.factsSearch(query)
-  const hits = searchResult.matches.map((match) => match.card)
-  return {
-    data: serializeFactsMatches(searchResult),
-    hitIds: hits.map((card) => card.canonical),
-    injectedIds: hits.map((card) => card.canonical),
-    factsResolution: { paths: searchResult.paths },
-  }
+  return store
 }
 
 interface RagBlock {
@@ -664,6 +757,182 @@ function safeCutAtLine(text: string): string {
   if (cut.length === 0) return cut
   const last = cut.charCodeAt(cut.length - 1)
   return last >= 0xd800 && last <= 0xdbff ? cut.slice(0, -1) : cut
+}
+
+// ── RAG 内部 facts 附带（ADR-013 步骤 3） ─────────────────────────────
+
+/** 多关键词分支准入类别：≥2 字的干员名、技能名、技能组、阵营（入口规则 5）。 */
+const MULTI_TERM_CATEGORIES: ReadonlySet<FactsMatchCategory> = new Set(['operator', 'skill', 'skillGroup', 'faction'])
+
+/** 完整词边界判定：字符串首尾或 JavaScript \s 空白（入口规则 4）。 */
+function isEntryBoundary(ch: string | undefined): boolean {
+  return ch === undefined || /\s/.test(ch)
+}
+
+/** 识别到的完整登记触发词及其在原 query 中的 UTF-16 区间。 */
+export interface EntryTrigger {
+  term: string
+  /** 传入 query 中的起点（识别函数按未 trim 输入校正首尾空白偏移）。 */
+  start: number
+  /** 传入 query 中的终点（不含）。 */
+  end: number
+}
+
+/**
+ * 识别 rag_search 的 query 中可触发内部 facts 查询的完整登记词（ADR-013 步骤 3 入口规则）。
+ *
+ * 规则 3：只 trim 首尾后整条精确匹配优先，任意类别与单字正式名均可触发；成立即不扫描内部短词。
+ * 规则 4：否则按空白边界从左到右取最长登记完整词；已消费范围不重复触发，非重叠词按出现顺序去重。
+ * 规则 5：多关键词分支只接纳 ≥2 字的干员/技能/技能组/阵营或任一人工作入口；未准入也不拆其内部短词。
+ * 规则 6：不解析未分隔自然句，不把逗号/加号当分隔符，不做近义改写或任意子串扫描。
+ * 只使用只读词典做候选识别，不对未准入词执行任何 factsSearch。
+ */
+export function recognizeEntryTriggers(dictionary: FactsEntryDictionary, query: string): EntryTrigger[] {
+  const trimmed = query.trim()
+  if (trimmed.length === 0) return []
+  const first = query.length - query.trimStart().length
+  const last = query.trimEnd().length
+  if (dictionary.terms.has(trimmed)) return [{ term: trimmed, start: first, end: last }]
+
+  const triggers: EntryTrigger[] = []
+  const seen = new Set<string>()
+  let i = first
+  while (i < last) {
+    if (i === first || isEntryBoundary(query[i - 1])) {
+      const term = longestEntryAt(dictionary, query, i, last)
+      if (term !== undefined) {
+        // 同起点先按长度确定完整词边界；未准入也不拆其内部短词，整体跳过。
+        if (!seen.has(term) && isAdmittedMultiTerm(dictionary, term)) {
+          seen.add(term)
+          triggers.push({ term, start: i, end: i + term.length })
+        }
+        i += term.length
+        continue
+      }
+    }
+    i++
+  }
+  return triggers
+}
+
+/** 从 i 起、以 trimmed 末尾或 \s 空白结尾的最长登记词；无则 undefined（同起点按长度取最长）。 */
+function longestEntryAt(dictionary: FactsEntryDictionary, query: string, i: number, last: number): string | undefined {
+  let best: string | undefined
+  for (const term of dictionary.terms) {
+    if (best !== undefined && term.length <= best.length) continue
+    const end = i + term.length
+    if (end > last || !query.startsWith(term, i)) continue
+    if (end === last || isEntryBoundary(query[end])) best = term
+  }
+  return best
+}
+
+/** 规则 5：多关键词分支只接纳 ≥2 字的干员/技能/技能组/阵营，或任一人工登记入口。 */
+function isAdmittedMultiTerm(dictionary: FactsEntryDictionary, term: string): boolean {
+  if (term.length < 2) return false
+  if (dictionary.isCuratedEntry(term)) return true
+  return dictionary.categoriesOf(term).some((category) => MULTI_TERM_CATEGORIES.has(category))
+}
+
+const FACTS_ATTACH_HEADER = '【RAG 附带事实卡｜hybrid 自动附带】'
+/** 附带分区与 RAG 正文之间的分隔符；计入 facts 额度，保证合并 data 不超过 maxContextChars + 额度。 */
+const FACTS_ATTACH_SEPARATOR = '\n\n'
+
+interface FactsAttachment {
+  /** 附带分区正文；无触发词或额度放不下分区头时为空字符串。 */
+  text: string
+  observations: AttachedFactsObservation[]
+  deliveredCanonicals: string[]
+  delivered: boolean
+}
+
+/**
+ * 组装 RAG 内部 facts 附带（ADR-013 决策 4）：以单个触发词的完整匹配集合为原子单位，
+ * 整组放入剩余额度才附带；放不下整组不附带并返回可复制的词条与原因；卡正文按 canonical 跨词去重。
+ */
+export function buildFactsAttachment(store: CardStore, triggers: readonly EntryTrigger[], quota: number): FactsAttachment {
+  const observations: AttachedFactsObservation[] = []
+  const deliveredCanonicals: string[] = []
+  // 额度含分区前分隔符：attachment.text 以分区头开头，拼接进 RAG data 时另加同样长度的分隔符。
+  const budget = quota - FACTS_ATTACH_SEPARATOR.length
+  if (triggers.length === 0 || budget <= FACTS_ATTACH_HEADER.length) {
+    return { text: '', observations, deliveredCanonicals, delivered: false }
+  }
+  const deliveredSet = new Set<string>()
+  let text = FACTS_ATTACH_HEADER
+  for (const trigger of triggers) {
+    const started = Date.now()
+    const result = store.factsSearch(trigger.term)
+    const elapsedMs = Date.now() - started
+    const matched = dedupeCanonicals(result.matches.map((match) => match.card.canonical))
+    if (matched.length === 0) {
+      observations.push({ ...trigger, paths: result.paths, matched, delivered: [], omittedReason: '未命中登记卡', chars: 0, elapsedMs })
+      continue
+    }
+    // 跨词已送达的共享卡不再重复渲染，但该词自身成员与路径未齐时不标记完整。
+    const newMatches = result.matches.filter((match) => !deliveredSet.has(match.card.canonical))
+    const block = renderAttachedWordBlock(trigger.term, result.paths, matched.length, newMatches)
+    if (text.length + FACTS_ATTACH_SEPARATOR.length + block.length <= budget) {
+      text += `${FACTS_ATTACH_SEPARATOR}${block}`
+      for (const match of newMatches) {
+        if (deliveredSet.has(match.card.canonical)) continue
+        deliveredSet.add(match.card.canonical)
+        deliveredCanonicals.push(match.card.canonical)
+      }
+      observations.push({ ...trigger, paths: result.paths, matched, delivered: [...matched], omittedReason: null, chars: block.length, elapsedMs })
+      continue
+    }
+    const remaining = budget - text.length
+    const omission = renderOmittedWordLine(trigger.term, matched.length, block.length, remaining)
+    // 提示行也放不下时不写入；chars 只记实际写入的字符数，避免虚报附带量。
+    const omissionWritten = text.length + 1 + omission.length <= budget
+    if (omissionWritten) text += `\n${omission}`
+    observations.push({
+      ...trigger,
+      paths: result.paths,
+      matched,
+      delivered: [],
+      omittedReason: `整组 ${block.length} 字符未放入剩余附带额度 ${remaining}`,
+      chars: omissionWritten ? omission.length : 0,
+      elapsedMs,
+    })
+  }
+  // 连未附带提示都放不下时不写入只含分区头的截断词条，避免制造无内容的分区。
+  if (text === FACTS_ATTACH_HEADER) return { text: '', observations, deliveredCanonicals, delivered: deliveredCanonicals.length > 0 }
+  return { text, observations, deliveredCanonicals, delivered: deliveredCanonicals.length > 0 }
+}
+
+/** 附带块：触发词行 + 该词解析路径；正文只渲染本次尚未送达（含跨词共享）的新卡。 */
+function renderAttachedWordBlock(
+  term: string,
+  paths: readonly ResolutionPath[],
+  matchedCount: number,
+  newMatches: readonly FactsMatch[],
+): string {
+  const lines = [`- 触发词：${term}｜命中 ${matchedCount} 张记录卡｜已附带（本次新增 ${newMatches.length} 张）`]
+  if (paths.length > 0) lines.push(indentBlock(serializeResolutionPaths(paths)))
+  const cards = newMatches.map((match) => serializeCard(match.card, {}, match.categories)).join('\n\n')
+  return cards ? `${lines.join('\n')}\n\n${cards}` : lines.join('\n')
+}
+
+/** 未附带提示行：完整可复制的词条与原因（整组所需与剩余额度），供必要时显式 facts_search。 */
+function renderOmittedWordLine(term: string, matchedCount: number, groupChars: number, remaining: number): string {
+  return `- 触发词：${term}｜命中 ${matchedCount} 张记录卡｜未附带：整组 ${groupChars} 字符未放入剩余附带额度 ${remaining}；如需请显式 facts_search。`
+}
+
+function indentBlock(text: string): string {
+  return text.split('\n').map((line) => `  ${line}`).join('\n')
+}
+
+function dedupeCanonicals(values: readonly string[]): string[] {
+  const seen = new Set<string>()
+  const result: string[] = []
+  for (const value of values) {
+    if (seen.has(value)) continue
+    seen.add(value)
+    result.push(value)
+  }
+  return result
 }
 
 /** 来源头保持既有格式；新增小节信息一律放到正文之后，只用剩余预算，避免挤占原正文送达。 */

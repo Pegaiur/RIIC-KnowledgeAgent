@@ -19,6 +19,12 @@
 - **决策**：B。新增 `effectiveAttachFacts()` 统一解析有效值；默认组合与对照组合共用同一配置装配。
 - **影响**：inputs/meta 记录有效值（布尔）而非三态；历史缺字段表示不可用。
 
+### 2026-09-11 — 容量分配口径定稿：facts 附带为独立额外额度
+
+- **背景**：ADR-013 决策 4 与 plan 步骤 0 要求容量分配先落文档、不得由执行者随意选择；步骤 0 只登记「总上限 12,000」，RAG/facts 分配一直待定稿。
+- **决策**：用户裁决「facts 额外给 4000 额度」——RAG 正文沿用 `maxContextChars`（12,000）不变，facts 附带在该上限之外另给独立额度 **4,000 UTF-16 字符**，两部分不互相回收，合并 `data` 上限 16,000；外层 JSON 单独观测。facts 分区头、未附带提示与卡正文均计入该 4,000 额度。
+- **影响**：已回馈 ADR-013 决策 4 与 plan 步骤 0/3；`RAG_ATTACH_FACTS_QUOTA_CHARS = 4000` 落在 tool-executor。plan 步骤 3「若连完整未附带提示都放不下应先收缩证据正文」在独立额度口径下改写为：提示同样计入 facts 额度，放不下分区头时不产生附带正文（固定 4,000 下实际不可达），不改动 RAG 正文预算。
+
 ## 实现调整
 
 ### 2026-09-11 — 步骤 0：契约与三开关配置落地
@@ -39,6 +45,12 @@
 - **原因**：既满足扩展与续读契约，又不改动既有小节体系与 `sectionCount`；保留 `expandFulltext=false` 对照组合的既有行为。
 - **后果**：默认运行 base/guides 命中会送达整篇原文（受 `maxContextChars` 约束）；references 截断由硬截断改为按行边界；步骤 5 需在报告层明确范围与送达。
 
+### 2026-09-11 — 步骤 3：RAG 精确词条自动附带 facts
+- **plan 原文**：仅 hybrid 的 rag_search 启用；整条精确优先，否则按空白边界取已登记完整词；多词分支仅 ≥2 字干员/技能/技能组/阵营/alias/substring/combo，设施/职业不展开，不解析自然句；复用 store.factsSearch，不新增 LLM 请求；按单个触发词完整集合为原子单位附带，放不下整组不附带并给原因；1 次 attempt、有效送达才计 success；trace 记录内部触发/路径/送达；本步一并把 TOOL_SCHEMA_VERSION 9→10 并同步断言与 inputs/meta。
+- **实际做法**：store.ts 新增只读 `entryDictionary`（六类词条与 alias/substring/combo 并集，提供 `categoriesOf`/`isCuratedEntry`），导出 `serializeCard` 与 `serializeResolutionPaths` 供独立 facts_search 与内部附带共用同一措辞；tool-executor.ts 新增 `recognizeEntryTriggers`（入口规则 3–6，整词优先、最长完整词边界、未准入不拆内部短词）与 `buildFactsAttachment`（独立额度 4,000、按触发词出现顺序原子装配、跨词 canonical 去重、未附带给原因）。rag_search 改为原子组装：先算完 RAG 与 facts 全部分支确认最终输出，再更新共享注入列表；附带观测经 `ToolExecutionResult.attachedFacts` → `TraceToolEvent.attachedFacts` 落 trace；`TOOL_SCHEMA_VERSION` 9→10。
+- **原因**：复用既有 store 与卡片序列化，保持「同一套事实解析规则」，不新增 LLM 请求、不新增哈希字段；facts 用独立额外额度，避免改变纯 RAG 对照行为。
+- **后果**：hybrid 默认 rag_search 会（首次）加载 facts store 并按入口附带记录卡；RAG 与 facts 任一实际送达非空证据即计一次 success，提示与路径元数据不扣点；工具描述与 knowledge/AGENTS.md 首版不改（保持四组对照同一指令与工具描述），仅 schema 版本递增，`FACTS_RESULT_VERSION` 保持 5。
+
 ## 债务记录
 
 本轮未新增或修改代码技术债；施工前待决事项直接列于 plan 步骤 0。
@@ -46,6 +58,13 @@
 ### 2026-09-11 — 步骤 2 独立审查的非阻塞项承接
 - **债务**：独立审查指出三项非阻塞项：① `TOOL_SCHEMA_VERSION` 未随步骤 2 的 rag_search 返回数据语义扩展递增；② 容量错误路径 `ToolExecutionResult.message` 为空、trace `error` 字段缺失；③ 缺跨文件稳定排序、恰好容纳、正文中段/尾部与未 clamp 快照对照等边界测试。另记录 injectedIds 去重计数边界（同文件多命中只记首个 chunk，扩展范围另记 `fulltextRanges`）。
 - **未来偿还**：① 在步骤 3 与 facts 附带（及工具描述同步）一并把 `TOOL_SCHEMA_VERSION` 从 9 递增到 10，避免同一步两次改版本；② 归入步骤 5 的观测消费者收敛，统一错误文本来源；③ 随步骤 5 契约测试补齐。三项均不影响本步运行正确性，plan 对应验收项保持未勾选。
+
+### 2026-09-11 — 步骤 3 偿还 TOOL_SCHEMA_VERSION 债务
+- 步骤 2 债务①已在本步偿还：`TOOL_SCHEMA_VERSION` 9→10，同步更新 tool-executor 与 runner 测试断言；值随 `toolSchemaMetadata` 自动写入 meta 与 inputs，无需另改字段。债务②（trace 容量错误 message/error 收敛）与③（跨文件排序/恰好容纳/正文中段尾部等边界测试）继续归入步骤 5，plan 对应验收项保持未勾选。
+
+### 2026-09-11 — 步骤 3 审查遗留（归步骤 5）
+- **债务**：hybrid rag_search 的 facts store 加载/查询异常缺直接回归测试（应断言 status=error、fatal、`context.injectedIds` 不残留）；当前仅覆盖 facts_search 的异常路径。plan 验收项「长文续读、空/错误/预算拒绝、附带容量与共享注入状态、历史格式及全部观测消费者通过契约测试」保持未勾选。
+- **未来偿还**：随步骤 5 观测消费者与错误文本收敛一并补齐；不影响本步运行正确性。
 
 ## 意外发现
 
@@ -65,6 +84,10 @@
 ### 2026-09-11 — 文档范围 ID 采用可读路径而非哈希
 - **发现**：文档范围需要稳定可调用的 ID；但编码核心约束 #10 默认禁止新增 sha256 / 指纹字段，故未沿用 `encodeSectionId` 的哈希方案，改用可读的 `doc:<相对路径>`。既有小节 ID 不变、不失效。
 - **影响**：该 ID 随文件重命名变化（与既有小节 ID 行为一致）；read_section 以 `get` 解析文档范围、续读链路可用。后续消费者不得以 `sec-` 前缀假定所有可读 ID。
+
+### 2026-09-11 — 工具描述与 AGENTS.md 首版不改
+- **发现**：plan 非目标允许同步工具描述与 knowledge/AGENTS.md 以准确描述附带行为，但步骤 5 要求四组工程对照保持相同指令与工具描述；attach 是 hybrid 内的配置开关，而工具描述按 retriever 而非按 attach 生成，改描述会让关闭附带的对照组拿到与行为不一致的说明。
+- **影响**：首版不改工具描述与 AGENTS.md，仅递增 `TOOL_SCHEMA_VERSION`；附带行为差异由运行时 `data` 体现，步骤 6 对照时按实验条件差异如实标注。
 
 ## 阻塞与解决
 
@@ -94,3 +117,35 @@ ADR-013 已登记，契约收口完成；容量沿用总上限 12,000，RAG 预�
 - `pnpm run typecheck` 通过；`pnpm run test` 全量 454 项通过（新增 fulltext-expansion 11 项，覆盖同文件去重、references 不扩展、续读拼接无缺口、极小上限 error、非 BMP 代理对、无/多 H1 与空正文）。
 - 原 section-navigation 用例显式置 `expandFulltext=false`，隔离小节上下文行为、保留对照组合回归。
 - `node scripts/doc-check.mjs` 仍仅剩本计划未完成验收项 D1；本轮勾选「base/guides 检索与原文扩展方案、分页和合并容量边界确定」一项。
+
+### 2026-09-11 — 步骤 3 验证
+
+- `pnpm run typecheck` 通过；`pnpm run test` 全量 471 项通过（新增 facts-attach 17 项，覆盖整词精确与内部短词不重扫、空白边界完整词、含内部空格长词整体匹配与 trim 区间、最长词边界、设施/职业与单字不进入多词分支、重复去重、整组容量未附带并给原因、跨词共享卡去重、额度极小/只够分区头两类不产生附带、仅 facts 非空计成功、bm25 与显式关闭不附带、设施大集合整组超限、trace 附带观测）。
+- 真实 store 断言：`刻俄柏` 仅 facts 送达即 success 且 `attachedFacts` 记录触发/路径/送达；`制造站` 整组超 4,000 额度未附带并给原因，仅 RAG 空结果判 empty。
+- `node scripts/doc-check.mjs` 仍仅剩本计划未完成验收项 D1（施工期预期，非回归）；本轮勾选步骤 3 两项。
+- 容量待定稿阻塞已由用户裁决消解（facts 独立额外 4,000，见「决策偏离」与「债务记录」）。
+
+### 2026-09-11 — 步骤 3 独立审查非阻塞项处置
+
+- 独立子代理审查结论 PASS；三项非阻塞与两项项目关注处置如下：
+  1. **触发词区间语义**：工具参数层已对 query 做 trim，生产路径识别函数的 `first` 恒为 0，`EntryTrigger`/`AttachedFactsObservation` 原注释「原 query（未 trim）」不准确 → 改为「本次实际检索 query（工具层已 trim，识别函数对未 trim 输入自行校正偏移）」；识别函数保留首尾空白偏移校正，plan「校正首尾 trim 带来的偏移」在此语义下达成。
+  2. **合并 data 上限**：RAG 与 facts 之间的 2 字符分区分隔符原未计入任一额度，最坏合并 data 达 16,002 → 已将分隔符计入 facts 4,000 额度（`FACTS_ATTACH_SEPARATOR`、`budget = quota - 2`），合并 data 严格 ≤ maxContextChars + 4,000；新增「额度只够分区头、连提示都放不下时不写入无内容分区」用例。
+  3. **hybrid rag_search 无条件加载 facts store**：失败面由「命中入口」扩大到全部 hybrid rag_search → 经核对符合 plan 步骤 3「候选检测使用同一 store 的只读词典」与「内部 store 加载/查询抛错走 fatal 语义」，确认为预期，不改。
+- 审查后代码改动涉及额度计量与边界行为，按 commit-convention「须重新审查」重新派生未参与实现、上下文隔离的子代理复审最终内容。
+
+### 2026-09-11 — 步骤 3 二次独立审查处置
+
+- 二次独立复审结论 PASS。四项非阻塞处置：
+  1. **未附带原因文案自相矛盾**（剩余额度不足但整组未超总额度时仍写「整组 X 超出额度 Y」）→ 文案与 `omittedReason` 改为「整组 X 字符未放入剩余附带额度 R」，同时给出所需与剩余；相关测试断言同步。
+  2. **plan 步骤 3 旧条款未同步**（仍写「先收缩证据正文为其留位」）→ 已改为主工程采用的独立额度口径：分区头与提示计入 facts 额度、二者都放不下时不写截断词条、不回改 RAG 正文预算。
+  3. **hybrid rag_search 的 facts 异常原子性缺直接测试** → 归入步骤 5 契约测试（见「债务记录」），plan 对应验收项保持未勾选，不改本步运行正确性。
+  4. **跨词共享卡块头计数表观不一致** → 块头补「（本次新增 M 张）」，避免与仅渲染新卡产生歧义。
+- 改动涉及渲染文案与 plan 契约，按 commit-convention「须重新审查」再派生隔离子代理复审最终内容。
+
+### 2026-09-11 — 步骤 3 三次独立审查处置
+
+- 三次独立复审结论 PASS。两项非阻塞已修：
+  1. **观测虚报**：额度极小、未附带提示也写不下时 `chars` 仍记提示长度 → 仅在提示行实际写入时记长度，否则记 0，并补断言。
+  2. **前导空行**：仅 facts 送达（RAG 正文为空）时 data 以 2 字符分区分隔符开头 → 分隔符仅在 RAG 正文非空时前置，并补「data 以分区头开头」断言。
+- 余项：hybrid rag_search 的 facts 异常原子性直接测试仍归步骤 5（见「债务记录」）；doc-check D1 为施工期预期。
+- 上述改动按 commit-convention「须重新审查」再派生隔离子代理复审最终内容。

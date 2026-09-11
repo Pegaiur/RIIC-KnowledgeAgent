@@ -69,6 +69,19 @@ export interface OperatorFilters {
 }
 
 /**
+ * 只读入口词典：供 RAG 内部 facts 附带在派发层识别候选完整词（ADR-013 步骤 3）。
+ * 只暴露登记词集合与类别，不暴露可变索引，也不保证非空卡；候选识别不预先执行完整 factsSearch。
+ */
+export interface FactsEntryDictionary {
+  /** 全部已登记入口词：六类词条（含等价技能名）与人工 alias/substring/combo。 */
+  readonly terms: ReadonlySet<string>
+  /** 词条命中的六类类别（固定顺序）；未登记返回空数组。 */
+  categoriesOf(term: string): readonly FactsMatchCategory[]
+  /** 是否为人工登记入口（alias/substring/combo）。 */
+  isCuratedEntry(term: string): boolean
+}
+
+/**
  * TODO(tech-debt) R5-3：CardStore 与校验、查询、渲染同处一文件，且对外暴露 byCanonical/byTerm/byFactTerm
  * 等内部索引 Map（当前无外部消费者）。收紧接口或拆分模块需评估调用方，待 facts 入口稳定后另行收敛。
  */
@@ -81,6 +94,8 @@ export interface CardStore {
   byTerm: Map<string, Set<string>>
   /** 统一 facts 词条 → 各命中类别 → canonical 集合；不含别名、备注或全文。 */
   byFactTerm: Map<string, Map<FactsMatchCategory, Set<string>>>
+  /** 只读入口词典；与 factsSearch 使用同一套登记数据。 */
+  entryDictionary: FactsEntryDictionary
   /** 当前 facts 对外入口：六类词条与人工登记入口全部命中，按卡稳定去重。 */
   factsSearch: (query: string) => FactsSearchResult
   lookup: (term: string) => RecordCard[]
@@ -247,6 +262,21 @@ export function buildCardStore(cards: RecordCard[], terms: TermCurations = EMPTY
     return { query: term, paths, matches }
   }
 
+  /** 只读入口词典：六类词条与人工登记入口的并集；识别候选词时不执行 factsSearch。 */
+  const entryDictionary: FactsEntryDictionary = {
+    terms: new Set<string>([
+      ...byFactTerm.keys(),
+      ...aliasesByTerm.keys(),
+      ...substringsByTerm.keys(),
+      ...combosByTerm.keys(),
+    ]),
+    categoriesOf: (term) => {
+      const categories = byFactTerm.get(term)
+      return categories ? FACTS_MATCH_CATEGORY_ORDER.filter((category) => categories.has(category)) : []
+    },
+    isCuratedEntry: (term) => aliasesByTerm.has(term) || substringsByTerm.has(term) || combosByTerm.has(term),
+  }
+
   /** lookup：精确 term → 命中卡列表（canonical/别名/技能名/技能组 均在 byTerm 统一解析） */
   const lookup = (term: string): RecordCard[] => {
     const t = (term ?? '').trim()
@@ -270,7 +300,7 @@ export function buildCardStore(cards: RecordCard[], terms: TermCurations = EMPTY
     })
   }
 
-  return { cards, byCanonical, byTerm, byFactTerm, factsSearch, lookup, queryOperators }
+  return { cards, byCanonical, byTerm, byFactTerm, entryDictionary, factsSearch, lookup, queryOperators }
 }
 
 function skillsInRoom(card: RecordCard, room?: string): RecordCard['skills'] {
@@ -319,12 +349,17 @@ export function serializeFactsMatches(result: FactsSearchResult): string {
     const content = result.matches.map((match) => serializeCard(match.card, {}, match.categories)).join('\n\n')
     return `${header}\n${content}`
   }
-  const pathText = result.paths.map(renderResolutionPath).join('\n')
+  const pathText = serializeResolutionPaths(result.paths)
   const summary = result.matches.length === 0
     ? '匹配说明：本次路径没有可返回的记录卡。'
     : `匹配说明：命中 ${result.matches.length} 张去重后的记录卡；以下为完整记录卡。`
   const content = result.matches.map((match) => serializeCard(match.card, {}, match.categories)).join('\n\n')
   return `词条解析：${term}\n命中路径：\n${pathText}\n${summary}${content ? `\n${content}` : ''}`
+}
+
+/** 渲染解析路径多行文案；独立 facts_search 与 RAG 内部附带共用同一措辞。 */
+export function serializeResolutionPaths(paths: readonly ResolutionPath[]): string {
+  return paths.map(renderResolutionPath).join('\n')
 }
 
 function renderResolutionPath(path: ResolutionPath): string {
@@ -374,7 +409,8 @@ function operatorScopeNotice(): string {
   return '查询范围说明：卡头中的设施、阵营、职业，以及技能组和卡级备注属于干员全局属性，不代表当前设施专属；下方技能按本次查询条件投影，未必包含该卡全部技能。'
 }
 
-function serializeCard(card: RecordCard, filters: CardSerializationFilters, matchCategories?: FactsMatchCategory[]): string {
+/** 渲染单张记录卡；独立 facts_search 与 RAG 内部附带共用同一卡片格式。 */
+export function serializeCard(card: RecordCard, filters: CardSerializationFilters, matchCategories?: FactsMatchCategory[]): string {
   const scopedSkills = skillsInRoom(card, filters.room)
   const q = (filters.termQuery ?? '').trim()
   const matchingSkills = q

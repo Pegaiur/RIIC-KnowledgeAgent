@@ -31,7 +31,7 @@ describe('runBenchmark：trace 逐题落盘', () => {
         toolAttemptLimit: 10,
         sessionTimeoutMs: 300000,
         feedbackOnNoToolAnswer: true,
-        toolSchemaVersion: 9,
+        toolSchemaVersion: 10,
         toolNames: ['rag_search', 'facts_search', 'read_section'],
         modelSteps: 2,
         toolBatches: 0,
