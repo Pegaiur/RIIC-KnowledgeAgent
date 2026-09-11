@@ -84,8 +84,36 @@ describe('report：聚合与渲染', () => {
     expect(report.incompleteUsageCalls).toBe(1)
     expect(report.unknownUsageCalls).toBe(0)
     expect(report.costComplete).toBe(false)
-    expect(report.toolStats).toEqual({ batches: 1, requested: 3, granted: 2, executed: 2, denied: 1, errors: 0, hitCount: 0, hitUnknown: 2, resultChars: 120 })
+    expect(report.toolStats).toEqual({ batches: 1, requested: 3, granted: 2, executed: 2, denied: 1, errors: 0, attempts: null, successes: null, hitCount: 0, hitUnknown: 2, resultChars: 120 })
     expect(renderMarkdown(report)).toContain('费用状态：不完整')
+    expect(renderMarkdown(report)).toContain('获准尝试 不可用｜成功 不可用')
+  })
+
+  it('新批次聚合获准尝试与非空成功数，缺失时保持不可用', () => {
+    const withNewStats = aggregate([
+      rec({ toolBatch: { requested: 3, granted: 2, executed: 2, denied: 1, errors: 0, attempts: 2, successes: 1, budgetBefore: 5, budgetAfter: 4, resultChars: 90 } }),
+      rec({ round: 2, toolBatch: { requested: 2, granted: 2, executed: 2, denied: 0, errors: 0, attempts: 2, successes: 1, budgetBefore: 4, budgetAfter: 3, resultChars: 60 } }),
+    ])
+    expect(withNewStats.toolStats).toMatchObject({ attempts: 4, successes: 2 })
+    expect(renderMarkdown(withNewStats)).toContain('获准尝试 4｜成功 2')
+
+    const mixed = aggregate([
+      rec({ toolBatch: { requested: 1, granted: 1, executed: 1, denied: 0, errors: 0, attempts: 1, successes: 1, budgetBefore: 5, budgetAfter: 4, resultChars: 10 } }),
+      rec({ round: 2, toolBatch: { requested: 1, granted: 1, executed: 1, denied: 0, errors: 0, budgetBefore: 4, budgetAfter: 3, resultChars: 10 } }),
+    ])
+    expect(mixed.toolStats).toMatchObject({ attempts: null, successes: null })
+  })
+
+  it('历史记录有工具调用但缺整个 toolBatch 时尝试与成功数不可用', () => {
+    const report = aggregate([rec({ tools: ['grep_search'] })])
+    expect(report.toolStats).toMatchObject({ batches: 0, attempts: null, successes: null })
+    expect(renderMarkdown(report)).toContain('获准尝试 不可用｜成功 不可用')
+  })
+
+  it('完全无工具调用的运行尝试与成功数为 0 而非不可用', () => {
+    const report = aggregate([rec({})])
+    expect(report.toolStats).toMatchObject({ batches: 0, attempts: 0, successes: 0 })
+    expect(renderMarkdown(report)).toContain('获准尝试 0｜成功 0')
   })
 
   it('部分 usage 仍汇总已知费用，并把重试未知用量标为不完整', () => {

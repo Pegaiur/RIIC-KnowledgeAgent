@@ -69,6 +69,7 @@ export interface RunInputs {
     topK: number
     maxContextChars: number
     toolBudget: number
+    toolAttemptLimit: number
     sessionTimeoutMs: number
     feedbackOnNoToolAnswer: boolean
     toolChoice: 'auto'
@@ -169,10 +170,12 @@ export function createRunInputs(options: RunInputsOptions): RunInputs {
       topK: options.config.topK,
       maxContextChars: options.config.maxContextChars,
       toolBudget: options.config.toolBudget,
+      toolAttemptLimit: options.config.toolAttemptLimit,
       sessionTimeoutMs: options.config.sessionTimeoutMs,
       feedbackOnNoToolAnswer: options.config.feedbackOnNoToolAnswer,
       toolChoice: 'auto',
-      parallelToolCalls: options.config.provider === 'qwen',
+      // 宿主不再开启并行工具调用：同批按返回顺序逐项串行执行与结算。
+      parallelToolCalls: false,
       stringCaptures: configStrings,
       prices: {
         inPerM: options.config.prices.inPerM,

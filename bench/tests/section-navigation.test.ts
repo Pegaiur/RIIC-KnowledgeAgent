@@ -170,15 +170,6 @@ describe('RAG 展示：标题上下文与导航', () => {
     expect(item.data).toContain('【base/制造.md | 效率 | L11-11】')
   })
 
-  it('grep 结果格式不受小节目录影响', async () => {
-    const result = await makeExecutor({ retriever: 'grep' }).executeBatch([call('a', 'grep_search', { query: '制造站效率' })])
-    const item = result.results[0]!
-    expect(item.status).toBe('success')
-    expect(item.data).not.toContain('sec-')
-    expect(item.data).not.toContain('【小节上下文】')
-    expect(item.data).toContain('命中')
-  })
-
   it('上级范围入口映射直接父级，同父级按命中顺序去重', async () => {
     rebuildCorpus({
       'base/父章.md': [
@@ -278,15 +269,34 @@ describe('read_section：按小节读取原文', () => {
     expect(item.injectedIds).toEqual([])
   })
 
-  it('offset 等于正文长度返回成功空页，超过长度返回参数错误', async () => {
+  it('offset 等于正文长度返回空页（empty，不扣成功额度），超过长度返回参数错误', async () => {
     const sectionId = efficiencyId()
     const bodyLength = directory.get(sectionId)!.body.length
-    const exact = await makeExecutor().executeBatch([call('end', 'read_section', { section_id: sectionId, offset: bodyLength })])
-    expect(exact.results[0]).toMatchObject({ status: 'success', executed: true })
+    const endExecutor = makeExecutor()
+    const exact = await endExecutor.executeBatch([call('end', 'read_section', { section_id: sectionId, offset: bodyLength })])
+    expect(exact.results[0]).toMatchObject({ status: 'empty', executed: true })
     expect(parsePage(exact.results[0]!.data)).toMatchObject({ page: '', nextOffset: null, complete: true })
+    expect(endExecutor.snapshot()).toMatchObject({ successUsed: 0, attemptUsed: 1, remaining: 5 })
 
     const overflow = await makeExecutor().executeBatch([call('over', 'read_section', { section_id: sectionId, offset: bodyLength + 1 })])
     expect(overflow.results[0]).toMatchObject({ status: 'invalid_params', executed: false })
+  })
+
+  it('正常正文页计为成功并扣 1 成功额度，空正文小节不扣', async () => {
+    rebuildCorpus({
+      'base/空节.md': ['# 空节', '', '## 空小节', '', '## 有正文', '', '有正文内容。', ''].join('\n'),
+    })
+    const emptySection = directory.sections.find((section) => section.heading === '空小节')!
+    const bodySection = directory.sections.find((section) => section.heading === '有正文')!
+    expect(emptySection.body).toBe('')
+    const executor = makeExecutor()
+    const result = await executor.executeBatch([
+      call('empty', 'read_section', { section_id: emptySection.sectionId }),
+      call('body', 'read_section', { section_id: bodySection.sectionId }),
+    ])
+    expect(result.results[0]).toMatchObject({ status: 'empty', executed: true })
+    expect(result.results[1]).toMatchObject({ status: 'success', executed: true })
+    expect(executor.snapshot()).toMatchObject({ successUsed: 1, attemptUsed: 2, remaining: 4 })
   })
 
   it('maxContextChars 无法容纳分页元数据时明确返回错误，不静默放宽上限', async () => {
@@ -313,7 +323,7 @@ describe('read_section：按小节读取原文', () => {
     ])
     expect(result.results.map((item) => item.status)).toEqual(['invalid_params', 'invalid_params', 'invalid_params', 'invalid_params', 'invalid_params'])
     expect(result.results.every((item) => !item.executed)).toBe(true)
-    expect(result.snapshot).toMatchObject({ used: 5, executed: 0 })
+    expect(result.snapshot).toMatchObject({ successUsed: 0, attemptUsed: 5, executed: 0 })
   })
 
   it('长小节连续分页无中段丢失，且每次续读占用共享预算', async () => {
@@ -341,7 +351,7 @@ describe('read_section：按小节读取原文', () => {
       offset = parsed.nextOffset!
     }
     expect(collected).toBe(section.body)
-    expect(executor.snapshot().used).toBeGreaterThanOrEqual(2)
+    expect(executor.snapshot().successUsed).toBeGreaterThanOrEqual(2)
   })
 
   it('无小节目录时明确返回本运行无法读取', async () => {
@@ -376,8 +386,8 @@ describe('read_section：按小节读取原文', () => {
     expect(tightData).toBe(full.replace(`\n${parentLine}`, ''))
     expect(parsePage(tightData)).toMatchObject(parsePage(full))
     expect(parsePage(tightData).page).toBe(efficiency.body)
-    expect(withParent.snapshot).toMatchObject({ used: 1, executed: 1 })
-    expect(tight.snapshot).toMatchObject({ used: 1, executed: 1 })
+    expect(withParent.snapshot).toMatchObject({ successUsed: 1, attemptUsed: 1, executed: 1 })
+    expect(tight.snapshot).toMatchObject({ successUsed: 1, attemptUsed: 1, executed: 1 })
   })
 
   it('通过上级范围入口读取含多个子节的原文并连续续读', async () => {
@@ -431,6 +441,6 @@ describe('read_section：按小节读取原文', () => {
     expect(collected).toBe(parent.body)
     expect(collected).toContain('子一正文。')
     expect(collected).toContain('子二正文。')
-    expect(executor.snapshot().used).toBe(pages)
+    expect(executor.snapshot().successUsed).toBe(pages)
   })
 })

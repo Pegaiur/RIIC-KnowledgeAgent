@@ -401,7 +401,7 @@ describe('单词条 facts_search 精确索引', () => {
 describe('第一阶段 facts 结果 envelope', () => {
   it('T01 合法空查按 hitIds 判定 empty，并返回完整范围元数据', async () => {
     const config = loadConfig()
-    config.retriever = 'facts'
+    config.retriever = 'hybrid'
     const executor = createKnowledgeToolExecutor({
       config,
       query: { id: 'FACTS-EMPTY', category: 'fact', question: '不存在的干员？' },
@@ -426,12 +426,12 @@ describe('第一阶段 facts 结果 envelope', () => {
     }
     expect(JSON.parse(serializeToolResult(result.results[0]!)).scope).toEqual({ query: '__不存在的规范名_核查__' })
     expect(JSON.parse(serializeToolResult(result.results[1]!)).scope).toEqual({ query: '不存在设施' })
-    expect(result.snapshot).toMatchObject({ used: 2, executed: 2, remaining: 3 })
+    expect(result.snapshot).toMatchObject({ successUsed: 0, attemptUsed: 2, executed: 2, remaining: 5 })
   })
 
   it('T07 参数错误不携带事实结果元数据，合法未知值仍是空查', async () => {
     const config = loadConfig()
-    config.retriever = 'facts'
+    config.retriever = 'hybrid'
     const executor = createKnowledgeToolExecutor({
       config,
       query: { id: 'FACTS-INVALID', category: 'fact', question: '参数边界？' },
@@ -450,21 +450,21 @@ describe('第一阶段 facts 结果 envelope', () => {
   })
 })
 
-describe('agent：facts 独立工具 schema 与系统提示', () => {
-  it('facts 模式只暴露 facts_search', () => {
-    expect(toolsForRetriever('facts').map((tool) => (tool.function as { name: string }).name))
-      .toEqual(['facts_search'])
+describe('agent：hybrid 独立工具 schema 与系统提示', () => {
+  it('hybrid 模式同时暴露 rag_search、facts_search 与 read_section', () => {
+    expect(toolsForRetriever('hybrid').map((tool) => (tool.function as { name: string }).name))
+      .toEqual(['rag_search', 'facts_search', 'read_section'])
   })
 
-  it('系统提示 facts 分支描述 operation 与预算', () => {
-    const prompt = buildSystemPrompt('facts')
+  it('系统提示描述 facts_search 与预算', () => {
+    const prompt = buildSystemPrompt('hybrid')
     expect(prompt).toContain('facts_search')
-    expect(prompt).toContain('可用工具：facts_search')
-    expect(prompt).toContain('工具积分预算：5 点')
+    expect(prompt).toContain('可用工具：rag_search、facts_search、read_section')
+    expect(prompt).toContain('5 点成功额度 + 10 次获准尝试上限')
   })
 })
 
-describe('runQuery（facts 模式）', () => {
+describe('runQuery（facts_search 派发）', () => {
   const chunks: DocChunk[] = []
   const factsSearchSpy = vi.spyOn(getCardStore(), 'factsSearch')
 
@@ -490,7 +490,7 @@ describe('runQuery（facts 模式）', () => {
 
   async function runFactsSearchCall(argumentsText: string) {
     const config = loadConfig()
-    config.retriever = 'facts'
+    config.retriever = 'hybrid'
     const index = buildIndex(chunks)
 
     mockCall
@@ -532,9 +532,9 @@ describe('runQuery（facts 模式）', () => {
     expect(factsSearchSpy).toHaveBeenCalledWith('测试 甲')
   })
 
-  it('facts 模式暴露 facts_search，派发并统计工具调用', async () => {
+  it('hybrid 模式暴露 facts_search，派发并统计工具调用', async () => {
     const config = loadConfig()
-    config.retriever = 'facts'
+    config.retriever = 'hybrid'
     const index = buildIndex(chunks)
 
     mockCall
@@ -555,7 +555,7 @@ describe('runQuery（facts 模式）', () => {
 
   it('合法 facts 空查回写 empty 后仍允许 Agent 继续作答', async () => {
     const config = loadConfig()
-    config.retriever = 'facts'
+    config.retriever = 'hybrid'
     const index = buildIndex(chunks)
     const query = { id: 'FACTS-EMPTY-AGENT', category: 'fact' as const, question: '查一个不存在的干员' }
 
@@ -575,7 +575,7 @@ describe('runQuery（facts 模式）', () => {
 
   it('合法 facts 空查后仍允许继续一个新的合法查询再作答', async () => {
     const config = loadConfig()
-    config.retriever = 'facts'
+    config.retriever = 'hybrid'
     const index = buildIndex(chunks)
     const query = { id: 'FACTS-EMPTY-CONTINUE', category: 'fact' as const, question: '空查后继续查设施' }
 
@@ -588,7 +588,7 @@ describe('runQuery（facts 模式）', () => {
     const result = await runQuery(query, { config, thinking: 'off', dry: false, trace }, chunks, index)
 
     expect(result.finalAnswer).toBe('新的设施查询已返回证据。')
-    expect(result.budget).toMatchObject({ used: 2, executed: 2, remaining: 3 })
+    expect(result.budget).toMatchObject({ successUsed: 1, attemptUsed: 2, executed: 2, remaining: 4 })
     expect(result.toolTrace).toEqual([['facts_search'], ['facts_search']])
     expect(trace.events.filter((event) => event.type === 'tool_call').map((event) => event.type === 'tool_call' ? event.status : ''))
       .toEqual(['empty', 'success'])
@@ -597,7 +597,7 @@ describe('runQuery（facts 模式）', () => {
 
   it('trace 记录 facts 的实际参数与 canonical 命中/注入 ID', async () => {
     const config = loadConfig()
-    config.retriever = 'facts'
+    config.retriever = 'hybrid'
     const index = buildIndex(chunks)
     const query = { id: 'TRACE-FACTS', category: 'fact' as const, question: '刻俄柏有什么技能？' }
     const trace = createQueryTrace(query)
@@ -625,7 +625,7 @@ describe('runQuery（facts 模式）', () => {
 
   it('facts_search 抛错时 trace 仍保留实际 query 参数', async () => {
     const config = loadConfig()
-    config.retriever = 'facts'
+    config.retriever = 'hybrid'
     const index = buildIndex(chunks)
     const query = { id: 'TRACE-FACTS-ERROR', category: 'fact' as const, question: 'facts_search 异常' }
     const trace = createQueryTrace(query)
@@ -648,9 +648,9 @@ describe('runQuery（facts 模式）', () => {
     })
   })
 
-  it('facts 模式派发设施词条并保留完整结果契约', async () => {
+  it('hybrid 模式派发设施词条并保留完整结果契约', async () => {
     const config = loadConfig()
-    config.retriever = 'facts'
+    config.retriever = 'hybrid'
     const index = buildIndex(chunks)
 
     mockCall
@@ -670,7 +670,7 @@ describe('runQuery（facts 模式）', () => {
 
   it('facts 工具超出检索预算时提示上限，不反复检索', async () => {
     const config = loadConfig()
-    config.retriever = 'facts'
+    config.retriever = 'hybrid'
     const index = buildIndex(chunks)
 
     mockCall
@@ -693,7 +693,7 @@ describe('runQuery（facts 模式）', () => {
 
   it('facts 工具请求超过检索预算后注入「已达上限」提示文本，不反复检索', async () => {
     const config = loadConfig()
-    config.retriever = 'facts'
+    config.retriever = 'hybrid'
     config.toolBudget = 2
     const index = buildIndex(chunks)
 

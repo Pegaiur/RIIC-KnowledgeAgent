@@ -8,7 +8,7 @@ export type ThinkingMode = 'off' | 'low' | 'high'
 /** LLM Provider 标识 */
 export type ProviderId = 'hy3' | 'qwen' | 'glm' | 'deepseek'
 
-/** 工具标识；lookup/query_operators 仅保留历史记录与内部兼容识别。 */
+/** 工具标识；grep_search/lookup/query_operators 仅保留历史记录与聚合识别，不再下发。 */
 export type ToolId = 'rag_search' | 'grep_search' | 'facts_search' | 'read_section' | 'lookup' | 'query_operators'
 
 /** 检索分词器标识（bigram 零依赖默认；jieba 见 ADR-001） */
@@ -29,13 +29,17 @@ export type TerminationReason =
   | 'truncated'
   | 'protocol_error'
 
-/** 单个模型响应对应的工具批次统计；used 口径是获准尝试数。 */
+/** 单个模型响应对应的工具批次统计；granted 口径为获准尝试数。 */
 export interface ToolBatchStats {
   requested: number
   granted: number
   executed: number
   denied: number
   errors: number
+  /** 获准尝试数（等于 granted）；新运行始终写入，历史记录缺失表示不可用。 */
+  attempts?: number
+  /** 非空执行成功扣点数；新运行始终写入，历史记录缺失表示不可用（不由 executed 推算）。 */
+  successes?: number
   /** 已执行且 hitIds 非空的结果数；旧记录缺失时不可回填。 */
   hitCount?: number
   /** 已执行但缺少 hitIds 的结果数；表示命中状态未知。 */
@@ -167,9 +171,14 @@ export interface DocChunk {
   endLine: number
 }
 
-/** 是否为检索工具（rag_search / grep_search）；供 agent / report 复用，替代散落的硬编码字符串谓词 */
+/** 是否为当前检索工具；grep_search 已退场，仅历史记录仍可读。 */
 export function isRetrievalTool(name: string | ToolId): name is ToolId {
-  return name === 'rag_search' || name === 'grep_search'
+  return name === 'rag_search'
+}
+
+/** 是否为历史 grep 检索工具名；不参与当前工具集合，仅供观测与报告聚合。 */
+export function isHistoricalGrepTool(name: string | ToolId): boolean {
+  return name === 'grep_search'
 }
 
 /** 是否为当前 facts 查询工具；旧工具名不应生成新的 facts 结果元数据。 */
@@ -189,5 +198,5 @@ export function isHistoricalFactTool(name: string | ToolId): boolean {
 
 /** 是否为可写入观测记录的当前或历史工具名。 */
 export function isObservedTool(name: string | ToolId): name is ToolId {
-  return isRetrievalTool(name) || isFactTool(name) || isSectionReadTool(name) || isHistoricalFactTool(name)
+  return isRetrievalTool(name) || isHistoricalGrepTool(name) || isFactTool(name) || isSectionReadTool(name) || isHistoricalFactTool(name)
 }

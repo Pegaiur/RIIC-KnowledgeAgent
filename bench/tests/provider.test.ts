@@ -62,20 +62,20 @@ describe('provider：请求体参数映射', () => {
     expect(buildChatBody(messages, tools, opts('qwen', 'off')).model).toBe('qwen3.7-flash')
   })
 
-  it('Qwen 显式开启并行工具调用，Hy3 不套用未实测参数', () => {
-    expect(buildChatBody(messages, tools, opts('qwen', 'off')).parallel_tool_calls).toBe(true)
+  it('请求体不发送 parallel_tool_calls，宿主按返回顺序逐项串行执行', () => {
+    expect(buildChatBody(messages, tools, opts('qwen', 'off'))).not.toHaveProperty('parallel_tool_calls')
     expect(buildChatBody(messages, tools, opts('hy3', 'off'))).not.toHaveProperty('parallel_tool_calls')
   })
 
   it.each([
-    ['bm25', 'rag_search'],
-    ['grep', 'grep_search'],
-  ] as const)('dry %s 使用独立函数工具与扁平参数', async (retriever, operation) => {
+    ['bm25', 'rag_search', '占位查询'],
+    ['hybrid', 'rag_search', '发电站 充能机制'],
+  ] as const)('dry %s 使用独立函数工具与扁平参数', async (retriever, operation, query) => {
     const config = loadConfig('qwen')
     config.retriever = retriever
     const result = await callLLM(messages, [], { config, thinking: 'off', dry: true })
     expect(result.toolCalls[0]).toMatchObject({ name: operation })
-    expect(JSON.parse(result.toolCalls[0]!.arguments)).toMatchObject({ query: '占位查询' })
+    expect(JSON.parse(result.toolCalls[0]!.arguments)).toMatchObject({ query })
   })
 
   it('响应头已返回但正文挂起时，取消仍传播到真实请求信号并拒绝读取', async () => {

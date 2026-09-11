@@ -3,7 +3,7 @@
  */
 import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join, relative, resolve } from 'node:path'
-import { loadConfig, type BenchConfig } from './config.js'
+import { loadConfig, validateBenchConfig, type BenchConfig } from './config.js'
 import { loadCorpus } from './corpus.js'
 import { buildSectionDirectory } from './sections.js'
 import { buildIndex, currentEntityBoost, currentTokenizer } from './retriever.js'
@@ -11,7 +11,7 @@ import { buildSystemPrompt, loadKnowledgeAgentInstructions, runQuery, type Agent
 import type { BenchQuery, CostRecord, TerminationReason, ThinkingMode } from './types.js'
 import { createQueryTrace, markTraceFailed, serializeTrace } from './trace.js'
 import { aggregate } from './report.js'
-import { supportsReadSection, toolSchemaMetadata, toolsForRetriever } from './tool-executor.js'
+import { toolSchemaMetadata, toolsForRetriever } from './tool-executor.js'
 import {
   collectSourceMetadata,
   completeRunInputs,
@@ -54,8 +54,14 @@ export interface AnswerRecord {
   status: 'completed' | 'failed' | 'cancelled'
   terminationReason: TerminationReason
   feedbackUsed: boolean
+  /** 成功额度已用（非空执行成功扣点数） */
   budgetUsed: number
+  /** 成功额度余额 */
   budgetRemaining: number
+  /** 获准尝试已用数 */
+  attemptUsed: number
+  /** 获准尝试上限 */
+  attemptLimit: number
   answer: string | null
 }
 
@@ -64,18 +70,20 @@ export async function runBenchmark(
   opts: { thinking: ThinkingMode; dry: boolean; outDir?: string; questionsPath?: string; config?: BenchConfig },
 ): Promise<RunOutput> {
   const config = opts.config ?? loadConfig()
+  // 程序化入口与 CLI 共用同一份校验，避免在写盘前用失效/未知模式构建工具与 meta。
+  validateBenchConfig(config)
   const started = Date.now()
   const agentInstructions = loadKnowledgeAgentInstructions()
-  const systemPrompt = buildSystemPrompt(config.retriever, agentInstructions, config.toolBudget)
+  const systemPrompt = buildSystemPrompt(config.retriever, agentInstructions, config.toolBudget, config.toolAttemptLimit)
   const toolSchema = toolSchemaMetadata(config.retriever)
   const toolDefinitions = toolsForRetriever(config.retriever)
   const sourceAtStart = collectSourceMetadata()
 
-  // 语料 + 索引（一次构建，全部查询复用；facts 模式不依赖散文语料——语料目录已删除，跳过加载以空占位）
-  const chunks = config.retriever === 'facts' ? [] : loadCorpus(config.corpusDir, config.maxContextChars)
+  // 语料 + 索引（一次构建，全部查询复用）
+  const chunks = loadCorpus(config.corpusDir, config.maxContextChars)
   const index = buildIndex(chunks)
-  // 小节目录仅在开放阅读能力的模式（bm25/hybrid/both）加载；与检索同用白名单原文来源。
-  const sections = supportsReadSection(config.retriever) ? buildSectionDirectory(config.corpusDir) : undefined
+  // 当前全部模式（bm25/hybrid）都开放 read_section，恒构建小节目录；与检索同用白名单原文来源。
+  const sections = buildSectionDirectory(config.corpusDir)
 
   const temperatureTag = config.temperature === undefined ? 'default' : `t${config.temperature}`
   const runTag = `${new Date().toISOString().replace(/[:.]/g, '-')}-${config.provider}-${opts.thinking}-${temperatureTag}`
@@ -158,8 +166,10 @@ export async function runBenchmark(
           status: result.status,
           terminationReason: result.terminationReason,
           feedbackUsed: result.feedbackUsed,
-          budgetUsed: result.budget.used,
+          budgetUsed: result.budget.successUsed,
           budgetRemaining: result.budget.remaining,
+          attemptUsed: result.budget.attemptUsed,
+          attemptLimit: result.budget.attemptLimit,
           answer: result.finalAnswer,
         })
         process.stderr.write(`问题 ${q.id} 完成：${result.rounds} 轮\n`)
@@ -177,8 +187,10 @@ export async function runBenchmark(
           status: result.status,
           terminationReason: result.terminationReason,
           feedbackUsed: result.feedbackUsed,
-          budgetUsed: result.budget.used,
+          budgetUsed: result.budget.successUsed,
           budgetRemaining: result.budget.remaining,
+          attemptUsed: result.budget.attemptUsed,
+          attemptLimit: result.budget.attemptLimit,
           answer: `（查询未完成：${safeMessage}）`,
         })
         if (result.failure) markTraceFailed(trace, result.failure)
@@ -203,6 +215,8 @@ export async function runBenchmark(
         feedbackUsed: false,
         budgetUsed: 0,
         budgetRemaining: config.toolBudget,
+        attemptUsed: 0,
+        attemptLimit: config.toolAttemptLimit,
         answer: `（查询失败：${safeMessage}）`,
       })
       markTraceFailed(trace, {
@@ -240,10 +254,12 @@ export async function runBenchmark(
         baseUrl: config.baseUrl,
         retriever: config.retriever,
         toolBudget: config.toolBudget,
+        toolAttemptLimit: config.toolAttemptLimit,
         sessionTimeoutMs: config.sessionTimeoutMs,
         feedbackOnNoToolAnswer: config.feedbackOnNoToolAnswer,
         toolChoice: 'auto',
-        parallelToolCalls: config.provider === 'qwen',
+        // 宿主未开启并行工具调用：同批按返回顺序逐项串行执行与结算。
+        parallelToolCalls: false,
         agentInstructionsSha256: sha256(agentInstructions),
         ...toolSchema,
         maxTokens: config.maxTokens,
@@ -280,6 +296,8 @@ export async function runBenchmark(
         toolCallsExecuted: runReport.toolStats.executed,
         toolCallsDenied: runReport.toolStats.denied,
         toolErrors: runReport.toolStats.errors,
+        toolAttempts: runReport.toolStats.attempts,
+        toolSuccesses: runReport.toolStats.successes,
         toolResultChars: runReport.toolStats.resultChars,
         toolHitCount: runReport.toolStats.hitCount,
         toolHitUnknown: runReport.toolStats.hitUnknown,
@@ -312,7 +330,7 @@ export async function runBenchmark(
 function renderAnswers(answers: AnswerRecord[]): string {
   const blocks = answers.map((a) => {
     const toolLine = a.toolTrace.length > 0 ? `｜工具序列：${a.toolTrace.join('→')}` : '｜工具序列：无'
-    return `## ${a.queryId}（${a.category}）\n\n- 问题：${a.question}\n- 状态：${a.status}｜终止：${a.terminationReason}\n- 模型步骤：${a.rounds}｜工具批次：${a.toolRounds}｜预算：${a.budgetUsed}/${a.budgetUsed + a.budgetRemaining}${toolLine}\n- 宿主回馈：${a.feedbackUsed ? '是' : '否'}\n\n${a.answer ?? '（无最终回答）'}`
+    return `## ${a.queryId}（${a.category}）\n\n- 问题：${a.question}\n- 状态：${a.status}｜终止：${a.terminationReason}\n- 模型步骤：${a.rounds}｜工具批次：${a.toolRounds}｜成功额度：${a.budgetUsed}/${a.budgetUsed + a.budgetRemaining}｜获准尝试：${a.attemptUsed}/${a.attemptLimit}${toolLine}\n- 宿主回馈：${a.feedbackUsed ? '是' : '否'}\n\n${a.answer ?? '（无最终回答）'}`
   })
   return ['# 查询回答记录', '', '> 供人工抽查答案质量，不参与成本评估。', '', ...blocks].join('\n')
 }

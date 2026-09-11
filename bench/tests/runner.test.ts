@@ -12,7 +12,7 @@ describe('runBenchmark：trace 逐题落盘', () => {
     const outDir = mkdtempSync(join(tmpdir(), 'rag-trace-runner-'))
     try {
       const config = loadConfig()
-      config.retriever = 'facts'
+      config.retriever = 'hybrid'
       config.apiKey = undefined
       const output = await runBenchmark(
         [
@@ -26,15 +26,18 @@ describe('runBenchmark：trace 逐题落盘', () => {
       expect(meta).toMatchObject({
         schemaVersion: 2,
         toolChoice: 'auto',
-        parallelToolCalls: true,
+        parallelToolCalls: false,
         toolBudget: 5,
+        toolAttemptLimit: 10,
         sessionTimeoutMs: 300000,
         feedbackOnNoToolAnswer: true,
-        toolSchemaVersion: 8,
-        toolNames: ['facts_search'],
+        toolSchemaVersion: 9,
+        toolNames: ['rag_search', 'facts_search', 'read_section'],
         modelSteps: 2,
         toolBatches: 0,
         toolCallsRequested: 0,
+        toolAttempts: 0,
+        toolSuccesses: 0,
         failed: 2,
         toolHitCount: 0,
         toolHitUnknown: 0,
@@ -62,7 +65,7 @@ describe('runBenchmark：trace 逐题落盘', () => {
     const outDir = mkdtempSync(join(tmpdir(), 'rag-meta-runner-'))
     try {
       const config = loadConfig('qwen')
-      config.retriever = 'facts'
+      config.retriever = 'hybrid'
       config.feedbackOnNoToolAnswer = false
       const output = await runBenchmark(
         [{ id: 'RUN-DRY-1', category: 'fact', question: '第一题' }],
@@ -86,8 +89,15 @@ describe('runBenchmark：trace 逐题落盘', () => {
       })
       expect(meta.maxTokens).toBe(4096)
       expect(meta.inputsSchemaVersion).toBe(1)
+      expect(meta.toolAttemptLimit).toBe(10)
+      expect(meta.toolAttempts).toBe(report.toolStats.attempts)
+      expect(meta.toolSuccesses).toBe(report.toolStats.successes)
+      const answers = readFileSync(output.answersPath, 'utf-8')
+      expect(answers).toContain('成功额度：')
+      expect(answers).toContain('获准尝试：')
       const inputs = JSON.parse(readFileSync(output.inputsPath, 'utf-8')) as Record<string, any>
       expect(inputs.captureStatus).toBe('complete')
+      expect(inputs.config).toMatchObject({ toolBudget: 5, toolAttemptLimit: 10, parallelToolCalls: false })
       expect(inputs.facts).toMatchObject({ status: 'captured', cardCount: expect.any(Number) })
     } finally {
       rmSync(outDir, { recursive: true, force: true })

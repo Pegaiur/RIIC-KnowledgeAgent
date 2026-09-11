@@ -24,29 +24,19 @@ describe('agent：独立函数工具 schema', () => {
   })
 
   it('所有模式注入同一份决策契约，工具名随检索器切换', () => {
-    expect(buildSystemPrompt('grep')).toContain('grep_search')
+    expect(buildSystemPrompt('hybrid')).toContain('facts_search')
     expect(buildSystemPrompt('bm25')).toContain('rag_search')
-    expect(buildSystemPrompt('grep')).toContain('明日方舟基建查询 Agent 决策契约')
-    expect(buildSystemPrompt('grep')).toContain('工具积分预算：5 点')
+    expect(buildSystemPrompt('hybrid')).toContain('明日方舟基建查询 Agent 决策契约')
+    expect(buildSystemPrompt('hybrid')).toContain('5 点成功额度 + 10 次获准尝试上限')
   })
 
   it.each([
     ['bm25', 'rag_search、read_section'],
-    ['grep', 'grep_search'],
-    ['both', 'rag_search、grep_search、read_section'],
-    ['facts', 'facts_search'],
     ['hybrid', 'rag_search、facts_search、read_section'],
   ] as const)('%s 模式的能力块精确列出工具名', (retriever, expectedTools) => {
     const prompt = buildSystemPrompt(retriever, '唯一规则正文')
     const capabilityBlock = prompt.split('## 本次运行能力\n')[1]
     expect(capabilityBlock).toContain(`- 可用工具：${expectedTools}\n`)
-  })
-
-  it('both 模式：运行时能力块列出实际暴露的两个工具', () => {
-    const prompt = buildSystemPrompt('both')
-    expect(prompt).toContain('rag_search')
-    expect(prompt).toContain('grep_search')
-    expect(prompt).toContain('可用工具：rag_search、grep_search')
   })
 
   it('hybrid 模式：系统提示同时描述 RAG 与 facts 两个工具', () => {
@@ -55,7 +45,13 @@ describe('agent：独立函数工具 schema', () => {
     expect(prompt).toContain('保留原文条件与限定')
     expect(prompt).toContain('rag_search')
     expect(prompt).toContain('facts_search')
-    expect(prompt).toContain('可用工具：rag_search、facts_search')
+    expect(prompt).toContain('可用工具：rag_search、facts_search、read_section')
+  })
+
+  it('系统提示使用实际配置的成功额度与获准尝试上限', () => {
+    const prompt = buildSystemPrompt('bm25', '规则', 3, 4)
+
+    expect(prompt).toContain('3 点成功额度 + 4 次获准尝试上限')
   })
 
   it('人工契约保留通用证据边界，不注入基线题号或固定答案', () => {
@@ -67,9 +63,9 @@ describe('agent：独立函数工具 schema', () => {
   })
 
   it('人工规则只从调用方提供的 AGENTS 内容注入一次', () => {
-    const prompt = buildSystemPrompt('facts', '唯一规则正文')
+    const prompt = buildSystemPrompt('hybrid', '唯一规则正文')
     expect(prompt.match(/唯一规则正文/g)).toHaveLength(1)
-    expect(prompt).toContain('可用工具：facts_search')
+    expect(prompt).toContain('可用工具：rag_search、facts_search、read_section')
     expect(prompt).not.toContain('结构化排版')
   })
 
@@ -123,15 +119,35 @@ describe('runQuery：轮次耗尽兜底（末位强制作答轮）', () => {
     expect(messages[0]?.content).toContain('固定契约快照')
   })
 
+  it('未提供 systemPrompt 时按实际配置构建双上限提示', async () => {
+    const config = loadConfig()
+    config.retriever = 'bm25'
+    config.toolBudget = 2
+    config.toolAttemptLimit = 6
+    config.feedbackOnNoToolAnswer = false
+    mockCall.mockResolvedValueOnce(providerResult({ content: '答案' }))
+
+    await runQuery(
+      { id: 'PROMPT-DEFAULT', category: 'fact', question: '提示构建' },
+      { config, thinking: 'off', dry: false },
+      chunks,
+      buildIndex(chunks),
+    )
+
+    const messages = mockCall.mock.calls[0]?.[0] as Array<{ role: string; content: string }>
+    expect(messages[0]?.content).toContain('2 点成功额度 + 6 次获准尝试上限')
+  })
+
   it('工具预算内模型持续请求工具，预算归零后仍暴露工具并产出最终答案', async () => {
     const config = loadConfig()
+    config.retriever = 'bm25'
     config.toolBudget = 5
     const index = buildIndex(chunks)
 
     // 前 3 轮均返回工具调用；第 4 轮仍暴露独立工具，返回最终回答
     mockCall
       .mockResolvedValueOnce(providerResult({ toolCalls: [{ ...toolCall('rag_search') } as any] }))
-      .mockResolvedValueOnce(providerResult({ toolCalls: [{ ...toolCall('grep_search') } as any] }))
+      .mockResolvedValueOnce(providerResult({ toolCalls: [{ ...toolCall('rag_search') } as any] }))
       .mockResolvedValueOnce(providerResult({ toolCalls: [{ ...toolCall('rag_search') } as any] }))
       .mockResolvedValueOnce(providerResult({ content: '灰毫 126% 最终答案' }))
 
@@ -255,6 +271,7 @@ describe('runQuery：trace 事件记录', () => {
 
   it('记录 LLM、工具和实际回写文本，并保留参数回退原因', async () => {
     const config = loadConfig()
+    config.retriever = 'bm25'
     config.toolBudget = 5
     const query = { id: 'TRACE-1', category: 'fact' as const, question: '原始问题' }
     const trace = createQueryTrace(query)

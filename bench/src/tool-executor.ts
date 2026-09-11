@@ -4,23 +4,30 @@
  */
 import { createHash } from 'node:crypto'
 import { loadConfig, type BenchConfig, type RetrieverId } from './config.js'
-import { grepSearch, buildGrepResult } from './grep-retriever.js'
 import { search, type IndexEntry } from './retriever.js'
 import type { SectionDirectory, SectionEntry } from './sections.js'
-import { isFactTool, type BenchQuery, type DocChunk, type ToolCall, type ToolId } from './types.js'
+import { isFactTool, type BenchQuery, type DocChunk, type ToolCall } from './types.js'
 import { getCardStore, serializeFactsMatches, type CardStore, type ResolutionPath } from './facts/store.js'
 
-export type KnowledgeOperation = ToolId
+/** 当前可下发的工具集合；grep_search 等历史名不在其中。 */
+export type CurrentToolId = 'rag_search' | 'facts_search' | 'read_section'
 
 /** 工具 schema 发生协议变化时递增；快照保留该值供对照分组。 */
-export const TOOL_SCHEMA_VERSION = 8 as const
+export const TOOL_SCHEMA_VERSION = 9 as const
 
 export interface ToolBudgetState {
-  limit: number
-  used: number
+  /** 非空执行成功额度上限（每题默认 5） */
+  successLimit: number
+  /** 已扣点的非空执行成功数 */
+  successUsed: number
+  /** 获准尝试硬上限（每题默认 10） */
+  attemptLimit: number
+  /** 已获准的尝试数（成功、空结果与失败均占一次） */
+  attemptUsed: number
   requested: number
   denied: number
   executed: number
+  /** 成功额度余额（successLimit - successUsed） */
   remaining: number
 }
 
@@ -88,10 +95,10 @@ export interface KnowledgeToolExecutor {
   snapshot(): ToolBudgetState
 }
 
-const BUDGET_ANSWER_HINT = '工具预算已用尽，请依据已有证据作答；未覆盖部分明确说明。'
+const SUCCESS_BUDGET_HINT = '工具成功额度已用尽，请依据已有证据作答；未覆盖部分明确说明。'
+const ATTEMPT_BUDGET_HINT = '工具获准尝试次数已用尽，请依据已有证据作答；未覆盖部分明确说明。'
 
 type JsonObject = Record<string, unknown>
-type CurrentToolId = Exclude<ToolId, 'lookup' | 'query_operators'>
 
 const TOOL_DEFINITIONS: Record<CurrentToolId, JsonObject> = {
   rag_search: {
@@ -103,21 +110,6 @@ const TOOL_DEFINITIONS: Record<CurrentToolId, JsonObject> = {
         type: 'object',
         properties: {
           query: { type: 'string', minLength: 1, description: '非空自然语言查询' },
-        },
-        required: ['query'],
-        additionalProperties: false,
-      },
-    },
-  },
-  grep_search: {
-    type: 'function',
-    function: {
-      name: 'grep_search',
-      description: '按关键词查找知识库原文片段。',
-      parameters: {
-        type: 'object',
-        properties: {
-          query: { type: 'string', minLength: 1, description: '非空关键词或短语' },
         },
         required: ['query'],
         additionalProperties: false,
@@ -158,28 +150,22 @@ const TOOL_DEFINITIONS: Record<CurrentToolId, JsonObject> = {
 }
 
 function allowedOperations(retriever: RetrieverId): CurrentToolId[] {
-  if (retriever === 'hybrid') return ['rag_search', 'facts_search', 'read_section']
-  if (retriever === 'facts') return ['facts_search']
-  if (retriever === 'both') return ['rag_search', 'grep_search', 'read_section']
-  return retriever === 'grep' ? ['grep_search'] : ['rag_search', 'read_section']
-}
-
-/** 当前模式是否开放原文小节阅读（bm25 / hybrid / both）。 */
-export function supportsReadSection(retriever: RetrieverId): boolean {
-  return allowedOperations(retriever).includes('read_section')
+  return retriever === 'hybrid'
+    ? ['rag_search', 'facts_search', 'read_section']
+    : ['rag_search', 'read_section']
 }
 
 /** 返回当前模式实际发送的独立函数工具数组。 */
-export function toolsForRetriever(retriever: RetrieverId = 'bm25'): Record<string, unknown>[] {
+export function toolsForRetriever(retriever: RetrieverId = 'hybrid'): Record<string, unknown>[] {
   return allowedOperations(retriever).map((name) => cloneJson(TOOL_DEFINITIONS[name]))
 }
 
-export function toolNamesForRetriever(retriever: RetrieverId = 'bm25'): CurrentToolId[] {
+export function toolNamesForRetriever(retriever: RetrieverId = 'hybrid'): CurrentToolId[] {
   return allowedOperations(retriever)
 }
 
 /** 供运行 meta 与离线探针使用的稳定 schema 指纹。 */
-export function toolSchemaMetadata(retriever: RetrieverId = 'bm25'): {
+export function toolSchemaMetadata(retriever: RetrieverId = 'hybrid'): {
   toolSchemaVersion: number
   toolSchemaSha256: string
   toolNames: CurrentToolId[]
@@ -199,15 +185,35 @@ export function toolSchemaMetadata(retriever: RetrieverId = 'bm25'): {
  */
 export function createKnowledgeToolExecutor(
   context: KnowledgeToolContext,
-  limit: number,
+  successLimit: number,
 ): KnowledgeToolExecutor {
   const config = context.config ?? loadConfig()
-  if (!Number.isInteger(limit) || limit <= 0) throw new Error(`toolBudget 必须是正整数：${limit}`)
-  const state: ToolBudgetState = { limit, used: 0, requested: 0, denied: 0, executed: 0, remaining: limit }
+  if (!Number.isInteger(successLimit) || successLimit <= 0) throw new Error(`toolBudget 必须是正整数：${successLimit}`)
+  const attemptLimit = config.toolAttemptLimit
+  if (!Number.isInteger(attemptLimit) || attemptLimit <= 0) {
+    throw new Error(`toolAttemptLimit 必须是正整数：${attemptLimit}`)
+  }
+  const state: ToolBudgetState = {
+    successLimit,
+    successUsed: 0,
+    attemptLimit,
+    attemptUsed: 0,
+    requested: 0,
+    denied: 0,
+    executed: 0,
+    remaining: successLimit,
+  }
   const allowed = new Set(allowedOperations(config.retriever))
 
   function snapshot(): ToolBudgetState {
-    return { ...state, remaining: state.limit - state.used }
+    return { ...state, remaining: state.successLimit - state.successUsed }
+  }
+
+  /** 单项结算后的提示：两项同时用尽时优先提示成功额度。 */
+  function settledHint(): string | undefined {
+    if (state.successUsed >= state.successLimit) return SUCCESS_BUDGET_HINT
+    if (state.attemptUsed >= state.attemptLimit) return ATTEMPT_BUDGET_HINT
+    return undefined
   }
 
   async function executeBatch(calls: ToolCall[]): Promise<ToolBatchResult> {
@@ -215,30 +221,45 @@ export function createKnowledgeToolExecutor(
     // 缺失或重复 ID 会让宿主无法安全回写；整批不准入、不扣点、不执行。
     if (protocolError) return { results: [], snapshot: snapshot(), protocolError }
 
-    state.requested += calls.length
-    const granted = Math.min(calls.length, state.limit - state.used)
-    state.used += granted
-    state.denied += calls.length - granted
-    state.remaining = state.limit - state.used
-
-    const results = await Promise.all(calls.map((call, index) => {
-      if (index >= granted) {
-        return Promise.resolve<ToolExecutionResult>({
-          callId: call.id,
-          operation: call.name,
-          status: 'budget_exhausted',
-          executed: false,
-          data: '请依据已有证据作答，预算已用尽，未覆盖部分明确说明。',
-          budgetRemaining: state.remaining,
-          message: '工具预算已用尽，未执行调用',
-        })
+    const results: ToolExecutionResult[] = []
+    // 同批逐项「检查上限 → 获准 → 执行 → 结算」；后一项使用前一项结算后的状态，不做整批预扣。
+    for (const call of calls) {
+      state.requested++
+      if (state.attemptUsed >= state.attemptLimit || state.successUsed >= state.successLimit) {
+        state.denied++
+        results.push(exhaustedResult(call, state))
+        continue
       }
-      return executeOne(call, allowed, context, config, state)
-    }))
+      state.attemptUsed++
+      const item = await executeOne(call, allowed, context, config, state)
+      if (item.executed && item.status === 'success') state.successUsed++
+      state.remaining = state.successLimit - state.successUsed
+      item.budgetRemaining = state.remaining
+      const hint = settledHint()
+      if (hint) item.message = item.message && item.message !== hint ? `${item.message}；${hint}` : hint
+      results.push(item)
+    }
     return { results, snapshot: snapshot() }
   }
 
   return { executeBatch, snapshot }
+}
+
+/** 超限拒绝结果：不占用获准尝试数，message 区分成功额度用尽与尝试次数用尽。 */
+function exhaustedResult(call: ToolCall, state: ToolBudgetState): ToolExecutionResult {
+  const successGone = state.successUsed >= state.successLimit
+  const message = successGone
+    ? '工具成功额度已用尽，未执行调用；请依据已有证据作答。'
+    : '工具获准尝试次数已用尽，未执行调用；请依据已有证据作答。'
+  return {
+    callId: call.id,
+    operation: call.name,
+    status: 'budget_exhausted',
+    executed: false,
+    data: message,
+    budgetRemaining: state.successLimit - state.successUsed,
+    message,
+  }
 }
 
 export const createToolExecutor = createKnowledgeToolExecutor
@@ -257,26 +278,26 @@ function validateCallIds(calls: ToolCall[]): string | undefined {
 
 async function executeOne(
   call: ToolCall,
-  allowed: Set<KnowledgeOperation>,
+  allowed: Set<CurrentToolId>,
   context: KnowledgeToolContext,
   config: BenchConfig,
   state: ToolBudgetState,
 ): Promise<ToolExecutionResult> {
-  if (!allowed.has(call.name as KnowledgeOperation)) {
+  if (!allowed.has(call.name as CurrentToolId)) {
     return result(call, call.name, 'unknown_operation', false, `当前检索模式不开放工具：${call.name}`, state)
   }
-  const parsed = parseToolParams(call.name as KnowledgeOperation, call.arguments)
+  const parsed = parseToolParams(call.name as CurrentToolId, call.arguments)
   if (!parsed.value) {
     return result(call, call.name, 'invalid_params', false, parsed.reason, state)
   }
 
   try {
-    const output = runOperation(call.name as KnowledgeOperation, parsed.value, context, config)
+    const output = runOperation(call.name as CurrentToolId, parsed.value, context, config)
     const status: ToolResultStatus = output.status
       ?? (isFactTool(call.name)
         ? output.hitIds.length > 0 ? 'success' : 'empty'
         : output.data ? 'success' : 'empty')
-    // 上下文相关的参数错误（如 read_section 越界 offset）不计入已执行，但仍已占用预算点。
+    // 上下文相关的参数错误（如 read_section 越界 offset）不计入已执行，但仍占用一次获准尝试。
     const executed = status !== 'invalid_params'
     if (executed) state.executed++
     const factsResult = isFactTool(call.name)
@@ -300,7 +321,6 @@ async function executeOne(
       hitIds: output.hitIds,
       injectedIds: output.injectedIds,
       factsResult,
-      message: state.remaining === 0 ? BUDGET_ANSWER_HINT : undefined,
     }
   } catch (error) {
     state.executed++
@@ -341,7 +361,7 @@ function result(
 }
 
 function parseToolParams(
-  tool: KnowledgeOperation,
+  tool: CurrentToolId,
   args: string,
 ): { value?: Record<string, unknown>; reason: string } {
   let raw: unknown
@@ -395,37 +415,26 @@ function parseRequiredString(
   return { value: { [field]: (input[field] as string).trim() }, reason: '' }
 }
 
-function exampleFor(tool: KnowledgeOperation): string {
+function exampleFor(tool: CurrentToolId): string {
   return tool === 'read_section' ? '{"section_id":"检索结果中的小节 ID"}' : '{"query":"查询"}'
 }
 
 function runOperation(
-  operation: KnowledgeOperation,
+  operation: CurrentToolId,
   params: Record<string, unknown>,
   context: KnowledgeToolContext,
   config: BenchConfig,
 ): { data: string; hitIds: string[]; injectedIds: string[]; factsResolution?: { paths: ResolutionPath[] }; status?: ToolResultStatus } {
-  if (operation === 'rag_search' || operation === 'grep_search') {
+  if (operation === 'rag_search') {
     const query = params.query as string
-    const hits = operation === 'grep_search'
-      ? grepSearch(context.chunks, query, config.topK)
-      : search(context.index, query, config.topK)
+    const hits = search(context.index, query, config.topK)
     const hitIds = hits.map((index) => context.chunks[index]?.id).filter((id): id is string => Boolean(id))
-    let data: string
-    let injectedIds: string[]
-    if (operation === 'grep_search') {
-      // grep 结果格式本轮保持原样，不附加小节上下文。
-      data = buildGrepResult(context.chunks, hits, query, config.maxContextChars)
-      injectedIds = hitIds
-    } else {
-      const built = buildRagData(context.chunks, hits, config.maxContextChars, context.sections)
-      data = built.data
-      injectedIds = built.injectedIds
-    }
-    for (const id of injectedIds) {
+    const built = buildRagData(context.chunks, hits, config.maxContextChars, context.sections)
+    for (const id of built.injectedIds) {
       if (context.injectedIds && !context.injectedIds.includes(id)) context.injectedIds.push(id)
     }
-    return { data, hitIds, injectedIds }
+    // 仅有命中编号但未送达任何正文证据（如预算被截到只剩头部）时判空，不扣成功额度。
+    return { data: built.data, hitIds, injectedIds: built.injectedIds, status: built.delivered ? 'success' : 'empty' }
   }
   if (operation === 'read_section') return readSectionOperation(params, context, config)
   let store: CardStore
@@ -467,14 +476,14 @@ const NAVIGATION_LIMIT = 8
 
 /**
  * 组装 RAG 命中正文，并在预算允许时附加小节上下文、上级范围入口与导航。
- * 正文优先送达；小节标识、上级范围与导航只使用剩余空间，injectedIds 只记录真实送达的 chunk。
+ * 正文优先送达；小节标识、上级范围与导航只使用剩余空间，injectedIds 只记录正文实际送达的 chunk。
  */
 function buildRagData(
   chunks: DocChunk[],
   hits: number[],
   maxChars: number,
   sections?: SectionDirectory,
-): { data: string; injectedIds: string[] } {
+): { data: string; injectedIds: string[]; delivered: boolean } {
   const blocks: RagBlock[] = hits.map((index) => {
     const chunk = chunks[index]!
     return { chunk, section: sections?.findByChunk(chunk.file, chunk.heading, chunk.startLine) }
@@ -483,14 +492,17 @@ function buildRagData(
   let body = ''
   const injectedIds: string[] = []
   for (const block of blocks) {
-    if (body.length < maxChars) injectedIds.push(block.chunk.id)
-    body += `${body ? '\n\n' : ''}${renderRagHeader(block)}\n${block.chunk.text}`
+    const separator = body ? '\n\n' : ''
+    body += `${separator}${renderRagHeader(block)}\n${block.chunk.text}`
+    // 只有该块正文（头部之后的文本）至少一个字符进入送达前缀，才算正文证据真实送达。
+    const textStart = body.length - block.chunk.text.length
+    if (Math.min(maxChars, body.length) > textStart) injectedIds.push(block.chunk.id)
   }
   let data = body.slice(0, maxChars)
   if (sections && data.length < maxChars && blocks.some((block) => block.section)) {
     data = appendSectionContext(data, buildSectionContext(sections, blocks, new Set(injectedIds)), maxChars)
   }
-  return { data, injectedIds }
+  return { data, injectedIds, delivered: injectedIds.length > 0 }
 }
 
 /** 来源头保持既有格式；新增小节信息一律放到正文之后，只用剩余预算，避免挤占原正文送达。 */
@@ -627,7 +639,13 @@ function readSectionOperation(
       status: 'error',
     }
   }
-  return { data: renderSectionPage(section, offset, config.maxContextChars, directory), hitIds: [], injectedIds: [], status: 'success' }
+  // 末尾读取（offset 恰等于正文长度）或空小节正文只返回分页元数据，按非空证据判定为 empty，不扣成功额度。
+  return {
+    data: renderSectionPage(section, offset, config.maxContextChars, directory),
+    hitIds: [],
+    injectedIds: [],
+    status: remaining > 0 ? 'success' : 'empty',
+  }
 }
 
 /** 分页元数据（含与正文之间的空行）的保守长度，用于先扣除元数据预算。 */

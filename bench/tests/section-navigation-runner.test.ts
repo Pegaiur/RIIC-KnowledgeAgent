@@ -86,33 +86,4 @@ describe('read_section 运行链路接入', () => {
       rmSync(outDir, { recursive: true, force: true })
     }
   })
-
-  it.each(['grep', 'facts'] as const)('%s 模式不加载小节目录，也不暴露 read_section', async (retriever) => {
-    const corpusDir = mkdtempSync(join(tmpdir(), 'rag-sections-corpus-'))
-    const outDir = mkdtempSync(join(tmpdir(), 'rag-sections-out-'))
-    writeCorpus(corpusDir)
-    try {
-      const config = loadConfig()
-      config.retriever = retriever
-      config.corpusDir = corpusDir
-      config.feedbackOnNoToolAnswer = false
-
-      mockCall.mockImplementation(async (_messages: unknown, tools: unknown[]) => {
-        const names = (tools as Array<{ function: { name: string } }>).map((tool) => tool.function.name)
-        expect(names).not.toContain('read_section')
-        return providerResult({ content: '直接答案' })
-      })
-
-      const output = await runBenchmark(
-        [{ id: 'INT-2', category: 'fact', question: '制造站效率' }],
-        { thinking: 'off', dry: true, outDir, config },
-      )
-      const inputs = JSON.parse(readFileSync(output.inputsPath, 'utf-8')) as Record<string, unknown>
-      expect(inputs.sections).toBeUndefined()
-    } finally {
-      mockCall.mockReset()
-      rmSync(corpusDir, { recursive: true, force: true })
-      rmSync(outDir, { recursive: true, force: true })
-    }
-  })
 })

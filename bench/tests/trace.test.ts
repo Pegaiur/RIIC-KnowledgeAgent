@@ -37,7 +37,7 @@ describe('trace 记录模型', () => {
       toolResultChars: 80,
       feedbackUsed: false,
       terminationReason: 'tool_error',
-      budget: { limit: 5, used: 2, requested: 2, denied: 0, executed: 1, remaining: 3 },
+      budget: { successLimit: 5, successUsed: 2, attemptLimit: 10, attemptUsed: 3, requested: 3, denied: 1, executed: 2, remaining: 3 },
     }
 
     expect(serializeTrace(trace, [])).toContain('"toolBatches":1')
