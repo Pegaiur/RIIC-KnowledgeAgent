@@ -70,6 +70,8 @@ export interface SectionDirectory {
   contextFor(sectionId: string): SectionContext | undefined
   /** 直接兄弟＋子小节，按原文顺序去重后截断。 */
   navigationFor(sectionId: string, limit?: number): SectionNavigation
+  /** 覆盖整个正文（不含 frontmatter，含标题前首部）的文档范围；其 ID 可被 get 解析以续读。 */
+  documentRange(file: string): SectionEntry | undefined
 }
 
 interface ParsedHeading {
@@ -89,11 +91,14 @@ export function buildSectionDirectory(corpusRoot: string): SectionDirectory {
   const root = resolve(corpusRoot)
   const files = collectMarkdownFiles(root)
   const sections: SectionEntry[] = []
+  /** 每文件一个覆盖整个正文的文档范围；与小节 ID 并存，不进入 sections 数组。 */
+  const documentEntries = new Map<string, SectionEntry>()
 
   for (const fullPath of files) {
     const file = relative(root, fullPath).split(sep).join('/')
     const lines = readFileSync(fullPath, 'utf-8').split(/\r?\n/)
     const { headings, contentStartIndex } = parseHeadings(lines)
+    documentEntries.set(file, createDocumentEntry(file, sliceBody(lines, contentStartIndex, lines.length - 1)))
     if (headings.length === 0) {
       const body = sliceBody(lines, contentStartIndex, lines.length - 1)
       sections.push(createEntry({ file, heading: '', level: 0, ancestors: [], headingLine: 0, body, occurrence: 1 }))
@@ -138,14 +143,33 @@ export function buildSectionDirectory(corpusRoot: string): SectionDirectory {
   }
 
   const byId = new Map(sections.map((section) => [section.sectionId, section]))
+  const documentsById = new Map([...documentEntries.values()].map((entry) => [entry.sectionId, entry]))
 
   return {
     version: SECTION_DIRECTORY_VERSION,
     sections,
-    get: (sectionId) => byId.get(sectionId),
+    get: (sectionId) => byId.get(sectionId) ?? documentsById.get(sectionId),
     findByChunk: (file, heading, startLine) => findByChunk(sections, file, heading, startLine),
     contextFor: (sectionId) => contextFor(byId, sectionId),
     navigationFor: (sectionId, limit = 8) => navigationFor(sections, sectionId, limit),
+    documentRange: (file) => documentEntries.get(file),
+  }
+}
+
+/** 文档范围条目：level 0、无标题，正文覆盖整个文件（含标题前首部），ID 可被 get 解析以续读。 */
+function createDocumentEntry(file: string, body: BodySlice): SectionEntry {
+  return {
+    sectionId: `doc:${file}`,
+    file,
+    heading: '',
+    level: 0,
+    ancestors: [],
+    headingLine: 0,
+    startLine: body.startLine,
+    endLine: body.endLine,
+    body: body.text,
+    occurrence: 1,
+    firstChildHeadingLine: null,
   }
 }
 

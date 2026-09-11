@@ -248,6 +248,11 @@ export function isSkillTableFile(file: string): boolean {
   return SKILL_TABLE_FILE_RE.test(file)
 }
 
+/** 原文扩展候选：base 与 guides 语料（references 仍按原块返回，ADR-013）。 */
+export function isFulltextFile(file: string): boolean {
+  return file.startsWith('base/') || file.startsWith('guides/')
+}
+
 /**
  * 按检索范围装配分块：includeSkillTables=false 时排除九份技能表（ADR-013）。
  * 过滤在建索引前执行，返回数组与索引下标配套使用；不改 knowledge 真源与 corpus-manifest 语义。

@@ -4,6 +4,7 @@
  */
 import { createHash } from 'node:crypto'
 import { loadConfig, type BenchConfig, type RetrieverId } from './config.js'
+import { isFulltextFile } from './corpus.js'
 import { search, type IndexEntry } from './retriever.js'
 import type { SectionDirectory, SectionEntry } from './sections.js'
 import { isFactTool, type BenchQuery, type DocChunk, type ToolCall } from './types.js'
@@ -54,6 +55,20 @@ export interface FactsResultMetadata {
   resolution: { paths: ResolutionPath[] }
 }
 
+/** 原文扩展的实际送达范围（ADR-013）：offset/行范围对应原文，用于观测与续读。 */
+export interface FulltextRange {
+  file: string
+  /** 可调用续读的文档范围 ID（read_section 可解析）。 */
+  docId: string
+  /** 已送达正文在文档正文中的起止 UTF-16 offset。 */
+  offset: number
+  endOffset: number
+  startLine: number
+  endLine: number
+  complete: boolean
+  nextOffset: number | null
+}
+
 export interface ToolExecutionResult {
   callId: string
   operation?: string
@@ -65,6 +80,8 @@ export interface ToolExecutionResult {
   hitIds?: string[]
   injectedIds?: string[]
   factsResult?: FactsResultMetadata
+  /** rag_search 原文扩展的实际送达范围；未扩展时为 undefined。 */
+  fulltextRanges?: FulltextRange[]
   message?: string
   fatal?: boolean
 }
@@ -320,6 +337,7 @@ async function executeOne(
       actualParams: parsed.value,
       hitIds: output.hitIds,
       injectedIds: output.injectedIds,
+      fulltextRanges: output.fulltextRanges,
       factsResult,
     }
   } catch (error) {
@@ -424,17 +442,18 @@ function runOperation(
   params: Record<string, unknown>,
   context: KnowledgeToolContext,
   config: BenchConfig,
-): { data: string; hitIds: string[]; injectedIds: string[]; factsResolution?: { paths: ResolutionPath[] }; status?: ToolResultStatus } {
+): { data: string; hitIds: string[]; injectedIds: string[]; factsResolution?: { paths: ResolutionPath[] }; fulltextRanges?: FulltextRange[]; status?: ToolResultStatus } {
   if (operation === 'rag_search') {
     const query = params.query as string
     const hits = search(context.index, query, config.topK)
     const hitIds = hits.map((index) => context.chunks[index]?.id).filter((id): id is string => Boolean(id))
-    const built = buildRagData(context.chunks, hits, config.maxContextChars, context.sections)
+    const built = buildRagData(context.chunks, hits, config.maxContextChars, context.sections, config.expandFulltext)
     for (const id of built.injectedIds) {
       if (context.injectedIds && !context.injectedIds.includes(id)) context.injectedIds.push(id)
     }
-    // 仅有命中编号但未送达任何正文证据（如预算被截到只剩头部）时判空，不扣成功额度。
-    return { data: built.data, hitIds, injectedIds: built.injectedIds, status: built.delivered ? 'success' : 'empty' }
+    // 仅有命中编号但未送达任何正文证据（如预算被截到只剩头部）时判空；极小上限放不下必要元数据时报容量错误。
+    const status: ToolResultStatus = built.capacityError ? 'error' : built.delivered ? 'success' : 'empty'
+    return { data: built.data, hitIds, injectedIds: built.injectedIds, fulltextRanges: built.fulltextRanges, status }
   }
   if (operation === 'read_section') return readSectionOperation(params, context, config)
   let store: CardStore
@@ -474,21 +493,44 @@ const PARENT_LEAD_LIMIT = 300
 /** 每个命中文档的小节导航上限。 */
 const NAVIGATION_LIMIT = 8
 
+interface BuiltRagData {
+  data: string
+  injectedIds: string[]
+  delivered: boolean
+  capacityError: boolean
+  fulltextRanges: FulltextRange[]
+}
+
 /**
- * 组装 RAG 命中正文，并在预算允许时附加小节上下文、上级范围入口与导航。
- * 正文优先送达；小节标识、上级范围与导航只使用剩余空间，injectedIds 只记录正文实际送达的 chunk。
+ * 组装 RAG 命中正文（ADR-013）：
+ *   - 关闭原文扩展或没有小节目录时，沿用既有「按命中块拼接 + 硬截断」行为；
+ *   - 开启扩展时，base/guides 命中按文件去重并扩展到原文文档范围（运行级快照），references 仍按块返回；
+ *     容量不足时按可续读的连续原文范围送达并给出元数据，极小上限放不下必要元数据时报容量错误。
  */
 function buildRagData(
   chunks: DocChunk[],
   hits: number[],
   maxChars: number,
-  sections?: SectionDirectory,
-): { data: string; injectedIds: string[]; delivered: boolean } {
+  sections: SectionDirectory | undefined,
+  expandFulltext: boolean,
+): BuiltRagData {
   const blocks: RagBlock[] = hits.map((index) => {
     const chunk = chunks[index]!
     return { chunk, section: sections?.findByChunk(chunk.file, chunk.heading, chunk.startLine) }
   })
 
+  if (!expandFulltext || !sections) {
+    return { ...buildRagDataLegacy(blocks, maxChars, sections), capacityError: false, fulltextRanges: [] }
+  }
+  return buildExpandedRagData(blocks, maxChars, sections)
+}
+
+/** 既有行为：按 topK 顺序拼接命中块，整段硬截断到 maxChars，再按剩余空间附加小节上下文。 */
+function buildRagDataLegacy(
+  blocks: RagBlock[],
+  maxChars: number,
+  sections: SectionDirectory | undefined,
+): { data: string; injectedIds: string[]; delivered: boolean } {
   let body = ''
   const injectedIds: string[] = []
   for (const block of blocks) {
@@ -503,6 +545,125 @@ function buildRagData(
     data = appendSectionContext(data, buildSectionContext(sections, blocks, new Set(injectedIds)), maxChars)
   }
   return { data, injectedIds, delivered: injectedIds.length > 0 }
+}
+
+type FulltextBlockAddition =
+  | { kind: 'complete' | 'partial'; text: string; range: FulltextRange }
+  | { kind: 'tooSmall' }
+
+/** base/guides 命中扩展到整篇原文；放不下时按行边界送达可续读前缀，再放不下则停在此块。 */
+function buildExpandedRagData(blocks: RagBlock[], maxChars: number, sections: SectionDirectory): BuiltRagData {
+  let body = ''
+  const injectedIds: string[] = []
+  const fulltextRanges: FulltextRange[] = []
+  const deliveredFiles = new Set<string>()
+  let stopped = false
+  let capacityError = false
+
+  for (const block of blocks) {
+    if (stopped) break
+    const separator = body ? '\n\n' : ''
+    const doc = isFulltextFile(block.chunk.file) ? sections.documentRange(block.chunk.file) : undefined
+    if (doc) {
+      // 同文件多命中去重：只按首次命中位置送达一次整篇原文。
+      if (deliveredFiles.has(block.chunk.file)) continue
+      const addition = appendFulltextBlock(body, separator, doc, maxChars)
+      if (addition.kind === 'tooSmall') {
+        if (body.length === 0) {
+          // 极小上限：连必要元数据加一个正文字符都放不下 → 明确容量错误，不伪装 empty 或扩容。
+          capacityError = true
+          body = renderFulltextCapacityError(doc.file, maxChars)
+        } else {
+          stopped = true
+        }
+        break
+      }
+      body = addition.text
+      deliveredFiles.add(block.chunk.file)
+      injectedIds.push(block.chunk.id)
+      fulltextRanges.push(addition.range)
+      if (addition.kind === 'partial') stopped = true
+      continue
+    }
+    // references（或无文档范围）：沿用原块，按行边界送达；放不下即停止，不伪造后续证据。
+    const header = renderRagHeader(block)
+    const room = maxChars - body.length - separator.length - header.length - 1
+    if (room <= 0) { stopped = true; break }
+    const page = block.chunk.text.length <= room ? block.chunk.text : safeCutAtLine(block.chunk.text.slice(0, room))
+    if (page.length === 0) { stopped = true; break }
+    body += `${separator}${header}\n${page}`
+    injectedIds.push(block.chunk.id)
+    if (page.length < block.chunk.text.length) stopped = true
+  }
+
+  let data = body
+  if (!stopped && !capacityError && data.length < maxChars && blocks.some((block) => block.section)) {
+    data = appendSectionContext(data, buildSectionContext(sections, blocks, new Set(injectedIds)), maxChars)
+  }
+  return { data, injectedIds, delivered: injectedIds.length > 0, capacityError, fulltextRanges }
+}
+
+/** 单个文档范围的送达：整篇放得下则 complete，否则元数据先留位、按行边界送达可续读前缀。 */
+function appendFulltextBlock(body: string, separator: string, doc: SectionEntry, maxChars: number): FulltextBlockAddition {
+  const header = `【${doc.file}｜原文扩展｜L${doc.startLine}-${doc.endLine}】`
+  const prefix = `${separator}${header}\n`
+  const remaining = maxChars - body.length - prefix.length
+  if (remaining >= doc.body.length) {
+    return {
+      kind: 'complete',
+      text: `${prefix}${doc.body}`,
+      range: {
+        file: doc.file,
+        docId: doc.sectionId,
+        offset: 0,
+        endOffset: doc.body.length,
+        startLine: doc.startLine,
+        endLine: doc.endLine,
+        complete: true,
+        nextOffset: null,
+      },
+    }
+  }
+  // 元数据先留位：用最长可能的 next_offset 估计其长度，实际元数据不会超过预留。
+  const metaReserve = renderFulltextContinuation(doc, 0, doc.body.length, doc.body.length).length
+  const room = remaining - metaReserve - 1
+  if (room < 1) return { kind: 'tooSmall' }
+  const page = safeCutAtLine(doc.body.slice(0, room))
+  if (page.length === 0) return { kind: 'tooSmall' }
+  const nextOffset = page.length
+  const meta = renderFulltextContinuation(doc, 0, nextOffset, doc.body.length)
+  const endLine = doc.startLine + countNewlines(page)
+  return {
+    kind: 'partial',
+    text: `${prefix}${page}\n${meta}`,
+    range: {
+      file: doc.file,
+      docId: doc.sectionId,
+      offset: 0,
+      endOffset: nextOffset,
+      startLine: doc.startLine,
+      endLine,
+      complete: false,
+      nextOffset,
+    },
+  }
+}
+
+/** 续读元数据行；含可复用文档范围 ID，可用 read_section(section_id=ID, offset=next_offset) 续读。 */
+function renderFulltextContinuation(doc: SectionEntry, offset: number, nextOffset: number, totalChars: number): string {
+  return `续读：ID ${doc.sectionId}｜offset ${offset}｜next_offset ${nextOffset}｜complete false｜正文 ${totalChars} 字符`
+}
+
+function renderFulltextCapacityError(file: string, maxChars: number): string {
+  return `rag_search 无法在 maxContextChars=${maxChars} 内返回原文扩展（必要元数据放不下）：${file}。请提高 maxContextChars 后重试。`
+}
+
+/** 行边界截断，并避免截断 UTF-16 代理对（非 BMP 字符）。 */
+function safeCutAtLine(text: string): string {
+  const cut = cutAtLine(text)
+  if (cut.length === 0) return cut
+  const last = cut.charCodeAt(cut.length - 1)
+  return last >= 0xd800 && last <= 0xdbff ? cut.slice(0, -1) : cut
 }
 
 /** 来源头保持既有格式；新增小节信息一律放到正文之后，只用剩余预算，避免挤占原正文送达。 */

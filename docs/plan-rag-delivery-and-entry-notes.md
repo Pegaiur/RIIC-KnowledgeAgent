@@ -33,9 +33,19 @@
 - **原因**：满足「范围可辨识 + 下标配套」，把 gold/hitrate 口径变更留给步骤 5，保持每次提交可回归。
 - **后果**：默认运行 meta `chunks` 由全量降为排除技能表后的块数；历史运行缺 `corpusChunks` 表示不可用。
 
+### 2026-09-11 — 步骤 2：命中文件原文扩展
+- **plan 原文**：取 topK 后 base/guides 按文件去重扩展到文档范围，顺序取首次命中位置；references 仍按原块；扩展取运行级原文快照；超限按可续读连续原文送达并记录 offset/行范围/complete/next_offset；极小上限报明确 error。
+- **实际做法**：sections.ts 新增每文件的文档范围条目（level 0、覆盖含标题前首部的整篇正文，ID `doc:<相对路径>`，可由 `get` 解析以续读，不进入 `sections` 数组以免影响既有小节计数与 ID）；tool-executor.ts 将 buildRagData 拆为 legacy（关闭扩展或无小节目录时按原「拼接 + 硬截断」行为）与 expanded 两条路径。expanded 对 base/guides 按文件去重扩展，容量不足时元数据先留位并按行边界送达可续读前缀，极小上限返回容量错误（status error、非 fatal）；新增 `FulltextRange` 观测并接入 trace 工具事件。
+- **原因**：既满足扩展与续读契约，又不改动既有小节体系与 `sectionCount`；保留 `expandFulltext=false` 对照组合的既有行为。
+- **后果**：默认运行 base/guides 命中会送达整篇原文（受 `maxContextChars` 约束）；references 截断由硬截断改为按行边界；步骤 5 需在报告层明确范围与送达。
+
 ## 债务记录
 
 本轮未新增或修改代码技术债；施工前待决事项直接列于 plan 步骤 0。
+
+### 2026-09-11 — 步骤 2 独立审查的非阻塞项承接
+- **债务**：独立审查指出三项非阻塞项：① `TOOL_SCHEMA_VERSION` 未随步骤 2 的 rag_search 返回数据语义扩展递增；② 容量错误路径 `ToolExecutionResult.message` 为空、trace `error` 字段缺失；③ 缺跨文件稳定排序、恰好容纳、正文中段/尾部与未 clamp 快照对照等边界测试。另记录 injectedIds 去重计数边界（同文件多命中只记首个 chunk，扩展范围另记 `fulltextRanges`）。
+- **未来偿还**：① 在步骤 3 与 facts 附带（及工具描述同步）一并把 `TOOL_SCHEMA_VERSION` 从 9 递增到 10，避免同一步两次改版本；② 归入步骤 5 的观测消费者收敛，统一错误文本来源；③ 随步骤 5 契约测试补齐。三项均不影响本步运行正确性，plan 对应验收项保持未勾选。
 
 ## 意外发现
 
@@ -52,9 +62,13 @@
 - **发现**：meta `chunks` 原为全量分块数，步骤 1 后改为检索范围块数，跨策略对比会看到该值变化；为避免歧义新增 meta `corpusChunks` 记录全量块数。
 - **影响**：步骤 5 需在报告/快照层明确检索范围与排除数量，避免把不同范围的块数直接横比。
 
+### 2026-09-11 — 文档范围 ID 采用可读路径而非哈希
+- **发现**：文档范围需要稳定可调用的 ID；但编码核心约束 #10 默认禁止新增 sha256 / 指纹字段，故未沿用 `encodeSectionId` 的哈希方案，改用可读的 `doc:<相对路径>`。既有小节 ID 不变、不失效。
+- **影响**：该 ID 随文件重命名变化（与既有小节 ID 行为一致）；read_section 以 `get` 解析文档范围、续读链路可用。后续消费者不得以 `sec-` 前缀假定所有可读 ID。
+
 ## 阻塞与解决
 
-ADR-013 已登记，契约收口完成；容量沿用总上限 12,000，RAG 预留与 facts 附带额度按 ADR 要求待最终 renderer 离线复算后定稿。步骤 1 的检索范围接线已完成，步骤 2–3 的运行时行为接线尚未开始。原始轨迹仅只读核对，本轮未新增临时产物。
+ADR-013 已登记，契约收口完成；容量沿用总上限 12,000，RAG 预留与 facts 附带额度按 ADR 要求待最终 renderer 离线复算后定稿。步骤 1 的检索范围与步骤 2 的原文扩展接线已完成，步骤 3 的 facts 附带尚未开始。原始轨迹仅只读核对，本轮未新增临时产物。
 
 ### 2026-09-11 — 本轮验证
 
@@ -74,3 +88,9 @@ ADR-013 已登记，契约收口完成；容量沿用总上限 12,000，RAG 预�
 - `pnpm run typecheck` 通过；`pnpm run test` 全量 443 项通过（新增 retrieval-range 4 项与 runner 范围断言）。
 - 真实语料断言：九份技能表文件被排除，其余 references 与 base/guides 保留；默认 `meta.chunks` 小于 `meta.corpusChunks`。
 - `node scripts/doc-check.mjs` 仍仅剩本计划未完成验收项 D1；本轮勾选「技能表范围、模式边界与排除落点确定」一项。
+
+### 2026-09-11 — 步骤 2 验证
+
+- `pnpm run typecheck` 通过；`pnpm run test` 全量 454 项通过（新增 fulltext-expansion 11 项，覆盖同文件去重、references 不扩展、续读拼接无缺口、极小上限 error、非 BMP 代理对、无/多 H1 与空正文）。
+- 原 section-navigation 用例显式置 `expandFulltext=false`，隔离小节上下文行为、保留对照组合回归。
+- `node scripts/doc-check.mjs` 仍仅剩本计划未完成验收项 D1；本轮勾选「base/guides 检索与原文扩展方案、分页和合并容量边界确定」一项。
