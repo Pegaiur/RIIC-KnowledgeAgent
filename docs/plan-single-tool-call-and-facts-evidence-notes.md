@@ -58,6 +58,12 @@
 - **原因**：plan 明确不新增分类聚合、协议版本或自动分类器；现状已满足透传与旧记录可读。
 - **后果**：无新增字段与协议识别设施；旧快照与旧运行目录读取语义不变。
 
+### 2026-09-12 — 离线送达统计的数据来源落到 trace 与 records 两个现有台账
+- **plan 原文**：显式 facts 用成功结果中实际返回的卡及现有 canonical 信息；RAG 用 delivered；缺 trace、结果或名册版本无法确认时标不可判定。
+- **实际做法**：`scripts/tasks/bench/facts-evidence-observation.mjs` 只读运行目录——显式 facts 送达取 trace.jsonl 中 `tool=facts_search` 且 `status=success` 的事件 `hitIds`（canonical）；RAG 附带送达取 records.jsonl 的 `ragDelivery[].attachedFacts[].delivered`；分母名册正式名从 `knowledge/references/名册.md` 表格行首字段解析；核心逻辑接受注入的 runDir/rosterPath/root，隔离夹具测试在 scripts/tests/tasks/bench/ 下用合成记录覆盖。
+- **原因**：records 不保存 facts 实际返回卡，trace 的 `hitIds` 是该事实的唯一现有落点；RAG 附带送达按 report 既有口径取 `ragDelivery.delivered`。
+- **后果**：无 runner 逐题持久化字段变化；缺 trace 行、结果记录、问题原文或名册时整题标不可判定；有工具批次却缺 ragDelivery、或某次 rag_search 的 attachedFacts 不可用且仍有未被显式 facts 覆盖的对象时按「RAG 附带台账不可用」标不可判定，不当作零送达；名册版本对应仅当运行 meta.source.gitHead 与当前 HEAD 一致且非脏树（或 `--assume-roster-matches`/显式 `--roster`）才成立，否则整题不可判定，不拿当前名册无条件解释旧运行。多对象部分送达、附带省略、重复送达、不适用、缺 trace、RAG 台账不可用与名册版本不对应均有隔离合成用例。
+
 ## 债务记录
 > 遗留的技术债、被牺牲的改进与延期偿还事项（纯权衡取舍、无遗留债务的决策记入「决策偏离」）
 > 可定位到代码的债务须在代码处写 `TODO(tech-debt) <编号>：` 注释（AGENTS.md 编码核心约束 #5），此处只记编号、结论与未来偿还条件
