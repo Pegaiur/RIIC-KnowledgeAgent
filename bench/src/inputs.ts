@@ -76,6 +76,8 @@ export interface RunInputs {
     maxContextChars: number
     toolBudget: number
     toolAttemptLimit: number
+    /** 每次 facts_search 可传入的最大词条数；schema maxItems 由此派生。 */
+    factsQueryListLimit: number
     sessionTimeoutMs: number
     feedbackOnNoToolAnswer: boolean
     toolChoice: 'auto'
@@ -180,6 +182,7 @@ export function createRunInputs(options: RunInputsOptions): RunInputs {
       maxContextChars: options.config.maxContextChars,
       toolBudget: options.config.toolBudget,
       toolAttemptLimit: options.config.toolAttemptLimit,
+      factsQueryListLimit: options.config.factsQueryListLimit,
       sessionTimeoutMs: options.config.sessionTimeoutMs,
       feedbackOnNoToolAnswer: options.config.feedbackOnNoToolAnswer,
       toolChoice: 'auto',

@@ -29,6 +29,7 @@ describe('runBenchmark：trace 逐题落盘', () => {
         parallelToolCalls: false,
         toolBudget: 5,
         toolAttemptLimit: 10,
+        factsQueryListLimit: 3,
         sessionTimeoutMs: 300000,
         feedbackOnNoToolAnswer: true,
         toolSchemaVersion: 10,

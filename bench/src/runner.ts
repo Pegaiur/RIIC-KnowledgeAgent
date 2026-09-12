@@ -259,6 +259,7 @@ export async function runBenchmark(
         attachFacts: effectiveAttachFacts(config),
         toolBudget: config.toolBudget,
         toolAttemptLimit: config.toolAttemptLimit,
+        factsQueryListLimit: config.factsQueryListLimit,
         sessionTimeoutMs: config.sessionTimeoutMs,
         feedbackOnNoToolAnswer: config.feedbackOnNoToolAnswer,
         toolChoice: 'auto',

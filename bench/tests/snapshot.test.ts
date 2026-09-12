@@ -86,6 +86,7 @@ describe('共享基准快照', () => {
           unknownExtra: 'drop-me',
           maxTokens: 4096,
           inputsSchemaVersion: 1,
+          factsQueryListLimit: 3,
           toolSchemaVersion: 2,
           toolSchemaSha256: 'a'.repeat(64),
           toolNames: ['rag_search'],
@@ -125,6 +126,7 @@ describe('共享基准快照', () => {
       expect(readSnapshot(path).meta).toMatchObject({
         maxTokens: 4096,
         inputsSchemaVersion: 1,
+        factsQueryListLimit: 3,
         toolSchemaVersion: 2,
         toolSchemaSha256: 'a'.repeat(64),
         toolNames: ['rag_search'],

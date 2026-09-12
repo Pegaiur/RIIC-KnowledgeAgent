@@ -93,6 +93,8 @@ export interface ExperimentConfig {
   toolBudget: number
   /** 每题工具获准尝试硬上限；与成败无关，达到后新增调用只收到拒绝 */
   toolAttemptLimit: number
+  /** 每次 facts_search 可传入的最大词条数（数组长度上限）；schema maxItems 由此派生 */
+  factsQueryListLimit: number
   /** 每题总超时（毫秒），覆盖请求、重试、等待、工具和后续模型步骤 */
   sessionTimeoutMs: number
   /** 未调用工具直接作答时是否允许一次宿主回馈 */
@@ -124,6 +126,7 @@ export const EXPERIMENT: ExperimentConfig = {
   tokenizer: 'bigram',
   toolBudget: 5,
   toolAttemptLimit: 10,
+  factsQueryListLimit: 3,
   sessionTimeoutMs: 300_000,
   feedbackOnNoToolAnswer: true,
   topK: 5,
@@ -177,6 +180,8 @@ export interface BenchConfig {
   toolBudget: number
   /** 每题工具获准尝试硬上限；与成败无关，达到后新增调用只收到拒绝 */
   toolAttemptLimit: number
+  /** 每次 facts_search 可传入的最大词条数（数组长度上限）；schema maxItems 由此派生 */
+  factsQueryListLimit: number
   /** 每题总超时（毫秒），覆盖请求、重试、等待、工具和后续模型步骤 */
   sessionTimeoutMs: number
   /** 未调用工具直接作答时是否允许一次宿主回馈 */
@@ -212,6 +217,7 @@ export function loadConfig(providerInput?: ProviderId): BenchConfig {
     attachFacts: EXPERIMENT.attachFacts,
     toolBudget: EXPERIMENT.toolBudget,
     toolAttemptLimit: EXPERIMENT.toolAttemptLimit,
+    factsQueryListLimit: EXPERIMENT.factsQueryListLimit,
     sessionTimeoutMs: EXPERIMENT.sessionTimeoutMs,
     feedbackOnNoToolAnswer: EXPERIMENT.feedbackOnNoToolAnswer,
     tokenizer: EXPERIMENT.tokenizer,
@@ -228,7 +234,7 @@ export function effectiveAttachFacts(config: Pick<BenchConfig, 'retriever' | 'at
 }
 
 /** 校验单题生命周期相关配置；CLI 覆盖参数后也必须调用。 */
-export function validateBenchConfig(config: Pick<BenchConfig, 'toolBudget' | 'toolAttemptLimit' | 'sessionTimeoutMs' | 'retriever' | 'attachFacts'>): void {
+export function validateBenchConfig(config: Pick<BenchConfig, 'toolBudget' | 'toolAttemptLimit' | 'factsQueryListLimit' | 'sessionTimeoutMs' | 'retriever' | 'attachFacts'>): void {
   if (config.retriever !== 'bm25' && config.retriever !== 'hybrid') {
     throw new Error(`不支持的检索模式：${String(config.retriever)}（可选 bm25 | hybrid）`)
   }
@@ -239,6 +245,7 @@ export function validateBenchConfig(config: Pick<BenchConfig, 'toolBudget' | 'to
   for (const [name, value] of [
     ['toolBudget', config.toolBudget],
     ['toolAttemptLimit', config.toolAttemptLimit],
+    ['factsQueryListLimit', config.factsQueryListLimit],
     ['sessionTimeoutMs', config.sessionTimeoutMs],
   ] as const) {
     if (!Number.isInteger(value) || value <= 0) {
