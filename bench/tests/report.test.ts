@@ -136,6 +136,22 @@ describe('report：聚合与渲染', () => {
     expect(aggregate([rec({ tools: ['rag_search'], ragDelivery: [{ callId: 'a', status: 'empty', fulltextRanges: [], attachedFacts: [omitted] }] })]).ragDeliveryStats).toMatchObject({ internalFactsQueries: 1, attachedCalls: 0, omittedTerms: 1, deliveredCards: 0 })
   })
 
+  it('同批超量拒绝的 rag_search 请求不计入 RAG 台账完整性判据', () => {
+    const fact = { term: '测试', start: 0, end: 2, matched: ['甲'], delivered: ['甲'], omittedReason: null, chars: 20, elapsedMs: 0, paths: [] }
+    // 首项送达一张卡、第二项同批超量拒绝：ragDelivery 仅含已准入的首项，不应判整轮不可用。
+    const mixed = rec({
+      tools: ['rag_search', 'rag_search'],
+      ragDelivery: [{ callId: 'a', status: 'success', fulltextRanges: [], attachedFacts: [fact] }],
+    })
+    expect(aggregate([mixed]).ragDeliveryStats).toEqual({
+      internalFactsQueries: 1, attachedCalls: 1, omittedTerms: 0, deliveredCards: 1, expandedRanges: 0,
+    })
+    // 请求过 rag_search 却缺整套台账（历史/异常）仍判不可用，不伪造成零送达。
+    expect(aggregate([rec({ tools: ['rag_search'] })]).ragDeliveryStats).toEqual({
+      internalFactsQueries: null, attachedCalls: null, omittedTerms: null, deliveredCards: null, expandedRanges: null,
+    })
+  })
+
   it('仅 facts 送达的 rag_search 计入证据送达，但不计入旧 chunk 命中口径', () => {
     // facts-only 成功：hitIds 为空（hitCount 0），但 status=success（successes 1）。
     const report = aggregate([

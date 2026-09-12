@@ -379,7 +379,9 @@ function aggregateToolUsage(records: CostRecord[]): ToolUsageAgg[] {
 
 function aggregateRagDelivery(records: CostRecord[]): RagDeliveryStats {
   const unavailable = { internalFactsQueries: null, attachedCalls: null, omittedTerms: null, deliveredCards: null, expandedRanges: null }
-  if (records.some((record) => (record.tools ?? []).filter((tool) => tool === 'rag_search').length !== (record.ragDelivery?.length ?? 0))) return unavailable
+  // agent.ts 的 ragDelivery 已排除同批超量拒绝（protocol_rejected，ADR-016），故不能按请求数比对台账长度；
+  // 只在「请求过 rag_search 却缺整套送达台账」时判不可用，保留真正缺失数据的判定，不伪造成零送达。
+  if (records.some((record) => (record.tools ?? []).includes('rag_search') && record.ragDelivery === undefined)) return unavailable
   const calls = records.flatMap((record) => record.ragDelivery ?? [])
   const factsKnown = calls.every((call) => call.attachedFacts !== undefined)
   const facts = calls.flatMap((call) => call.attachedFacts ?? [])
