@@ -46,6 +46,18 @@
 - **原因**：初次全仓替换点检索被输出截断遗漏，typecheck 暴露后补齐。
 - **后果**：全仓 `executeBatch` 已无残留（文档中的历史说明不受影响）。
 
+### 2026-09-12 — answers.md 逐题行新增拒绝标签，快照解析兼容旧行
+- **plan 原文**：report、answers.md 的 denied 标签注明「预算/同批超量拒绝」；核对 snapshot 字段白名单，保持旧记录可读。
+- **实际做法**：report 的「拒绝 N」改为「拒绝（预算/同批超量拒绝） N」；answers.md 逐题元数据行在「获准尝试」与「工具序列」之间新增「拒绝（预算/同批超量拒绝）：N」，N 取该题已落盘批次 denied 之和（含 budget_exhausted 与 protocol_rejected）；`parseAnswers` 的 dual 正则把该段设为可选，旧双预算行与单预算历史行仍按原位置解析，工具序列捕获组顺延为第 8 组。
+- **原因**：answers.md 原先没有任何拒绝标签，仅核对无法满足「同类标签」要求；不新增预算/超量分类汇总，也不给 SnapshotQuery 增加字段，保持旧记录可读。
+- **后果**：快照导入新运行目录时仅解析并忽略该拒绝段、不落库；历史 answers.md 无该段时保持原行为。
+
+### 2026-09-12 — trace.summary / inputs / meta / snapshot 白名单核对后无需改动
+- **plan 原文**：核对 trace.summary、inputs/meta、snapshot 的枚举与字段白名单，新状态正常透传、旧记录可读。
+- **实际做法**：核对后不改动。`trace.summary.toolCallsDenied` 已由 agent.ts 按批次 denied 汇总（步骤 1 已覆盖）；`ToolBatchStats.denied`、`TOOL_BATCH_KEYS`、`META_SUMMARY_KEYS.toolCallsDenied`、`META_ALLOWED_KEYS` 与 `TERMINATION_REASONS`（含 protocol_error）已含所需字段与枚举；新增的 `protocol_rejected` 只是 ToolResultStatus 取值扩展，不进入快照字段白名单。
+- **原因**：plan 明确不新增分类聚合、协议版本或自动分类器；现状已满足透传与旧记录可读。
+- **后果**：无新增字段与协议识别设施；旧快照与旧运行目录读取语义不变。
+
 ## 债务记录
 > 遗留的技术债、被牺牲的改进与延期偿还事项（纯权衡取舍、无遗留债务的决策记入「决策偏离」）
 > 可定位到代码的债务须在代码处写 `TODO(tech-debt) <编号>：` 注释（AGENTS.md 编码核心约束 #5），此处只记编号、结论与未来偿还条件

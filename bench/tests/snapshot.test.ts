@@ -261,6 +261,35 @@ describe('共享基准快照', () => {
     }
   })
 
+  it('拒绝标签段不破坏双预算行解析与工具序列', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'rag-denied-label-'))
+    try {
+      writeFileSync(join(dir, 'meta.json'), JSON.stringify({ topic: 'rag-hybrid', questionIds: ['Q1'] }))
+      writeFileSync(join(dir, 'records.jsonl'), '')
+      writeFileSync(join(dir, 'answers.md'), [
+        '# 查询回答记录', '',
+        '## Q1（fact）', '',
+        '- 问题：带拒绝标签',
+        '- 状态：completed｜终止：answer',
+        '- 模型步骤：2｜工具批次：1｜成功额度：1/5｜获准尝试：2/10｜拒绝（预算/同批超量拒绝）：2｜工具序列：rag_search',
+        '- 宿主回馈：否', '',
+        '答案一',
+      ].join('\n'))
+
+      const snapshot = snapshotFromRunDir(dir, { root: dir })
+      expect(snapshot.queries[0]).toMatchObject({
+        id: 'Q1',
+        budgetUsed: 1,
+        budgetRemaining: 4,
+        attemptUsed: 2,
+        attemptLimit: 10,
+        toolTrace: ['rag_search'],
+      })
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
   it('保留自定义题集定义，并兼容旧版回答格式', () => {
     const dir = mkdtempSync(join(tmpdir(), 'rag-legacy-export-'))
     try {

@@ -89,6 +89,14 @@ describe('report：聚合与渲染', () => {
     expect(renderMarkdown(report)).toContain('获准尝试 不可用｜证据送达（成功） 不可用')
   })
 
+  it('拒绝标签注明预算耗尽与同批超量两类，不拆分分类计数', () => {
+    const report = aggregate([rec({
+      toolBatch: { requested: 3, granted: 1, executed: 1, denied: 2, errors: 0, attempts: 1, successes: 1, budgetBefore: 5, budgetAfter: 4, resultChars: 40 },
+    })])
+    expect(report.toolStats.denied).toBe(2)
+    expect(renderMarkdown(report)).toContain('拒绝（预算/同批超量拒绝） 2')
+  })
+
   it('新批次聚合获准尝试与非空成功数，缺失时保持不可用', () => {
     const withNewStats = aggregate([
       rec({ toolBatch: { requested: 3, granted: 2, executed: 2, denied: 1, errors: 0, attempts: 2, successes: 1, budgetBefore: 5, budgetAfter: 4, resultChars: 90 } }),

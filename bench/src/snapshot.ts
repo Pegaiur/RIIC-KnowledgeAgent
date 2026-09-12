@@ -610,7 +610,7 @@ function parseAnswers(raw: string | null): Map<string, ParsedAnswer> {
     const statusLine = block.find((line) => line.startsWith('- 状态：')) ?? ''
     const statusMatch = /^- 状态：([^｜]+)｜终止：([^\s]+)$/.exec(statusLine)
     const budgetLine = block.find((line) => line.startsWith('- 模型步骤：')) ?? ''
-    const dualMatch = /^- 模型步骤：(\d+)｜工具批次：(\d+)｜成功额度：(\d+)\/(\d+)｜获准尝试：(\d+)\/(\d+)(?:｜工具序列：(.+))?$/.exec(budgetLine)
+    const dualMatch = /^- 模型步骤：(\d+)｜工具批次：(\d+)｜成功额度：(\d+)\/(\d+)｜获准尝试：(\d+)\/(\d+)(?:｜拒绝（预算\/同批超量拒绝）：(\d+))?(?:｜工具序列：(.+))?$/.exec(budgetLine)
     const budgetMatch = /^- 模型步骤：(\d+)｜工具批次：(\d+)｜预算：(\d+)\/(\d+)(?:｜工具序列：(.+))?$/.exec(budgetLine)
     const feedbackLine = block.find((line) => line.startsWith('- 宿主回馈：'))
     const feedbackIndex = block.findIndex((line) => line.startsWith('- 宿主回馈：'))
@@ -622,7 +622,7 @@ function parseAnswers(raw: string | null): Map<string, ParsedAnswer> {
     const body = block.slice(answerStart).join('\n').trim()
     const legacyFailure = /^（查询(?:失败|未完成)：/.test(body)
     const status = statusMatch?.[1] ?? (legacyMatch && body ? (legacyFailure ? 'failed' : 'completed') : undefined)
-    const traceRaw = dualMatch?.[7] ?? budgetMatch?.[5] ?? legacyMatch?.[3]
+    const traceRaw = dualMatch?.[8] ?? budgetMatch?.[5] ?? legacyMatch?.[3]
     out.set(header.id, {
       category: header.category,
       question: redactText(question),

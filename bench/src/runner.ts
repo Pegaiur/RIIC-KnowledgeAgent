@@ -62,6 +62,8 @@ export interface AnswerRecord {
   attemptUsed: number
   /** 获准尝试上限 */
   attemptLimit: number
+  /** 未获准执行的拒绝数（预算耗尽 + 同批超量）；具体原因查 trace。 */
+  denied: number
   answer: string | null
 }
 
@@ -150,6 +152,8 @@ export async function runBenchmark(
     const agentOpts: AgentOptions = { ...agentOptsBase, trace }
     try {
       const result = await runQuery(q, agentOpts, chunks, index)
+      // 逐题拒绝数取自已落盘批次统计，含预算耗尽与同批超量；具体原因查 trace。
+      const denied = result.records.reduce((total, record) => total + (record.toolBatch?.denied ?? 0), 0)
       for (const r of result.records) lines.push(JSON.stringify(r))
       modelSteps += result.modelSteps
       toolBatches += result.toolRounds
@@ -171,6 +175,7 @@ export async function runBenchmark(
           budgetRemaining: result.budget.remaining,
           attemptUsed: result.budget.attemptUsed,
           attemptLimit: result.budget.attemptLimit,
+          denied,
           answer: result.finalAnswer,
         })
         process.stderr.write(`问题 ${q.id} 完成：${result.rounds} 轮\n`)
@@ -192,6 +197,7 @@ export async function runBenchmark(
           budgetRemaining: result.budget.remaining,
           attemptUsed: result.budget.attemptUsed,
           attemptLimit: result.budget.attemptLimit,
+          denied,
           answer: `（查询未完成：${safeMessage}）`,
         })
         if (result.failure) markTraceFailed(trace, result.failure)
@@ -218,6 +224,7 @@ export async function runBenchmark(
         budgetRemaining: config.toolBudget,
         attemptUsed: 0,
         attemptLimit: config.toolAttemptLimit,
+        denied: 0,
         answer: `（查询失败：${safeMessage}）`,
       })
       markTraceFailed(trace, {
@@ -337,7 +344,7 @@ export async function runBenchmark(
 function renderAnswers(answers: AnswerRecord[]): string {
   const blocks = answers.map((a) => {
     const toolLine = a.toolTrace.length > 0 ? `｜工具序列：${a.toolTrace.join('→')}` : '｜工具序列：无'
-    return `## ${a.queryId}（${a.category}）\n\n- 问题：${a.question}\n- 状态：${a.status}｜终止：${a.terminationReason}\n- 模型步骤：${a.rounds}｜工具批次：${a.toolRounds}｜成功额度：${a.budgetUsed}/${a.budgetUsed + a.budgetRemaining}｜获准尝试：${a.attemptUsed}/${a.attemptLimit}${toolLine}\n- 宿主回馈：${a.feedbackUsed ? '是' : '否'}\n\n${a.answer ?? '（无最终回答）'}`
+    return `## ${a.queryId}（${a.category}）\n\n- 问题：${a.question}\n- 状态：${a.status}｜终止：${a.terminationReason}\n- 模型步骤：${a.rounds}｜工具批次：${a.toolRounds}｜成功额度：${a.budgetUsed}/${a.budgetUsed + a.budgetRemaining}｜获准尝试：${a.attemptUsed}/${a.attemptLimit}｜拒绝（预算/同批超量拒绝）：${a.denied}${toolLine}\n- 宿主回馈：${a.feedbackUsed ? '是' : '否'}\n\n${a.answer ?? '（无最终回答）'}`
   })
   return ['# 查询回答记录', '', '> 供人工抽查答案质量，不参与成本评估。', '', ...blocks].join('\n')
 }

@@ -96,6 +96,7 @@ describe('runBenchmark：trace 逐题落盘', () => {
       const answers = readFileSync(output.answersPath, 'utf-8')
       expect(answers).toContain('成功额度：')
       expect(answers).toContain('获准尝试：')
+      expect(answers).toContain('拒绝（预算/同批超量拒绝）：')
       const inputs = JSON.parse(readFileSync(output.inputsPath, 'utf-8')) as Record<string, any>
       expect(inputs.captureStatus).toBe('complete')
       expect(inputs.config).toMatchObject({ toolBudget: 5, toolAttemptLimit: 10, parallelToolCalls: false })
@@ -129,6 +130,25 @@ describe('runBenchmark：trace 逐题落盘', () => {
       }>
       const facts = definitions.find((tool) => tool.function.name === 'facts_search')!
       expect(facts.function.parameters.properties.queries.maxItems).toBe(2)
+    } finally {
+      rmSync(outDir, { recursive: true, force: true })
+    }
+  })
+
+  it('answers.md 逐题拒绝数取批次 denied 之和（预算耗尽边界）', async () => {
+    const outDir = mkdtempSync(join(tmpdir(), 'rag-answers-denied-'))
+    try {
+      const config = loadConfig('qwen')
+      config.retriever = 'hybrid'
+      config.feedbackOnNoToolAnswer = false
+      // 成功额度 1：第二步 facts_search 因额度用尽被拒绝，逐题拒绝数应为 1。
+      config.toolBudget = 1
+      const output = await runBenchmark(
+        [{ id: 'RUN-DENIED-1', category: 'fact', question: '第一题' }],
+        { thinking: 'off', dry: true, outDir, config },
+      )
+      const answers = readFileSync(output.answersPath, 'utf-8')
+      expect(answers).toContain('拒绝（预算/同批超量拒绝）：1')
     } finally {
       rmSync(outDir, { recursive: true, force: true })
     }
