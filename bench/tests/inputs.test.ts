@@ -263,8 +263,8 @@ describe('运行输入记录', () => {
         onFactsStoreUsed: () => { throw new Error('成功观测不应触发') },
         onFactsStoreLoadFailed: (error) => { failures.push(error); throw new Error('失败观测异常') },
       }, 1)
-      const factsResult = await facts.executeBatch([{ id: 'facts', name: 'facts_search', arguments: JSON.stringify({ query: '刻俄柏' }) }])
-      expect(factsResult.results[0]).toMatchObject({ status: 'error', executed: true, message: loadError.message, actualParams: { query: '刻俄柏' } })
+      const factsResult = await facts.executeBatch([{ id: 'facts', name: 'facts_search', arguments: JSON.stringify({ queries: ['刻俄柏'] }) }])
+      expect(factsResult.results[0]).toMatchObject({ status: 'error', executed: true, message: loadError.message, actualParams: { queries: ['刻俄柏'] } })
       expect(failures).toHaveLength(1)
       expect(failures[0]).toBe(loadError)
     } finally {
@@ -288,7 +288,7 @@ describe('运行输入记录', () => {
       config.feedbackOnNoToolAnswer = false
       config.apiKey = 'opaque-runner-secret'
       mockCall
-        .mockResolvedValueOnce(providerResult({ content: null, toolCalls: [{ id: 'facts-1', name: 'facts_search', arguments: JSON.stringify({ query: '刻俄柏' }) }] }))
+        .mockResolvedValueOnce(providerResult({ content: null, toolCalls: [{ id: 'facts-1', name: 'facts_search', arguments: JSON.stringify({ queries: ['刻俄柏'] }) }] }))
         .mockResolvedValueOnce(providerResult({ content: '结束' }))
       const output = await isolatedRunBenchmark(
         [{ id: 'INPUT-FAILURE', category: 'fact', question: '事实' }],

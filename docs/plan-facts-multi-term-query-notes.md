@@ -29,6 +29,17 @@
 - **原因**：maxItems 需随配置动态生成，静态常量无法承载；且 TypeScript 不允许必填参数跟在带默认值的可选参数之后，故不能只给上限加默认值而保留 retriever 默认值。
 - **后果**：测试取用点（agent.test.ts、facts-tools.test.ts、tool-executor.test.ts、runner.test.ts）随签名更新传入上限；步骤 3 将让解析器接受 `queries`，闭合 schema 与执行的一致性。
 
+### 2026-09-12 — 步骤 3：解析分支落位与 resolution.paths 过渡契约
+- **plan 原文**：步骤 3 仿 parseReadSectionParams 拆出 facts 专用分支；根级非法（非对象、缺 queries、非数组、额外字段、超上限、空数组）整批 invalid_params，元素级非法逐项记为 invalid，上限按原数组长度检查。
+- **实际做法**：新增 `parseFactsParams` 与 `ParsedToolParams`（携带 `factsItems` 逐项解析记录，非法项也占位），`parseToolParams` 增加 factsQueryListLimit 入参；执行侧新增 `factsSearchOperation`，按原数组顺序逐项查询并分段渲染，重复词在本次调用内复用查询结果。步骤 3 暂保留 v5 的 `resolution.paths`（逐词路径按输入顺序汇总），待步骤 5 改为 v6 `resolution.items`。
+- **原因**：若解析器先接受 `queries` 而执行侧仍读单字符串 `params.query`，会形成比现状更严重的过渡断层；plan 未逐字规定逐项解析记录由谁承载，故由解析结果携带给执行侧。
+- **后果**：`resolution.paths` 的多词汇总只是过渡契约，会在步骤 5 被 items 取代；本次逐项解析记录尚未进入 wire 元数据。
+
+### 2026-09-12 — 步骤 3：多词测试需显式提高 factsQueryListLimit
+- **背景**：元素级非法的回归用例含 4 个元素，默认上限为 3，会先被根级上限拒绝而无法覆盖元素级分支。
+- **实际做法**：该用例显式设 `config.factsQueryListLimit = 4`，保持 4 个元素以覆盖「非法项占原索引段」。
+- **原因**：上限检查按原数组长度先于元素级校验，属计划既定顺序。
+
 ## 债务记录
 > 遗留的技术债、被牺牲的改进与延期偿还事项（纯权衡取舍、无遗留债务的决策记入「决策偏离」）
 > 可定位到代码的债务须在代码处写 `TODO(tech-debt) <编号>：` 注释（AGENTS.md 编码核心约束 #5），此处只记编号、结论与未来偿还条件

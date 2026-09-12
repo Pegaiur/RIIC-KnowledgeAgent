@@ -14,7 +14,7 @@ function executor(limit = 1) {
 }
 
 function call(query: string, id = 'facts') {
-  return { id, name: 'facts_search', arguments: JSON.stringify({ query }) }
+  return { id, name: 'facts_search', arguments: JSON.stringify({ queries: [query] }) }
 }
 
 function expectEnvelope(item: ToolExecutionResult, expectedIds: string[]) {

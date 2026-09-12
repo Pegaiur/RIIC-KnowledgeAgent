@@ -410,8 +410,8 @@ describe('第一阶段 facts 结果 envelope', () => {
     }, 5)
 
     const result = await executor.executeBatch([
-      { id: 'empty-one', name: 'facts_search', arguments: '{"query":"__不存在的规范名_核查__"}' },
-      { id: 'empty-two', name: 'facts_search', arguments: '{"query":"不存在设施"}' },
+      { id: 'empty-one', name: 'facts_search', arguments: '{"queries":["__不存在的规范名_核查__"]}' },
+      { id: 'empty-two', name: 'facts_search', arguments: '{"queries":["不存在设施"]}' },
     ])
 
     expect(result.results).toHaveLength(2)
@@ -424,8 +424,8 @@ describe('第一阶段 facts 结果 envelope', () => {
        expect(envelope).toMatchObject({ status: 'empty', executed: true, factsResultVersion: 5, matchedCount: 0, returnedCount: 0, complete: true, resolution: { paths: [] } })
        expect(envelope.data).toContain('未收录精确词条')
     }
-    expect(JSON.parse(serializeToolResult(result.results[0]!)).scope).toEqual({ query: '__不存在的规范名_核查__' })
-    expect(JSON.parse(serializeToolResult(result.results[1]!)).scope).toEqual({ query: '不存在设施' })
+    expect(JSON.parse(serializeToolResult(result.results[0]!)).scope).toEqual({ queries: ['__不存在的规范名_核查__'] })
+    expect(JSON.parse(serializeToolResult(result.results[1]!)).scope).toEqual({ queries: ['不存在设施'] })
     expect(result.snapshot).toMatchObject({ successUsed: 0, attemptUsed: 2, executed: 2, remaining: 5 })
   })
 
@@ -440,8 +440,8 @@ describe('第一阶段 facts 结果 envelope', () => {
     }, 5)
 
     const result = await executor.executeBatch([
-      { id: 'invalid', name: 'facts_search', arguments: '{"query":"   "}' },
-      { id: 'unknown-but-valid', name: 'facts_search', arguments: '{"query":"不存在职业"}' },
+      { id: 'invalid', name: 'facts_search', arguments: '{"queries":["   "]}' },
+      { id: 'unknown-but-valid', name: 'facts_search', arguments: '{"queries":["不存在职业"]}' },
     ])
     expect(result.results[0]).toMatchObject({ status: 'invalid_params', executed: false })
     expect(result.results[0]?.factsResult).toBeUndefined()
@@ -511,11 +511,15 @@ describe('runQuery（facts_search 派发）', () => {
   it.each([
     ['空对象', '{}'],
     ['非法 JSON', '{'],
-    ['query 为 null', '{"query":null}'],
-    ['query 为空串', '{"query":""}'],
-    ['query 为空白', '{"query":"   "}'],
-    ['额外字段', '{"query":"刻俄柏","room":"制造站"}'],
-    ['query 为数组', '{"query":[]}'],
+    ['缺少 queries', '{"query":"刻俄柏"}'],
+    ['旧 query 数组形态', '{"query":["刻俄柏"]}'],
+    ['query 与 queries 同时出现', '{"query":"刻俄柏","queries":["刻俄柏"]}'],
+    ['queries 为 null', '{"queries":null}'],
+    ['queries 为字符串', '{"queries":"刻俄柏"}'],
+    ['queries 为空数组', '{"queries":[]}'],
+    ['queries 全为非法项', '{"queries":[1,"   "]}'],
+    ['额外字段', '{"queries":["刻俄柏"],"room":"制造站"}'],
+    ['按原数组长度超过上限', '{"queries":["甲","乙","丙","丁"]}'],
   ])('%s 被拒绝，且不查询或序列化干员卡', async (_label, argumentsText) => {
     const { result, toolResult } = await runFactsSearchCall(argumentsText)
 
@@ -527,9 +531,59 @@ describe('runQuery（facts_search 派发）', () => {
     expect(result.toolRounds).toBe(1)
   })
 
-  it('合法完整词条 trim 首尾但保留内部空格，并只传一个 query', async () => {
-    await runFactsSearchCall('{"query":"  测试 甲 "}')
+  it('合法词条 trim 首尾但保留内部空格，并按 queries 数组逐项查询', async () => {
+    await runFactsSearchCall('{"queries":["  测试 甲 "]}')
     expect(factsSearchSpy).toHaveBeenCalledWith('测试 甲')
+    expect(factsSearchSpy).toHaveBeenCalledTimes(1)
+  })
+
+  it('元素级非法只记该项并继续其余合法词条，原索引占段', async () => {
+    const config = loadConfig()
+    config.retriever = 'hybrid'
+    config.factsQueryListLimit = 4
+    const index = buildIndex(chunks)
+
+    mockCall
+      .mockResolvedValueOnce(providerResult({ toolCalls: [{ id: 'mixed', name: 'facts_search', arguments: '{"queries":["刻俄柏",1,"   ","制造站"]}' }] }))
+      .mockResolvedValueOnce(providerResult({ content: '最终答案' }))
+
+    const result = await runQuery(
+      { id: 'MIXED', category: 'fact', question: '混合非法与合法词条' },
+      { config, thinking: 'off', dry: false },
+      chunks,
+      index,
+    )
+    const secondMessages = mockCall.mock.calls[1]?.[0] as Array<{ role: string; content: string }>
+    const structured = JSON.parse(secondMessages.find((message) => message.role === 'tool')?.content ?? '{}') as { status: string; data: string }
+    expect(structured.status).toBe('success')
+    expect(structured.data).toContain('第 1 段｜刻俄柏')
+    expect(structured.data).toContain('第 2 段｜参数错误：第 2 项必须是非空字符串')
+    expect(structured.data).toContain('第 3 段｜参数错误：第 3 项必须是非空字符串')
+    expect(structured.data).toContain('第 4 段｜制造站')
+    expect(result.budget).toMatchObject({ successUsed: 1, attemptUsed: 1 })
+  })
+
+  it('合法词全部未命中但夹有非法项时整批 empty，不扣成功额度', async () => {
+    const config = loadConfig()
+    config.retriever = 'hybrid'
+    const index = buildIndex(chunks)
+
+    mockCall
+      .mockResolvedValueOnce(providerResult({ toolCalls: [{ id: 'mixed-empty', name: 'facts_search', arguments: '{"queries":["__不存在的规范名_核查__",null]}' }] }))
+      .mockResolvedValueOnce(providerResult({ content: '最终答案' }))
+
+    const result = await runQuery(
+      { id: 'MIXED-EMPTY', category: 'fact', question: '混合非法与空结果' },
+      { config, thinking: 'off', dry: false },
+      chunks,
+      index,
+    )
+    const secondMessages = mockCall.mock.calls[1]?.[0] as Array<{ role: string; content: string }>
+    const structured = JSON.parse(secondMessages.find((message) => message.role === 'tool')?.content ?? '{}') as { status: string; data: string }
+    expect(structured.status).toBe('empty')
+    expect(structured.data).toContain('第 1 段｜__不存在的规范名_核查__｜命中 0 张')
+    expect(structured.data).toContain('第 2 段｜参数错误：第 2 项必须是非空字符串')
+    expect(result.budget).toMatchObject({ successUsed: 0, attemptUsed: 1 })
   })
 
   it('hybrid 模式暴露 facts_search，派发并统计工具调用', async () => {
@@ -538,7 +592,7 @@ describe('runQuery（facts_search 派发）', () => {
     const index = buildIndex(chunks)
 
     mockCall
-      .mockResolvedValueOnce(providerResult({ toolCalls: [{ ...toolCall('facts_search', '{"query":"刻俄柏"}') } as any] }))
+      .mockResolvedValueOnce(providerResult({ toolCalls: [{ ...toolCall('facts_search', '{"queries":["刻俄柏"]}') } as any] }))
       .mockResolvedValueOnce(providerResult({ content: '刻俄柏 制造站仓库上限+8' }))
 
     const result = await runQuery(
@@ -560,7 +614,7 @@ describe('runQuery（facts_search 派发）', () => {
     const query = { id: 'FACTS-EMPTY-AGENT', category: 'fact' as const, question: '查一个不存在的干员' }
 
     mockCall
-      .mockResolvedValueOnce(providerResult({ toolCalls: [{ ...toolCall('facts_search', '{"query":"__不存在的规范名_核查__"}') } as any] }))
+      .mockResolvedValueOnce(providerResult({ toolCalls: [{ ...toolCall('facts_search', '{"queries":["__不存在的规范名_核查__"]}') } as any] }))
       .mockResolvedValueOnce(providerResult({ content: '知识库未查到该名称对应的记录卡。' }))
 
     const trace = createQueryTrace(query)
@@ -580,8 +634,8 @@ describe('runQuery（facts_search 派发）', () => {
     const query = { id: 'FACTS-EMPTY-CONTINUE', category: 'fact' as const, question: '空查后继续查设施' }
 
     mockCall
-      .mockResolvedValueOnce(providerResult({ toolCalls: [{ id: 'empty-facts', name: 'facts_search', arguments: '{"query":"__不存在的规范名_核查__"}' }] }))
-      .mockResolvedValueOnce(providerResult({ toolCalls: [{ id: 'new-facts', name: 'facts_search', arguments: '{"query":"制造站"}' }] }))
+      .mockResolvedValueOnce(providerResult({ toolCalls: [{ id: 'empty-facts', name: 'facts_search', arguments: '{"queries":["__不存在的规范名_核查__"]}' }] }))
+      .mockResolvedValueOnce(providerResult({ toolCalls: [{ id: 'new-facts', name: 'facts_search', arguments: '{"queries":["制造站"]}' }] }))
       .mockResolvedValueOnce(providerResult({ content: '新的设施查询已返回证据。' }))
 
     const trace = createQueryTrace(query)
@@ -603,7 +657,7 @@ describe('runQuery（facts_search 派发）', () => {
     const trace = createQueryTrace(query)
 
     mockCall
-      .mockResolvedValueOnce(providerResult({ toolCalls: [{ ...toolCall('facts_search', '{"query":"刻俄柏"}') } as any] }))
+      .mockResolvedValueOnce(providerResult({ toolCalls: [{ ...toolCall('facts_search', '{"queries":["刻俄柏"]}') } as any] }))
       .mockResolvedValueOnce(providerResult({ content: '最终答案' }))
 
     await runQuery(query, { config, thinking: 'off', dry: false, trace }, chunks, index)
@@ -611,14 +665,14 @@ describe('runQuery（facts_search 派发）', () => {
     expect(trace.events[1]).toMatchObject({
       type: 'tool_call',
       tool: 'facts_search',
-      rawArguments: '{"query":"刻俄柏"}',
-      actualParams: { query: '刻俄柏' },
+      rawArguments: '{"queries":["刻俄柏"]}',
+      actualParams: { queries: ['刻俄柏'] },
       hitIds: ['刻俄柏'],
       injectedIds: ['刻俄柏'],
     })
     const writtenContent = (trace.events[1] as { writtenContent: string }).writtenContent
     expect(writtenContent).toContain('【刻俄柏】')
-    expect(JSON.parse(writtenContent)).toMatchObject({ factsResultVersion: 5, matchedCount: 1, returnedCount: 1, complete: true, scope: { query: '刻俄柏' }, resolution: { paths: [{ kind: 'exact', term: '刻俄柏' }] } })
+    expect(JSON.parse(writtenContent)).toMatchObject({ factsResultVersion: 5, matchedCount: 1, returnedCount: 1, complete: true, scope: { queries: ['刻俄柏'] }, resolution: { paths: [{ kind: 'exact', term: '刻俄柏' }] } })
     const secondMessages = mockCall.mock.calls[1]?.[0] as Array<{ role: string; content: string }>
     expect(secondMessages.find((message) => message.role === 'tool')?.content).toBe(writtenContent)
   })
@@ -632,7 +686,7 @@ describe('runQuery（facts_search 派发）', () => {
     factsSearchSpy.mockImplementationOnce(() => {
       throw new Error('facts_search store 测试异常')
     })
-    mockCall.mockResolvedValueOnce(providerResult({ toolCalls: [{ ...toolCall('facts_search', '{"query":"刻俄柏"}') } as any] }))
+    mockCall.mockResolvedValueOnce(providerResult({ toolCalls: [{ ...toolCall('facts_search', '{"queries":["刻俄柏"]}') } as any] }))
 
     const result = await runQuery(query, { config, thinking: 'off', dry: false, trace }, chunks, index)
 
@@ -643,7 +697,7 @@ describe('runQuery（facts_search 派发）', () => {
     expect(trace.events[1]).toMatchObject({
       type: 'tool_call',
       tool: 'facts_search',
-      actualParams: { query: '刻俄柏' },
+      actualParams: { queries: ['刻俄柏'] },
       error: 'facts_search store 测试异常',
     })
   })
@@ -654,7 +708,7 @@ describe('runQuery（facts_search 派发）', () => {
     const index = buildIndex(chunks)
 
     mockCall
-      .mockResolvedValueOnce(providerResult({ toolCalls: [{ ...toolCall('facts_search', '{"query":"制造站"}') } as any] }))
+      .mockResolvedValueOnce(providerResult({ toolCalls: [{ ...toolCall('facts_search', '{"queries":["制造站"]}') } as any] }))
       .mockResolvedValueOnce(providerResult({ content: '制造站干员包括……' }))
 
     const result = await runQuery(
@@ -674,8 +728,8 @@ describe('runQuery（facts_search 派发）', () => {
     const index = buildIndex(chunks)
 
     mockCall
-      .mockResolvedValueOnce(providerResult({ toolCalls: [{ ...toolCall('facts_search', '{"query":"刻俄柏"}') } as any] }))
-      .mockResolvedValueOnce(providerResult({ toolCalls: [{ ...toolCall('facts_search', '{"query":"能天使"}') } as any] }))
+      .mockResolvedValueOnce(providerResult({ toolCalls: [{ ...toolCall('facts_search', '{"queries":["刻俄柏"]}') } as any] }))
+      .mockResolvedValueOnce(providerResult({ toolCalls: [{ ...toolCall('facts_search', '{"queries":["能天使"]}') } as any] }))
       .mockResolvedValueOnce(providerResult({ content: '最终答案' }))
 
     const result = await runQuery(
@@ -698,9 +752,9 @@ describe('runQuery（facts_search 派发）', () => {
     const index = buildIndex(chunks)
 
     mockCall
-      .mockResolvedValueOnce(providerResult({ toolCalls: [{ ...toolCall('facts_search', '{"query":"刻俄柏"}') } as any] }))
-      .mockResolvedValueOnce(providerResult({ toolCalls: [{ ...toolCall('facts_search', '{"query":"能天使"}') } as any] }))
-      .mockResolvedValueOnce(providerResult({ toolCalls: [{ ...toolCall('facts_search', '{"query":"夕"}') } as any] }))
+      .mockResolvedValueOnce(providerResult({ toolCalls: [{ ...toolCall('facts_search', '{"queries":["刻俄柏"]}') } as any] }))
+      .mockResolvedValueOnce(providerResult({ toolCalls: [{ ...toolCall('facts_search', '{"queries":["能天使"]}') } as any] }))
+      .mockResolvedValueOnce(providerResult({ toolCalls: [{ ...toolCall('facts_search', '{"queries":["夕"]}') } as any] }))
       .mockResolvedValueOnce(providerResult({ content: '最终答案' }))
 
     const result = await runQuery(
@@ -742,7 +796,7 @@ describe('runQuery（hybrid 模式）', () => {
         content: null,
         toolCalls: [
           { id: 'call_rag', name: 'rag_search', arguments: '{"query":"制造站 效率计算"}' },
-          { id: 'call_facts', name: 'facts_search', arguments: '{"query":"刻俄柏"}' },
+          { id: 'call_facts', name: 'facts_search', arguments: '{"queries":["刻俄柏"]}' },
         ],
         usage: { input: 100, output: 50, cached: 0, reasoning: 0 },
         model: 'qwen',

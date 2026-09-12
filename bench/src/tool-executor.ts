@@ -13,12 +13,12 @@ import { isFactTool, type BenchQuery, type DocChunk, type ToolCall } from './typ
 import {
   getCardStore,
   serializeCard,
-  serializeFactsMatches,
   serializeResolutionPaths,
   type CardStore,
   type FactsEntryDictionary,
   type FactsMatch,
   type FactsMatchCategory,
+  type FactsSearchResult,
   type ResolutionPath,
 } from './facts/store.js'
 
@@ -328,13 +328,13 @@ async function executeOne(
   if (!allowed.has(call.name as CurrentToolId)) {
     return result(call, call.name, 'unknown_operation', false, `当前检索模式不开放工具：${call.name}`, state)
   }
-  const parsed = parseToolParams(call.name as CurrentToolId, call.arguments)
+  const parsed = parseToolParams(call.name as CurrentToolId, call.arguments, config.factsQueryListLimit)
   if (!parsed.value) {
     return result(call, call.name, 'invalid_params', false, parsed.reason, state)
   }
 
   try {
-    const output = runOperation(call.name as CurrentToolId, parsed.value, context, config)
+    const output = runOperation(call.name as CurrentToolId, parsed, context, config)
     const status: ToolResultStatus = output.status
       ?? (isFactTool(call.name)
         ? output.hitIds.length > 0 ? 'success' : 'empty'
@@ -407,10 +407,28 @@ function result(
   }
 }
 
+/** facts_search 逐项解析记录：与原始 queries 数组一一对应，非法项也占位。 */
+interface FactsParseItem {
+  /** 原数组零基索引 */
+  index: number
+  /** 合法词条 trim 后字符串；非法项为 null */
+  query: string | null
+  /** 非法项的中文原因；合法项为 null */
+  message: string | null
+}
+
+interface ParsedToolParams {
+  value?: Record<string, unknown>
+  reason: string
+  /** facts_search 专用：按原数组顺序的逐项解析记录（含非法占位）。 */
+  factsItems?: FactsParseItem[]
+}
+
 function parseToolParams(
   tool: CurrentToolId,
   args: string,
-): { value?: Record<string, unknown>; reason: string } {
+  factsQueryListLimit: number,
+): ParsedToolParams {
   let raw: unknown
   try {
     raw = JSON.parse(args)
@@ -420,12 +438,47 @@ function parseToolParams(
   if (!isObject(raw)) return { reason: `${tool} 参数必须是对象；参数示例：${exampleFor(tool)}` }
 
   if (tool === 'read_section') return parseReadSectionParams(raw, exampleFor(tool))
+  if (tool === 'facts_search') return parseFactsParams(raw, factsQueryListLimit, exampleFor(tool))
 
   const allowedKeys = ['query']
   const unknownKey = Object.keys(raw).find((key) => !allowedKeys.includes(key))
   if (unknownKey) return { reason: `${tool} 不支持参数字段 ${unknownKey}；参数示例：${exampleFor(tool)}` }
 
   return parseRequiredString(raw, tool, 'query', exampleFor(tool))
+}
+
+/**
+ * facts_search 参数：queries 为非空字符串数组。
+ * 根级非法（缺字段、非数组、空数组、额外字段、超过上限）整批判 invalid_params；
+ * 元素级非法只记为该元素 invalid，合法元素继续执行；上限按原数组长度检查，不先过滤非法项或去重。
+ */
+function parseFactsParams(
+  input: JsonObject,
+  factsQueryListLimit: number,
+  example: string,
+): ParsedToolParams {
+  const allowedKeys = ['queries']
+  const unknownKey = Object.keys(input).find((key) => !allowedKeys.includes(key))
+  if (unknownKey) return { reason: `facts_search 不支持参数字段 ${unknownKey}；参数示例：${example}` }
+
+  const raw = input.queries
+  if (raw === undefined) return { reason: `facts_search 缺少数组 queries；参数示例：${example}` }
+  if (!Array.isArray(raw)) return { reason: `facts_search 的 queries 必须是字符串数组；参数示例：${example}` }
+  if (raw.length === 0) return { reason: `facts_search 的 queries 不能为空数组；参数示例：${example}` }
+  if (raw.length > factsQueryListLimit) {
+    return { reason: `facts_search 的 queries 最多 ${factsQueryListLimit} 个词条，实际 ${raw.length} 个；参数示例：${example}` }
+  }
+
+  const factsItems: FactsParseItem[] = raw.map((value, index) => typeof value === 'string' && value.trim() !== ''
+    ? { index, query: value.trim(), message: null }
+    : { index, query: null, message: `第 ${index + 1} 项必须是非空字符串` })
+
+  const legalQueries = factsItems.flatMap((item) => (item.query === null ? [] : [item.query]))
+  if (legalQueries.length === 0) {
+    const detail = factsItems.map((item) => item.message).join('；')
+    return { reason: `facts_search 没有可用词条：${detail}；参数示例：${example}` }
+  }
+  return { value: { queries: legalQueries }, factsItems, reason: '' }
 }
 
 /** read_section 参数：section_id 必填非空字符串，offset 可选非负整数，额外字段拒绝。 */
@@ -468,7 +521,7 @@ function exampleFor(tool: CurrentToolId): string {
 
 function runOperation(
   operation: CurrentToolId,
-  params: Record<string, unknown>,
+  parsed: ParsedToolParams,
   context: KnowledgeToolContext,
   config: BenchConfig,
 ): {
@@ -480,18 +533,58 @@ function runOperation(
   attachedFacts?: AttachedFactsObservation[]
   status?: ToolResultStatus
 } {
-  if (operation === 'rag_search') return ragSearchOperation(params, context, config)
-  if (operation === 'read_section') return readSectionOperation(params, context, config)
+  if (operation === 'rag_search') return ragSearchOperation(parsed.value!, context, config)
+  if (operation === 'read_section') return readSectionOperation(parsed.value!, context, config)
+  return factsSearchOperation(parsed, context)
+}
+
+/**
+ * facts_search：按原数组顺序逐项查询并分段返回；非法项占错误提示段。
+ * 逐词在本次调用内复用查询结果（重复词不重复查询底层）；hitIds / injectedIds 取跨词并集、
+ * 按首次出现顺序排列。逐词路径按输入顺序汇总进 resolution.paths（步骤 3 过渡契约，v6 改为逐项 items）。
+ */
+function factsSearchOperation(
+  parsed: ParsedToolParams,
+  context: KnowledgeToolContext,
+): {
+  data: string
+  hitIds: string[]
+  injectedIds: string[]
+  factsResolution: { paths: ResolutionPath[] }
+} {
   const store = loadFactsStore(context)
-  const query = params.query as string
-  const searchResult = store.factsSearch(query)
-  const hits = searchResult.matches.map((match) => match.card)
-  return {
-    data: serializeFactsMatches(searchResult),
-    hitIds: hits.map((card) => card.canonical),
-    injectedIds: hits.map((card) => card.canonical),
-    factsResolution: { paths: searchResult.paths },
+  const items = parsed.factsItems ?? []
+  const cache = new Map<string, FactsSearchResult>()
+  const segments: string[] = []
+  const hitIds: string[] = []
+  const seen = new Set<string>()
+  const paths: ResolutionPath[] = []
+  for (const item of items) {
+    if (item.query === null) {
+      segments.push(`第 ${item.index + 1} 段｜参数错误：${item.message ?? '参数错误'}`)
+      continue
+    }
+    const term = item.query
+    let result = cache.get(term)
+    if (!result) {
+      result = store.factsSearch(term)
+      cache.set(term, result)
+    }
+    const canonicals = dedupeCanonicals(result.matches.map((match) => match.card.canonical))
+    const header = `第 ${item.index + 1} 段｜${term}｜命中 ${canonicals.length} 张`
+    const body = canonicals.length === 0
+      ? `未收录精确词条：${term}`
+      : result.matches.map((match) => serializeCard(match.card, {}, match.categories)).join('\n\n')
+    const pathText = result.paths.length > 0 ? `\n${serializeResolutionPaths(result.paths)}` : ''
+    segments.push(`${header}${pathText}\n${body}`)
+    paths.push(...result.paths)
+    for (const canonical of canonicals) {
+      if (seen.has(canonical)) continue
+      seen.add(canonical)
+      hitIds.push(canonical)
+    }
   }
+  return { data: segments.join('\n\n'), hitIds, injectedIds: [...hitIds], factsResolution: { paths } }
 }
 
 /**

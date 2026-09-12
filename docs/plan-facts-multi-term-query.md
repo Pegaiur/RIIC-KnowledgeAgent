@@ -173,8 +173,8 @@ executor 已支持同一模型响应内多个 tool_calls。当多个原本独立
 - [x] 配置项 factsQueryListLimit 集中于 EXPERIMENT 并贯通 BenchConfig/loadConfig/validateBenchConfig/inputs 捕获与 meta 投影，非正整数被拒绝
 - [x] facts_search 参数为 `queries: string[]`，maxItems 动态取自配置；不同配置的 schema 互不污染
 - [ ] 工具 description 与 knowledge/AGENTS.md 未硬编码上限数字，未引入自然语言解析或复合条件
-- [ ] 根级状态符合契约：有命中 success 扣 1 点；合法词全部未命中（含夹非法元素）empty；无合法元素 invalid_params
-- [ ] 元素级非法只记为该项 invalid 并继续其余合法词；上限按原数组长度检查
+- [x] 根级状态符合契约：有命中 success 扣 1 点；合法词全部未命中（含夹非法元素）empty；无合法元素 invalid_params
+- [x] 元素级非法只记为该项 invalid 并继续其余合法词；上限按原数组长度检查
 - [ ] 新 queries 数组接受；旧 query 两种形态、双字段、非数组、空数组、全非法及原长度超限均按契约拒绝，并覆盖错误示例迁移
 - [ ] 逐项结构化记录（原索引、规范化词条、状态、命中路径、canonical 列表）可供统计区分全量与部分失败
 - [ ] v6 仅以 resolution.items 承载逐项记录；非法项 query=null 且带中文原因；非法项占段，段号为 index+1；参数错误和运行时异常不返回证据元数据

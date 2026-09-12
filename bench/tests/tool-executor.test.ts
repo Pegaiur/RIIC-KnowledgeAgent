@@ -83,7 +83,7 @@ describe('独立函数工具 schema', () => {
     }, 1)
 
     const result = await executor.executeBatch([
-      call('concat', 'facts_search', { query: '不存在技能甲＝不存在技能乙' }),
+      call('concat', 'facts_search', { queries: ['不存在技能甲＝不存在技能乙'] }),
     ])
 
     expect(result.results[0]).toMatchObject({ status: 'empty', executed: true, factsResult: { matchedCount: 0, returnedCount: 0 } })
@@ -114,7 +114,7 @@ describe('独立函数工具 schema', () => {
       chunks: [],
       index: buildIndex([]),
     }, 1)
-    const baselineResult = await baseline.executeBatch([call('facts', 'facts_search', { query: '刻俄柏' })])
+    const baselineResult = await baseline.executeBatch([call('facts', 'facts_search', { queries: ['刻俄柏'] })])
 
     const facts = createKnowledgeToolExecutor({
       config,
@@ -124,7 +124,7 @@ describe('独立函数工具 schema', () => {
       onFactsStoreUsed: (store) => { used.push(store); throw new Error('观测回调异常') },
       onFactsStoreLoadFailed: (error) => failed.push(error),
     }, 1)
-    const observedResult = await facts.executeBatch([call('facts', 'facts_search', { query: '刻俄柏' })])
+    const observedResult = await facts.executeBatch([call('facts', 'facts_search', { queries: ['刻俄柏'] })])
     expect(used).toHaveLength(1)
     expect(failed).toHaveLength(0)
     expect(observedResult).toEqual(baselineResult)
@@ -252,9 +252,9 @@ describe('独立函数 executor：逐项结算双上限预算', () => {
     config.retriever = 'hybrid'
     const executor = createKnowledgeToolExecutor({ config, query: { id: 'FACTS-BUDGET', category: 'fact', question: '预算边界' }, chunks, index: buildIndex(chunks) }, 5)
     const calls = [
-      call('fact-1', 'facts_search', { query: '刻俄柏' }),
-      call('fact-2', 'facts_search', { query: '__不存在的规范名_核查__' }),
-      call('fact-3', 'facts_search', { query: '制造站' }),
+      call('fact-1', 'facts_search', { queries: ['刻俄柏'] }),
+      call('fact-2', 'facts_search', { queries: ['__不存在的规范名_核查__'] }),
+      call('fact-3', 'facts_search', { queries: ['制造站'] }),
     ]
 
     const result = await executor.executeBatch(calls)
@@ -268,14 +268,14 @@ describe('独立函数 executor：逐项结算双上限预算', () => {
     const config = loadConfig()
     config.retriever = 'hybrid'
     const executor = createKnowledgeToolExecutor({ config, query: { id: 'FACTS-WIDE', category: 'fact', question: '进驻设施的干员' }, chunks, index: buildIndex(chunks) }, 5)
-    const result = await executor.executeBatch([call('wide', 'facts_search', { query: '制造站' })])
+    const result = await executor.executeBatch([call('wide', 'facts_search', { queries: ['制造站'] })])
     const item = result.results[0]!
     expect(item.status).toBe('success')
     expect(item.factsResult).toMatchObject({
       matchedCount: item.hitIds?.length,
       returnedCount: item.hitIds?.length,
       complete: true,
-      scope: { query: '制造站' },
+      scope: { queries: ['制造站'] },
     })
     expect(new Set(item.hitIds).size).toBe(item.hitIds?.length ?? 0)
     expect(item.data.length).toBeGreaterThan(config.maxContextChars)
@@ -285,7 +285,7 @@ describe('独立函数 executor：逐项结算双上限预算', () => {
     const config = loadConfig()
     config.retriever = 'hybrid'
     const executor = createKnowledgeToolExecutor({ config, query: { id: 'FACTS-RESOLUTION', category: 'fact', question: '别名查询' }, chunks, index: buildIndex(chunks) }, 2)
-    const result = await executor.executeBatch([call('alias', 'facts_search', { query: '维娜' })])
+    const result = await executor.executeBatch([call('alias', 'facts_search', { queries: ['维娜'] })])
     const item = result.results[0]!
     expect(item).toMatchObject({
       status: 'success',
