@@ -8,6 +8,7 @@
 | 完成日期 | 版本 | 文件 | 摘要 |
 |----------|------|------|------|
 
+| 2026-09-12 | — | [plan-rag-delivery-and-entry.md](plan-rag-delivery-and-entry.md) | 技能表退出检索、base/guides 原文扩展与精确词条自动附带 facts 契约落地（ADR-013） |
 | 2026-09-11 | — | [plan-facts-crossref-navigation.md](plan-facts-crossref-navigation.md) | plan-facts-crossref-navigation |
 | 2026-09-11 | — | [plan-facts-operator-notes-expansion.md](plan-facts-operator-notes-expansion.md) | plan-facts-operator-notes-expansion |
 | 2026-09-11 | — | [plan-hybrid-default-tool-budget.md](plan-hybrid-default-tool-budget.md) | plan-hybrid-default-tool-budget |
