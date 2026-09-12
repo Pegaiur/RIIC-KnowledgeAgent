@@ -38,6 +38,15 @@ describe('agent：独立函数工具 schema', () => {
     expect(prompt).not.toMatch(/最多\s*\d+\s*个/)
   })
 
+  it('决策契约要求具名对象按缺口取证，附带卡须实际送达且不等同全覆盖', () => {
+    const prompt = buildSystemPrompt('hybrid')
+    expect(prompt).toContain('问题涉及具名干员或技能时')
+    expect(prompt).toContain('附带事实卡可直接作为依据')
+    expect(prompt).toContain('一次调用成功也不代表所有对象或关系均已覆盖')
+    expect(prompt).toContain('多个词条仍属同一次调用')
+    expect(prompt).not.toContain('允许同批执行')
+  })
+
   it.each([
     ['bm25', 'rag_search、read_section'],
     ['hybrid', 'rag_search、facts_search、read_section'],
