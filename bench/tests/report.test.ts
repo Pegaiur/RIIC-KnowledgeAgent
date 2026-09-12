@@ -162,7 +162,7 @@ describe('report：聚合与渲染', () => {
     expect(markdown).toContain('有命中（旧 chunk 口径，不含 facts-only 送达） 0')
   })
 
-  it('部分 usage 仍汇总已知费用，并把重试未知用量标为不完整', () => {
+  it('部分 usage 仍汇总已知费用，并把重试未知用量标为不完整而非无用量', () => {
     const report = aggregate([rec({
       input: null,
       output: 1000,
@@ -182,10 +182,30 @@ describe('report：聚合与渲染', () => {
     expect(report.totalCost).toBe(0.0008)
     expect(report.byQuery[0]?.costTotal).toBe(0.0008)
     expect(report.incompleteUsageCalls).toBe(1)
-    expect(report.unknownUsageCalls).toBe(1)
+    // 该记录仍保留已知小计，属部分用量，不得计入「完全无用量」。
+    expect(report.unknownUsageCalls).toBe(0)
     expect(report.costComplete).toBe(false)
+    expect(renderMarkdown(report)).toContain('费用状态：不完整｜用量不完整调用：1（其中完全无用量：0）')
     expect(renderCsv(report)).toContain('costComplete')
     expect(renderCsv(report)).toContain('false')
+  })
+
+  it('整次调用无任何可用 usage 时计入完全无用量', () => {
+    const report = aggregate([rec({
+      input: null,
+      output: null,
+      knownInput: null,
+      knownOutput: null,
+      costIn: null,
+      costOut: null,
+      costTotal: null,
+      usageCompleteness: 'unknown',
+    })])
+
+    expect(report.incompleteUsageCalls).toBe(1)
+    expect(report.unknownUsageCalls).toBe(1)
+    expect(report.costComplete).toBe(false)
+    expect(renderMarkdown(report)).toContain('费用状态：不完整｜用量不完整调用：1（其中完全无用量：1）')
   })
 
   it('按 HTTP 尝试聚合完整 usage，避免只统计最终响应', () => {

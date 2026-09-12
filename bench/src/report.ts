@@ -53,8 +53,9 @@ export interface BenchReport {
   totalCostOut: number
   totalCost: number
   truncatedCalls: number
-  /** usage 不完整的模型调用数；totalCost 仅为已知费用小计。 */
+  /** usage 不完整（含部分尝试缺 usage、但保留已知小计）的模型调用数；totalCost 仅为已知费用小计。 */
   incompleteUsageCalls: number
+  /** 整次模型步骤完全未取得任何可用 usage 的调用数；有部分用量的调用不计入。 */
   unknownUsageCalls: number
   costComplete: boolean
   totalHttpAttempts: number
@@ -203,10 +204,11 @@ const attemptIncomplete = (record: CostRecord): boolean =>
   (record.httpAttempts ?? []).some((attempt) => !attempt.usage || attempt.usage.completeness !== 'complete')
 const recordIncomplete = (record: CostRecord): boolean =>
   record.usageCompleteness !== 'complete' || attemptIncomplete(record)
+// 「完全无用量」只按记录级判定：整次模型步骤没有任何可用 usage。
+// 部分尝试缺 usage、但记录仍保留已知小计的属部分用量（usageCompleteness='partial'），
+// 只计入 incompleteUsageCalls，不混入此处，避免把有部分用量的调用读成「未取得用量」。
 const recordUnknown = (record: CostRecord): boolean =>
-  !record.usageCompleteness
-  || record.usageCompleteness === 'unknown'
-  || (record.httpAttempts ?? []).some((attempt) => !attempt.usage || !attempt.usage.completeness || attempt.usage.completeness === 'unknown')
+  !record.usageCompleteness || record.usageCompleteness === 'unknown'
 const mean = (vals: number[]) => (vals.length ? sum(vals) / vals.length : 0)
 const p95 = (vals: number[]) => {
   if (!vals.length) return 0
@@ -447,7 +449,7 @@ export function renderMarkdown(report: BenchReport): string {
     `- 查询数：${report.totalQueries}｜LLM 调用数：${report.totalCalls}｜截断调用：${report.truncatedCalls}`,
     `- 总输入 tokens：${report.totalInput.toLocaleString()}（已知小计；精确总量：${exact(report.totalInputExact)}）｜总输出 tokens：${report.totalOutput.toLocaleString()}（已知小计；精确总量：${exact(report.totalOutputExact)}）`,
     `- 总成本（已知）：¥${f4(report.totalCost)}（输入 ¥${f4(report.totalCostIn)} + 输出 ¥${f4(report.totalCostOut)}）`,
-    `- 费用状态：${report.costComplete ? '完整' : '不完整'}｜不完整 usage 调用：${report.incompleteUsageCalls}｜用量未知调用：${report.unknownUsageCalls}`,
+    `- 费用状态：${report.costComplete ? '完整' : '不完整'}｜用量不完整调用：${report.incompleteUsageCalls}（其中完全无用量：${report.unknownUsageCalls}）`,
     `- HTTP 尝试：${report.totalHttpAttempts}｜重试：${report.retryAttempts}`,
     `- 每查询输出 tokens：均值 ${avgOut}｜P95 ${p95Out.toLocaleString()}`,
     `- 工具批次：${report.toolStats.batches}｜提出 ${report.toolStats.requested}｜准入 ${report.toolStats.granted}｜执行 ${report.toolStats.executed}｜拒绝（预算/同批超量拒绝） ${report.toolStats.denied}｜错误 ${report.toolStats.errors}｜获准尝试 ${nullable(report.toolStats.attempts)}｜证据送达（成功） ${nullable(report.toolStats.successes)}｜有命中（旧 chunk 口径，不含 facts-only 送达） ${report.toolStats.hitCount}｜命中未知 ${report.toolStats.hitUnknown}`,
