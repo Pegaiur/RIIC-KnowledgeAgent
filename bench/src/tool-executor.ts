@@ -540,8 +540,10 @@ function runOperation(
 
 /**
  * facts_search：按原数组顺序逐项查询并分段返回；非法项占错误提示段。
- * 逐词在本次调用内复用查询结果（重复词不重复查询底层）；hitIds / injectedIds 取跨词并集、
- * 按首次出现顺序排列。逐词路径按输入顺序汇总进 resolution.paths（步骤 3 过渡契约，v6 改为逐项 items）。
+ * 逐词在本次调用内复用查询结果（重复词不重复查询底层）；跨词命中同一 canonical 时首现段返回完整卡，
+ * 后续段只列名称并引用首次段号（去重范围仅限本次调用）。hitIds / injectedIds 取跨词并集、按首次出现顺序排列。
+ * 全部结果先在局部组装，任一步 store 抛错整次失败，不留下部分注入记录。
+ * 逐词路径按输入顺序汇总进 resolution.paths（步骤 3 过渡契约，v6 改为逐项 items）。
  */
 function factsSearchOperation(
   parsed: ParsedToolParams,
@@ -555,6 +557,8 @@ function factsSearchOperation(
   const store = loadFactsStore(context)
   const items = parsed.factsItems ?? []
   const cache = new Map<string, FactsSearchResult>()
+  // canonical → 首次送达它的段号（1 基），仅本次调用内有效。
+  const deliveredAt = new Map<string, number>()
   const segments: string[] = []
   const hitIds: string[] = []
   const seen = new Set<string>()
@@ -565,16 +569,23 @@ function factsSearchOperation(
       continue
     }
     const term = item.query
+    const segmentNumber = item.index + 1
     let result = cache.get(term)
     if (!result) {
       result = store.factsSearch(term)
       cache.set(term, result)
     }
     const canonicals = dedupeCanonicals(result.matches.map((match) => match.card.canonical))
-    const header = `第 ${item.index + 1} 段｜${term}｜命中 ${canonicals.length} 张`
+    const header = `第 ${segmentNumber} 段｜${term}｜命中 ${canonicals.length} 张`
     const body = canonicals.length === 0
       ? `未收录精确词条：${term}`
-      : result.matches.map((match) => serializeCard(match.card, {}, match.categories)).join('\n\n')
+      : result.matches.map((match) => {
+          const canonical = match.card.canonical
+          const firstSegment = deliveredAt.get(canonical)
+          if (firstSegment !== undefined) return `${canonical}（已在第 ${firstSegment} 段返回，此处仅列名）`
+          deliveredAt.set(canonical, segmentNumber)
+          return serializeCard(match.card, {}, match.categories)
+        }).join('\n\n')
     const pathText = result.paths.length > 0 ? `\n${serializeResolutionPaths(result.paths)}` : ''
     segments.push(`${header}${pathText}\n${body}`)
     paths.push(...result.paths)

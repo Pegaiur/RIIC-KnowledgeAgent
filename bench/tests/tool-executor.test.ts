@@ -1,7 +1,8 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { loadConfig } from '../src/config.js'
 import { buildIndex } from '../src/retriever.js'
 import type { DocChunk, ToolCall } from '../src/types.js'
+import { getCardStore } from '../src/facts/store.js'
 import { createKnowledgeToolExecutor, serializeToolResult, toolSchemaMetadata, toolsForRetriever } from '../src/tool-executor.js'
 
 const chunks: DocChunk[] = [
@@ -400,5 +401,71 @@ describe('独立函数 executor：逐项结算双上限预算', () => {
     expect(result.protocolError).toContain('必须是字符串')
     expect(result.results).toEqual([])
     expect(result.snapshot).toMatchObject({ successUsed: 0, attemptUsed: 0, requested: 0, denied: 0, executed: 0 })
+  })
+})
+
+describe('facts_search 多词分段、去重与原子性', () => {
+  afterEach(() => vi.restoreAllMocks())
+
+  function multiExecutor(injectedIds?: string[]) {
+    const config = loadConfig()
+    config.retriever = 'hybrid'
+    return createKnowledgeToolExecutor({
+      config,
+      query: { id: 'MULTI', category: 'fact', question: '多词条分段' },
+      chunks: [],
+      index: buildIndex([]),
+      injectedIds,
+    }, 5)
+  }
+
+  it('重复词保留各自分段，正文只首现一次，底层只查询一次', async () => {
+    const spy = vi.spyOn(getCardStore(), 'factsSearch')
+    const batch = await multiExecutor().executeBatch([call('dup', 'facts_search', { queries: ['刻俄柏', '刻俄柏'] })])
+    const item = batch.results[0]!
+    expect(item.status).toBe('success')
+    expect(item.factsResult?.scope).toEqual({ queries: ['刻俄柏', '刻俄柏'] })
+    expect(item.data).toContain('第 1 段｜刻俄柏')
+    expect(item.data).toContain('第 2 段｜刻俄柏')
+    expect(item.data).toContain('刻俄柏（已在第 1 段返回，此处仅列名）')
+    expect(item.data.match(/【刻俄柏】/gu) ?? []).toHaveLength(1)
+    expect(spy.mock.calls.filter(([term]) => term === '刻俄柏')).toHaveLength(1)
+  })
+
+  it('别名重叠按首次出现段保留完整卡，后续段仅列名并引用首次段号', async () => {
+    const batch = await multiExecutor().executeBatch([call('overlap', 'facts_search', { queries: ['推王', '推进之王'] })])
+    const item = batch.results[0]!
+    expect(item.hitIds).toEqual(['推进之王', '维娜·维多利亚'])
+    expect(item.data).toContain('第 1 段｜推王')
+    expect(item.data).toContain('第 2 段｜推进之王')
+    expect(item.data).toContain('推进之王（已在第 1 段返回，此处仅列名）')
+    expect(item.data.match(/【推进之王】/gu) ?? []).toHaveLength(1)
+  })
+
+  it('去重仅限本次调用：另一次 facts_search 仍返回完整卡', async () => {
+    const executor = multiExecutor()
+    const first = await executor.executeBatch([call('re-1', 'facts_search', { queries: ['刻俄柏'] })])
+    const second = await executor.executeBatch([call('re-2', 'facts_search', { queries: ['刻俄柏'] })])
+    expect(first.results[0]?.data).toContain('【刻俄柏】')
+    expect(second.results[0]?.data).toContain('【刻俄柏】')
+    expect(second.results[0]?.data).not.toContain('已在第')
+  })
+
+  it('中途 store 抛错整次 error + fatal，无部分注入、不扣成功额度、占一次获准尝试', async () => {
+    const store = getCardStore()
+    const original = store.factsSearch.bind(store)
+    vi.spyOn(store, 'factsSearch').mockImplementation((term: string) => {
+      if (term === '制造站') throw new Error('中途 store 抛错')
+      return original(term)
+    })
+    const sharedInjected: string[] = []
+    const batch = await multiExecutor(sharedInjected).executeBatch([call('boom', 'facts_search', { queries: ['刻俄柏', '制造站'] })])
+    const item = batch.results[0]!
+    expect(item).toMatchObject({ status: 'error', executed: true, fatal: true })
+    expect(item.message).toBe('中途 store 抛错')
+    expect(item.data).not.toContain('第 1 段')
+    expect(item.factsResult).toBeUndefined()
+    expect(sharedInjected).toEqual([])
+    expect(batch.snapshot).toMatchObject({ successUsed: 0, attemptUsed: 1, executed: 1, denied: 0, remaining: 5 })
   })
 })
