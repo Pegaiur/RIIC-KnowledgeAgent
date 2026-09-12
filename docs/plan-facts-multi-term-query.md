@@ -186,8 +186,8 @@ executor 已支持同一模型响应内多个 tool_calls。当多个原本独立
 - [x] FACTS_RESULT_VERSION 与 TOOL_SCHEMA_VERSION 递增，历史结果仍可读，trace/report 消费方同步
 - [x] 混合非法与空结果、中途抛错、重复词与别名重叠、跨调用重返回、非默认上限贯通、旧版本读取用例先红后绿
 - [x] 宽查/低重叠组合的序列化字符量已离线记录，并接受首版完整返回的容量边界
-- [ ] `pnpm run typecheck` 全通过
-- [ ] `pnpm run test` 全通过
+- [x] `pnpm run typecheck` 全通过
+- [x] `pnpm run test` 全通过
 
 ## 关联 ADR
 
