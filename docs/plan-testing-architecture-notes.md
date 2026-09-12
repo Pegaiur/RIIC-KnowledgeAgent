@@ -9,7 +9,13 @@
 
 ## 实现调整
 
-尚未实施规则、ADR、技能或测试代码；本次仅完善计划。
+### 2026-09-12 — 第 1 步：建立 ADR-014 与 INDEX 登记
+
+- **plan 原文**：按 document-lifecycle「ADR 判定与维护」取当前最大编号 +1 新建 ADR（参照 adr.md 模板），INDEX.md 追加一行；建立时为「已决策」，全部完成后两处同步为「已实施」；同步替换计划验收清单中的编号占位。
+- **实际做法**：新建 docs/adr/ADR-014-testing-convention.md（状态「已决策」），在 docs/adr/INDEX.md 表尾登记 014；将计划验收清单与「关联 ADR」中的编号占位替换为 ADR-014。
+- **原因**：ADR 编号已确定，保持计划可追溯一致。
+- **后果**：第 5 步须将 ADR-014 与 INDEX 状态同步为「已实施」。
+- **验证**：`git diff --cached --check` 通过；`node scripts/doc-check.mjs --json` 仅 13 条施工中 D1，D2/D5 零错误；首轮独立审查指出的编号占位缺项已在同一提交内修复。
 
 ## 债务记录
 

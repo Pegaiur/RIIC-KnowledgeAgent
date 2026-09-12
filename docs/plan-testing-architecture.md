@@ -154,7 +154,7 @@ afterEach(() => {
 
 ## 验收清单
 
-- [ ] docs/adr/ADR-NNN-testing-convention.md 建立并在 docs/adr/INDEX.md 登记，状态一致、无前向引用
+- [ ] docs/adr/ADR-014-testing-convention.md 建立并在 docs/adr/INDEX.md 登记，状态一致、无前向引用
 - [ ] docs/rules/testing.md 成文：六组齐全，覆盖 scripts 副作用及测试维护，检查方式如实标注，不含未生效的候选条款
 - [ ] 规则包含默认离线、合成密钥、临时目录与异步资源清理、模块状态与 mock 注册分别复位的执行约定
 - [ ] 规则包含存量增量适用边界、fetch/EXPERIMENT 清理范例，以及旧落位和断言更新/删除的处理判据
@@ -170,7 +170,7 @@ afterEach(() => {
 
 ## 关联 ADR
 
-- 新建 ADR（编号在实施第 1 步按 docs/adr/INDEX.md 当前最大编号 +1 确定）— 记录「测试约定采用规则文本先行、不引入机械门禁与覆盖率阈值」的横切决策；判据见 docs/rules/document-lifecycle.md「ADR 判定与维护」。
+- ADR-014（测试约定采用规则文本先行、不引入机械门禁与覆盖率阈值）— 记录该横切决策；判据见 docs/rules/document-lifecycle.md「ADR 判定与维护」。
 
 ---
 <!-- 冻结说明：发版归档（node scripts/tooling.mjs run release/archive-plan -- --plan <path> --apply）时替换此行，标记完成日期 -->
