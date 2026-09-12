@@ -182,7 +182,7 @@ function factsSearchDefinition(factsQueryListLimit: number): JsonObject {
     type: 'function',
     function: {
       name: 'facts_search',
-      description: '用一个完整词条精确查询干员事实卡：干员正式名、技能名、已收录技能组词、设施、阵营或职业；支持已确认别名（干员别名）、已登记子串短名、阵营规范名和搭配规范名。同名命中全部返回并保留命中路径，短名按登记返回全部长名，不做消歧；不支持简写合称，不拆词，不解析句子或多个条件。',
+      description: '用一个或多个完整词条精确查询干员事实卡：干员正式名、技能名、已收录技能组词、设施、阵营或职业；支持已确认别名（干员别名）、已登记子串短名、阵营规范名和搭配规范名。可一次传入多个完整词条，每项仍须是完整词条，数组不是复合过滤语法，单次词条数受运行配置限制；同名命中全部返回并保留命中路径，短名按登记返回全部长名，不做消歧；不支持简写合称，不拆词，不解析句子或多个条件。',
       parameters: {
         type: 'object',
         properties: {
@@ -531,7 +531,9 @@ function parseRequiredString(
 }
 
 function exampleFor(tool: CurrentToolId): string {
-  return tool === 'read_section' ? '{"section_id":"检索结果中的小节 ID"}' : '{"query":"查询"}'
+  if (tool === 'read_section') return '{"section_id":"检索结果中的小节 ID"}'
+  if (tool === 'facts_search') return '{"queries":["完整词条"]}'
+  return '{"query":"查询"}'
 }
 
 function runOperation(

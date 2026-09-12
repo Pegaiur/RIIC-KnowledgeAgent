@@ -46,6 +46,9 @@ describe('独立函数工具 schema', () => {
     expect(fn.description).toContain('同名命中全部返回')
     expect(fn.description).toContain('短名按登记返回全部长名，不做消歧')
     expect(fn.description).toContain('不支持简写合称')
+    expect(fn.description).toContain('可一次传入多个完整词条')
+    expect(fn.description).toContain('数组不是复合过滤语法')
+    expect(fn.description).not.toMatch(/最多\s*\d+\s*个/)
     expect(Object.keys(fn.parameters.properties)).toEqual(['queries'])
     expect(fn.parameters.properties.queries).toMatchObject({ type: 'array', minItems: 1, maxItems: FACTS_LIMIT, items: { type: 'string' } })
     expect(fn.parameters.required).toEqual(['queries'])
@@ -65,6 +68,26 @@ describe('独立函数工具 schema', () => {
     // 再次以同一上限生成应与首次一致，证明无跨配置缓存残留。
     expect(maxItemsFor(2)).toBe(2)
     expect(toolSchemaMetadata('hybrid', 2).toolSchemaSha256).not.toBe(toolSchemaMetadata('hybrid', 5).toolSchemaSha256)
+  })
+
+  it('参数错误示例推荐 queries 数组，rag_search 示例保持 query', async () => {
+    const config = loadConfig()
+    config.retriever = 'hybrid'
+    const executor = createKnowledgeToolExecutor({
+      config,
+      query: { id: 'EXAMPLE', category: 'fact', question: '示例迁移' },
+      chunks,
+      index: buildIndex(chunks),
+    }, 5)
+
+    const result = await executor.executeBatch([
+      call('facts-bad', 'facts_search', {}),
+      call('rag-bad', 'rag_search', {}),
+    ])
+
+    expect(result.results[0]?.data).toContain('{"queries":["完整词条"]}')
+    expect(result.results[0]?.data).not.toContain('{"query":"查询"}')
+    expect(result.results[1]?.data).toContain('{"query":"查询"}')
   })
 
   it('schema 指纹只由当前实际工具数组决定', () => {

@@ -30,6 +30,14 @@ describe('agent：独立函数工具 schema', () => {
     expect(buildSystemPrompt('hybrid')).toContain('5 点成功额度 + 10 次获准尝试上限')
   })
 
+  it('决策契约说明 facts_search 可传多个完整词条且不硬编码上限', () => {
+    const prompt = buildSystemPrompt('hybrid')
+    expect(prompt).toContain('可一次传入多个完整词条')
+    expect(prompt).toContain('数组不是复合过滤语法')
+    expect(prompt).not.toContain('只接受一个完整词条')
+    expect(prompt).not.toMatch(/最多\s*\d+\s*个/)
+  })
+
   it.each([
     ['bm25', 'rag_search、read_section'],
     ['hybrid', 'rag_search、facts_search、read_section'],

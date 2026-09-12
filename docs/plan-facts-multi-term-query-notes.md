@@ -52,6 +52,12 @@
 - **原因**：reviewer 在步骤 4 已指出汇总是过渡态且会重复 push 同一路径；本步按计划一次收口，不再保留并列结构。
 - **后果**：v5 的 `resolution.paths` 历史结果不再由本运行生成；trace/report 消费方只读取 `hitIds` 与 `writtenContent` 字符串，无需改动即可继续读旧结果。
 
+### 2026-09-12 — 步骤 6：指令、描述与示例同步，闭合过渡态
+- **plan 原文**：knowledge/AGENTS.md 第 3 条与 tool description 说明可一次传多个完整词条、每项仍是完整词条、不拆词/不解析句子或复合条件、上限受配置约束（不写死数字）；exampleFor 的 facts_search 示例改为 `{"queries":["完整词条"]}`，rag_search 与 read_section 保持各自现行示例。
+- **实际做法**：knowledge/AGENTS.md 第 3 条改写为「可一次传入多个完整词条，每项仍须是完整词条；不拆词、不解析句子或多个条件，数组不是复合过滤语法；单次词条数受运行配置限制」；`factsSearchDefinition` 的 description 同口径补充；`exampleFor` 改为三分支（read_section / facts_search / 其余）。
+- **原因**：plan 未指定示例文案，采用「完整词条」占位以对齐既有风格。
+- **后果**：schema 声明、执行器、工具描述与人工指令至此一致，过渡态闭合；`agentInstructionsSha256` 与 `toolSchemaSha256` 随之变化，属预期指纹变化。
+
 ## 债务记录
 > 遗留的技术债、被牺牲的改进与延期偿还事项（纯权衡取舍、无遗留债务的决策记入「决策偏离」）
 > 可定位到代码的债务须在代码处写 `TODO(tech-debt) <编号>：` 注释（AGENTS.md 编码核心约束 #5），此处只记编号、结论与未来偿还条件
