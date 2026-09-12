@@ -46,7 +46,7 @@ ADR-007 将 facts 能力收敛为单词条入口 `facts_search({query})`，一�
 - 需同步：工具 schema 与版本、facts 结果版本与元数据、config 参数（ExperimentConfig/EXPERIMENT/BenchConfig/loadConfig/validateBenchConfig）、参数解析分支、逐词序列化与去重、knowledge/AGENTS.md 指令、trace/report 等元数据消费方及相关测试。
 - maxItems 动态派生会改变工具 schema 指纹，需核对 meta 与 schema 快照相关断言。
 - 放宽「一次调用仅一词条」会削弱成功额度对单次 facts 的约束强度，接受 RAG/facts 调用配比与历史运行可比性可能变化；本决策不承诺 token、费用或回答质量收益，不以评测分数为依据。
-- 需在指令与 tool description 中明确：数组内每项仍是完整词条，不拆词、不解析句子或复合条件，数组不是复合过滤语法。
+- 数组语义（数组内每项仍是完整词条，不拆词、不解析句子或复合条件，数组不是复合过滤语法）在 facts_search 的 tool description 中声明；knowledge/AGENTS.md 作为唯一人工指令源委派接口说明给工具 schema，不重复定义。详见下文 2026-09-12 修订。
 - 上限只约束词数，不代表输出容量上限；首版接受宽查（设施/职业词）完整返回，需离线记录组合序列化字符量，未来若引入分页/截断须同时重定义 `complete` 与送达计数。
 - 具体验收以 docs/plan-facts-multi-term-query.md 的 checklist 为准。
 
@@ -55,3 +55,12 @@ ADR-007 将 facts 能力收敛为单词条入口 `facts_search({query})`，一�
 - ADR-007 — 单词条 facts 统一入口；本 ADR 局部替代其单词条与「不解析多个条件」的决策，其余契约继续有效。
 - ADR-012 — 工具预算失败不消耗与双上限；本 ADR 沿用其结算与拒绝路径。
 - 规划文档：docs/plan-facts-multi-term-query.md
+
+## 修订
+
+### 2026-09-12 — 数组语义归位于工具描述，schema 版本升至 12
+
+- **背景**：用户授权重排 knowledge/AGENTS.md 指令结构，把完整词条、分页字段等接口说明从人工指令归位到工具 schema，避免指令与 schema 重复定义同一接口事实。
+- **决策**：第 3 条数组语义（每项仍是完整词条，不拆词、不解析句子或复合条件，数组不是复合过滤语法）只在 facts_search 的 tool description 声明；knowledge/AGENTS.md 委派接口说明给 schema。原「指令与 tool description 双处声明」的后果条目相应收敛，模型侧语义未丢失。
+- **版本**：工具描述变化会改变 toolSchemaSha256，`TOOL_SCHEMA_VERSION` 由 11 升至 12；`FACTS_RESULT_VERSION` 保持 6，参数形状、minItems/maxItems 与执行协议不变。
+- **实施**：见 docs/plan-single-tool-call-and-facts-evidence.md 及其同名实施笔记。

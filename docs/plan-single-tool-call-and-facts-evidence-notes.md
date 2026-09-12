@@ -40,6 +40,12 @@
 - **原因**：原指令把硬约束、工具接口与决策步骤混写，且接口说明与 schema 重复；此次调整替代原计划的排版安排，保留既定证据与准入语义。
 - **验证**：先修改契约测试，定向运行观察到 4 项预期失败（接口归属、独立硬约束、集中流程、schema 结果说明），其余 60 项通过；实现后定向 64 项通过。首次全套运行 532 项通过、1 项失败：agent-auto-loop 的旧断言仍要求能力块重复单调用规则；按本次职责归位同步该提示断言，保留宿主首项准入及超量回写的行为测试。最终 typecheck、全套 42 文件 533 项测试及 doc-check 通过。未调用真实模型，提示组织改善不等同于回答质量已获验证；本轮无新增需交接的临时产物。
 
+### 2026-09-12 — 随附文档同步，TOOL_SCHEMA_VERSION 升至 12
+- **plan 原文**：工具 schema 保持既定口径；`TOOL_SCHEMA_VERSION` 与 `FACTS_RESULT_VERSION` 均不变。
+- **实际做法**：工具描述在本轮归位中改为承载接口与送达/分页说明，schema 指纹随之变化，故 `TOOL_SCHEMA_VERSION` 11→12（`FACTS_RESULT_VERSION` 保持 6，参数形状、minItems/maxItems 与执行协议不变）；同步修订 ADR-015（数组语义只在 tool description 声明、指令委派接口说明，原「双处声明」后果条目收敛），并更新本 plan 中过时的版本号与「工具 description 优先保持原职责描述」措辞（已回馈 plan）。
+- **原因**：描述变更会改变 `toolSchemaSha256`，仅凭指纹无法再按版本分组；ADR-015 原要求「指令与 tool description 双处声明」，与归位后的单一声明位置冲突，须同步决策记录。
+- **验证**：先改 tool-executor/runner 的版本断言观察到 2 项失败，再递增常量转绿；typecheck、全套 533 项测试、doc-check 通过。未调用真实模型。
+
 ### 2026-09-12 — 步骤 1 与步骤 2 在 agent.ts 上交叠，先交付宿主侧计量口径
 - **plan 原文**：步骤 1 只做单调用准入与异常边界；requested/denied、granted/attempts、resultChars、toolTrace/ragDelivery 口径与报告标签列在步骤 2。
 - **实际做法**：步骤 1 的提交同时改了 agent.ts 的 toolBatch 计数（denied 含 protocol_rejected、granted/attempts 排除它）、toolTrace 与 ragDelivery 过滤；报告/answers.md/快照等消费者留待步骤 2。

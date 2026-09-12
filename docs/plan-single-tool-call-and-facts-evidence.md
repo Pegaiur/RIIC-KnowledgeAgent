@@ -25,7 +25,7 @@ provider.ts 不发送 parallel_tool_calls；agent.ts 将整批 tool_calls 写入
 
 knowledge/AGENTS.md 第 4 条已提前声明单调用及超量拒绝，宿主和 agent.ts 运行时能力块仍是整批逐项结算，存在现实不一致。实施单调用时同一变更同步这两处以及 provider.ts、inputs.ts、runner.ts 相关注释，不通过继续修改提示来代替宿主约束。
 
-facts_search 已采用 queries 数组（TOOL_SCHEMA_VERSION=11、FACTS_RESULT_VERSION=6）；本计划依赖该通道完成多对象一次查询。除 schema 不变外，工具 description 也优先保持原职责描述，流程策略放在唯一人工指令源 knowledge/AGENTS.md，不复制到多处。
+facts_search 已采用 queries 数组（TOOL_SCHEMA_VERSION=12、FACTS_RESULT_VERSION=6）；本计划依赖该通道完成多对象一次查询。流程策略放在唯一人工指令源 knowledge/AGENTS.md；工具参数形状不变，接口与送达/分页说明由工具 description 承载，不重复到指令（本条 2026-09-12 经授权修订，原「优先保持原职责描述」的措辞已替代）。
 
 ### 决策依据与替代范围
 
@@ -73,7 +73,7 @@ fatal 仍按既有路径终止整题，首项之后不得执行；截断响应�
 
 report、answers.md 的 denied 标签注明「预算/同批超量拒绝」，具体原因查 trace；不新增分类汇总数。核对 trace.summary、inputs/meta、snapshot 的枚举与字段白名单，新状态按需要正常透传，保持旧记录可读与缺失值不可用。
 
-TOOL_SCHEMA_VERSION 与 FACTS_RESULT_VERSION 均不变。历史协议依据已有 packageVersion、gitHead/gitDirty 及可复核代码判断，无法确定时说明「协议未知」，不据 agentInstructions、parallelToolCalls=false 或 requested>1 判新旧；提示已先行变化，这些值均不是宿主协议标志。不新增自动分类器，不改旧台账，跨协议拒绝数不直接做同口径趋势比较。
+本步骤不改 TOOL_SCHEMA_VERSION 与 FACTS_RESULT_VERSION（后续 2026-09-12 授权的提示层归位把 TOOL_SCHEMA_VERSION 升至 12，见同名实施笔记与 ADR-015 修订）。历史协议依据已有 packageVersion、gitHead/gitDirty 及可复核代码判断，无法确定时说明「协议未知」，不据 agentInstructions、parallelToolCalls=false 或 requested>1 判新旧；提示已先行变化，这些值均不是宿主协议标志。不新增自动分类器，不改旧台账，跨协议拒绝数不直接做同口径趋势比较。
 
 ### 3. 具名事实取证提示（L34）
 

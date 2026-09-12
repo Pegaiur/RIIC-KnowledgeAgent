@@ -25,8 +25,8 @@ import {
 /** 当前可下发的工具集合；grep_search 等历史名不在其中。 */
 export type CurrentToolId = 'rag_search' | 'facts_search' | 'read_section'
 
-/** 工具 schema 发生协议变化时递增；快照保留该值供对照分组。 */
-export const TOOL_SCHEMA_VERSION = 11 as const
+/** 工具定义（含描述）变化时递增；快照保留该值供对照分组，指纹随描述变化。 */
+export const TOOL_SCHEMA_VERSION = 12 as const
 
 export interface ToolBudgetState {
   /** 非空执行成功额度上限（每题默认 5） */

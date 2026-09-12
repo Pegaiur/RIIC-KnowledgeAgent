@@ -132,7 +132,7 @@ describe('独立函数工具 schema', () => {
   })
 
   it('schema 指纹只由当前实际工具数组决定', () => {
-    expect(toolSchemaMetadata('bm25', FACTS_LIMIT)).toMatchObject({ toolSchemaVersion: 11, toolNames: ['rag_search', 'read_section'] })
+    expect(toolSchemaMetadata('bm25', FACTS_LIMIT)).toMatchObject({ toolSchemaVersion: 12, toolNames: ['rag_search', 'read_section'] })
     expect(toolSchemaMetadata('bm25', FACTS_LIMIT).toolSchemaSha256).toMatch(/^[a-f0-9]{64}$/)
     expect(toolSchemaMetadata('bm25', FACTS_LIMIT).toolSchemaSha256).not.toBe(toolSchemaMetadata('hybrid', FACTS_LIMIT).toolSchemaSha256)
   })
