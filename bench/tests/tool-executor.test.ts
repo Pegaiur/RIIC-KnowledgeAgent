@@ -84,6 +84,17 @@ describe('独立函数工具 schema', () => {
     expect(fn.parameters.anyOf).toBeUndefined()
   })
 
+  it('RAG 与原文读取 schema 说明实际送达能力和分页字段边界', () => {
+    const definitions = toolsForRetriever('hybrid', FACTS_LIMIT)
+      .map((tool) => tool.function as { name: string; description: string })
+    expect(definitions.find((fn) => fn.name === 'rag_search')?.description).toContain('附带事实卡')
+    const read = definitions.find((fn) => fn.name === 'read_section')!.description
+    expect(read).toContain('上级范围入口')
+    expect(read).toContain('complete=false')
+    expect(read).toContain('complete=true')
+    expect(read).toContain('不表示问题已完整解决')
+  })
+
   it('facts schema 的 maxItems 随配置上限变化且先后生成互不污染', () => {
     const maxItemsFor = (limit: number): number => {
       const facts = toolsForRetriever('hybrid', limit).find((tool) => (tool.function as { name: string }).name === 'facts_search')!

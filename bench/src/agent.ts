@@ -98,7 +98,7 @@ export function buildSystemPrompt(
     '## 本次运行能力',
     `- 检索模式：${retriever}`,
     `- 可用工具：${toolNames.join('、')}`,
-    `- 工具预算：${toolBudget} 点成功额度 + ${toolAttemptLimit} 次获准尝试上限；仅非空执行成功扣 1 点，空结果、参数错误与执行错误不扣成功额度但各占一次尝试；每次模型步骤只准入首个工具调用，同批额外调用只被拒绝并回写；任一上限用尽后新增调用不会执行。`,
+    `- 工具预算：${toolBudget} 点成功额度 + ${toolAttemptLimit} 次获准尝试上限；仅非空执行成功扣 1 点，空结果、参数错误与执行错误不扣成功额度但各占一次尝试；任一上限用尽后新增调用不会执行。`,
   ]
   return `${agentInstructions.trim()}\n\n${runtime.join('\n')}`
 }

@@ -27,6 +27,8 @@
 
 ## 待办区
 
+- [x] **查询 Agent 指令结构与工具契约归位** — 2026-09-12 用户授权重写 knowledge/AGENTS.md 及工具 schema，已独立强调串行硬约束、集中取证流程、归位接口说明并移除运行时重复单调用文案；作为 docs/plan-single-tool-call-and-facts-evidence.md 的提示层补充实施，结构偏离与验证见同名 notes。typecheck、全套 533 项测试及文档校验通过；未进行真实模型质量验证。
+
 - [ ] **LLM provider 重试时不得丢失用量数据** — 现状：provider.ts 的 fetchWithRetry 对可重试状态码（含 500/502/503/504）最多尝试 3 次，ledger 与 agent 侧按 httpAttempts 聚合各次尝试用量；但 callLLM 返回的 ProviderResult.usage 取自最后一次成功响应（parseUsage(data.usage)），跨尝试的聚合值只体现在 ledger.usage，ProviderResult.usage 仅取末次响应，两处口径不一致（现有 provider.test.ts、agent-provider-ledger.test.ts 已断言该行为）。历史上曾出现重试期间用量数据丢失、导致基准被迫重跑的情况。拟核查并明确：重试各次尝试（含失败与可重试响应）的用量必须完整计入计量，ProviderResult.usage 与 httpAttempts/ledger 聚合口径统一，失败与取消路径不得静默归零；核查失败与取消路径的现有覆盖后再决定是否补回归测试与改实现。 — 2026-09-12 — 待评估，需先定位历史重跑证据再决定是否修实现
 
 - [ ] **新增简易 WebUI（查询排障、API Key 与策略/模型设置）** — 现状：本机运行，无任何可视化界面，查询依赖 CLI 与 bench 脚本，排障需读 JSONL/快照；provider 与模型/检索策略均由 config 与 secret.yaml 决定。拟提供一个轻量 WebUI，支持：(1) 快速发起查询并查看工具调用轨迹与送达证据，便于排障；(2) 设置 API Key；(3) 设置检索策略与模型。需明确：密钥存储与脱敏边界（不得回显明文）、与既有 config/secret.yaml 的优先级关系、是否引入 Web 框架依赖（如引入需按 ADR 判据评估）、以及该界面与基准测量的关系（用于排障而非评测口径）。 — 2026-09-12 — 工程草案讨论中，见 docs/draft-webui-agent-framework.md。建议首版复用现有 Agent/trace，按需引入 AI SDK UI，Provider 层验证后再替换；Mastra / LangGraph 按现成调试台或状态恢复需求后续评估。首版依赖、事件、取消、设置与结果保存范围尚待定稿，未启动实施或兼容性 PoC；方案确认后转 plan，并按架构变更判据建立 ADR。

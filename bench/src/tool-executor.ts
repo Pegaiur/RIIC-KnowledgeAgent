@@ -146,7 +146,7 @@ const STATIC_TOOL_DEFINITIONS: Record<'rag_search' | 'read_section', JsonObject>
     type: 'function',
     function: {
       name: 'rag_search',
-      description: '查询机制、组合、排班及培养建议的知识库片段。',
+      description: '检索机制、组合、排班及培养建议，返回知识库片段或原文范围。结果可含供 read_section 使用的小节或范围 ID、分页信息及上级范围入口；hybrid 模式还可能返回附带事实卡或未附带提示，以实际返回内容为准。',
       parameters: {
         type: 'object',
         properties: {
@@ -161,11 +161,11 @@ const STATIC_TOOL_DEFINITIONS: Record<'rag_search' | 'read_section', JsonObject>
     type: 'function',
     function: {
       name: 'read_section',
-      description: '按小节 ID 读取知识库原文小节，可分段续读；ID 来自检索结果中的小节标识。',
+      description: '按已返回的 ID 读取知识库原文小节或范围，可分段续读；ID 可来自检索结果、续读信息或上级范围入口。返回的 complete=false 表示该范围还有后续页，complete=true 仅表示该范围读完，不表示问题已完整解决。',
       parameters: {
         type: 'object',
         properties: {
-          section_id: { type: 'string', minLength: 1, description: '检索结果返回的小节 ID' },
+          section_id: { type: 'string', minLength: 1, description: '工具结果已给出的小节或范围 ID，原样使用。' },
           offset: { type: 'integer', minimum: 0, description: '可选，正文 UTF-16 索引，默认 0；用返回的 next_offset 续读' },
         },
         required: ['section_id'],
@@ -193,7 +193,7 @@ function factsSearchDefinition(factsQueryListLimit: number): JsonObject {
             minItems: 1,
             maxItems: factsQueryListLimit,
             items: { type: 'string', minLength: 1, description: '一个完整名称或分类词条；保留名称内部标点。' },
-            description: '一个或多个完整名称或分类词条；保留名称内部标点。',
+            description: '待查询词条列表，数量上限见 maxItems。',
           },
         },
         required: ['queries'],

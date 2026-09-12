@@ -36,8 +36,9 @@ describe('Agent auto 主循环', () => {
     expect(prompt).toContain('可用工具：rag_search、facts_search、read_section')
     expect(prompt).toContain('2 点成功额度 + 10 次获准尝试上限')
     expect(prompt).toContain('仅非空执行成功扣 1 点')
-    expect(prompt).toContain('每次模型步骤只准入首个工具调用')
-    expect(prompt).toContain('同批额外调用只被拒绝并回写')
+    // 单调用约束由人工契约承载，能力块只补充运行时事实。
+    expect(prompt).not.toContain('每次模型步骤只准入首个工具调用')
+    expect(prompt).not.toContain('同批额外调用只被拒绝并回写')
     expect(prompt).toContain('任一上限用尽后新增调用不会执行')
     expect(prompt).not.toContain('工具调用上限：2 次')
     expect(prompt).not.toContain('同批调用逐项结算')
