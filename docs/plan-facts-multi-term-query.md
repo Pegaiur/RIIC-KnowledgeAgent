@@ -39,15 +39,15 @@ executor 已支持同一模型响应内多个 tool_calls。当多个原本独立
 ### 1. 配置通道（bench/src/config.ts）
 
 - 输入：现有 ExperimentConfig/EXPERIMENT 常量与其默认值。
-- 输出：新增 `factsQueryListLimit`（默认 3），并入 ExperimentConfig、EXPERIMENT、BenchConfig、loadConfig；validateBenchConfig 校验为正整数（与 toolBudget/attemptLimit 同口径）。
-- 验收：默认值生效；非正整数被拒绝并给出中文错误。
+- 输出：新增 `factsQueryListLimit`（默认 3），并入 ExperimentConfig、EXPERIMENT、BenchConfig、loadConfig；validateBenchConfig 校验为正整数（与 toolBudget/attemptLimit 同口径）；同步把 `factsQueryListLimit` 纳入 bench/src/inputs.ts 的 config 捕获（第 160-194 行，对齐 toolBudget/toolAttemptLimit 的登记口径），供 inputs/meta 直接核对实际生效上限。
+- 验收：默认值生效；非正整数被拒绝并给出中文错误；inputs 捕获中可见该字段。
 - 边界：tool description 与 knowledge/AGENTS.md 不得硬编码「最多 3 个」，改用「受运行配置限制」之类表述。
 
 ### 2. Schema 动态上限与版本
 
 - 输入：配置 `factsQueryListLimit`、现有 toolsForRetriever/toolSchemaMetadata。
-- 输出：facts_search 参数改为 `queries`（`type: 'array'`，`items` 非空字符串，`minItems: 1`，`maxItems` 由配置派生）；`TOOL_SCHEMA_VERSION` 10→11；调整 agent.ts 与 runner.ts 的取用点以传入配置上限。
-- 验收：不同 `factsQueryListLimit` 生成不同 maxItems；先后以不同配置生成 schema 互不污染（无跨配置缓存残留）；工具 schema 指纹随配置变化符合预期。
+- 输出：facts_search 参数改为 `queries`（`type: 'array'`，`items` 非空字符串，`minItems: 1`，`maxItems` 由配置派生）；`TOOL_SCHEMA_VERSION` 10→11；为 toolsForRetriever / toolSchemaMetadata 增加上限入参并更新全部取用点：bench/src/agent.ts（第 153 行）、bench/src/runner.ts（第 78-79 行）及 toolSchemaMetadata 内部调用。
+- 验收：不同 `factsQueryListLimit` 生成不同 maxItems；先后以不同配置生成 schema 互不污染（无跨配置缓存残留）；工具 schema 指纹随配置变化符合预期；inputs 捕获值与实际生效上限一致。
 
 ### 3. 参数解析与根级状态
 
@@ -149,7 +149,8 @@ executor 已支持同一模型响应内多个 tool_calls。当多个原本独立
   - 中途 store 抛错（整次 error + fatal、无部分注入、不扣成功额度、占一次获准尝试）；
   - 重复词与别名重叠（分段保留、引用可区分、底层不重复查询）；
   - 跨调用重新返回完整卡（去重仅限本次调用）；
-  - 非默认上限贯通（模型收到的 schema、executor 校验、meta 与 inputs 捕获值一致，且不同配置 schema 互不污染）；
+  - 非默认上限贯通（模型收到的 schema、executor 校验、inputs 捕获值与 meta 一致，且不同配置 schema 互不污染）；
+  - 同步既有版本/指纹断言：bench/tests/tool-executor.test.ts 的 `toolSchemaVersion: 10`（第 52 行）与 sha 断言（第 53-54 行）、bench/tests/runner.test.ts 的 `toolSchemaVersion: 10`（第 34 行），以及 toolsForRetriever 的测试取用点（agent.test.ts 第 22 行、facts-tools.test.ts 第 455 行、tool-executor.test.ts 第 27/37 行）；inputs.test.ts 的合成版本夹具不随真实版本变化；
   - 旧版本结果读取：v5 的 resolution.paths 仍可读，v6 的 resolution.items 按原索引解析，当前输出不同时携带两种结构；
   - 新入口 `{"queries":["词"]}` 接受；保留 facts-tools.test.ts 旧 `{"query":["词"]}` 拒绝用例，并补旧 `{"query":"词"}`、两个字段同时出现及 queries 非数组的拒绝断言；
   - 空数组、全非法、恰好上限、超过上限；含非法项或重复项的超限数组仍整批拒绝且不查询 store；
@@ -169,7 +170,7 @@ executor 已支持同一模型响应内多个 tool_calls。当多个原本独立
 
 ## 验收清单
 
-- [ ] 配置项 factsQueryListLimit 集中于 EXPERIMENT 并贯通 BenchConfig/loadConfig/validateBenchConfig，非正整数被拒绝
+- [ ] 配置项 factsQueryListLimit 集中于 EXPERIMENT 并贯通 BenchConfig/loadConfig/validateBenchConfig/inputs 捕获，非正整数被拒绝
 - [ ] facts_search 参数为 `queries: string[]`，maxItems 动态取自配置；不同配置的 schema 互不污染
 - [ ] 工具 description 与 knowledge/AGENTS.md 未硬编码上限数字，未引入自然语言解析或复合条件
 - [ ] 根级状态符合契约：有命中 success 扣 1 点；合法词全部未命中（含夹非法元素）empty；无合法元素 invalid_params
