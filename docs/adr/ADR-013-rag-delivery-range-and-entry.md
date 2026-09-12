@@ -1,0 +1,52 @@
+# ADR-013：检索范围、原文扩展与 RAG 内部 facts 附带契约
+
+- 日期：2026-09-11
+- 状态：已实施
+
+## 背景
+
+- rag_search 目前只有单塔 BM25，直接返回 topK 分块。语料 749 块中九份 `references/技能-*.md` 占 604 块（约 80.6%）；历史 hybrid 运行里技能表占注入 40–46%，把机制小节证据挤出 topK。
+- base/guides 机制语料按 `##` 小节成块，单节信息不完整；命中一个文件时，其其余小节无法在同一次 rag_search 响应中送达。
+- facts store 的词条已能覆盖相关组合与干员，但入口/触发不足：query 含组合名时只走 RAG、未触发 facts；用阵营词查询也不会返回组合外围成员。
+- 需要在不改 knowledge 真源、corpus-manifest 语义与 agent loop 的前提下调整检索范围、原文送达与 facts 附带，并把外部工具预算与内部 facts 查询观测分开。
+
+## 决策
+
+1. **检索范围**：rag_search（bm25 与 hybrid）默认排除九份 `references/技能-*.md`；其余 references 与 base/guides 保留。过滤在检索装配层执行，不改 knowledge 真源与 corpus-manifest 语义；范围可辨识为「含技能表 / 排除技能表」两组，两组共用同一装配实现。
+2. **原文扩展**：取 topK 命中后，base/guides 命中小节按文件去重并扩展到该文件的原文文档范围；顺序取首次命中位置，不在去重后自动补满 K。扩展内容取运行级原文快照，不拼接 clampTexts 后的片段。references 仍按原块返回。
+3. **RAG 内部 facts 附带**：仅 hybrid 的 rag_search 启用。query 命中精确入口时，内部调用 store.factsSearch 并在同一次响应附带记录卡，不伪造额外工具调用、不新增 LLM 请求。入口规则：整条 query 精确匹配优先；未匹配时按空白边界识别已登记完整搜索词，多关键词分支只接纳 ≥2 字的干员名、技能名、技能组、阵营及已登记 alias/substring/combo；仅命中设施或职业的搜索词不在该分支展开。首版不解析未分隔自然句、不补删「组」字、不做近义改写或任意子串扫描。bm25 不附带；显式在 bm25 请求附带属参数错误。
+4. **容量契约**：工具 `data` 的 UTF-16 长度分批计量，外层 JSON 长度单独观测，不冒充同一上限。RAG 正文（来源头、导航、续读元数据与正文）沿用 `maxContextChars`（首版 12,000）；RAG 内部 facts 附带在 `maxContextChars` 之外另给独立额度 4,000 字符，两部分不互相回收，合并 `data` 上限为 maxContextChars + 4,000。facts 附带只计分区头、未附带提示等必要元数据与卡正文，以单个触发词的完整匹配集合为原子单位：整组放得下才附带，放不下则整组暂不附带并返回可复制的词条与原因；不截断卡正文、不挑单卡消除同名歧义。RAG 与 facts 的正文均实际送达非空证据才计一次成功；这些额度只约束单次工具 `data`，不改变模型后续携带证据的累计 token 与费用。
+5. **预算与观测分层**：一次外部 rag_search 获准仍只计 1 次 attempt；执行无错误且 RAG/facts 任一部分实际送达非空证据才计 1 次 success，两者均无正文证据判 empty，提示与路径元数据本身不扣成功额度。内部 facts 查询不额外消耗工具额度，重复返回证据仍沿用 ADR-012 的扣点规则。trace 保留一条外部 rag_search 调用，另记触发词、触发词在本次实际检索 query（工具层已 trim）中的位置、解析路径、匹配/送达 canonical、未附带原因、字符数与耗时。
+6. **schema 分层**：工具定义版本（TOOL_SCHEMA_VERSION）与 facts 结果版本（FACTS_RESULT_VERSION）相互独立、按各自协议变更递增。本次 rag_search 返回数据的语义扩展（原文扩展送达、内部附带卡）随协议变更递增工具定义版本：步骤 2 的原文扩展与步骤 3 的内部附带卡合并为一次递增，`TOOL_SCHEMA_VERSION` 由 9 升至 10；`FACTS_RESULT_VERSION` 保持 5，不因内部实现改动盲目重编号。运行输入与 meta 的本次新增字段为向后兼容追加：旧运行缺字段表示不可用，不补零、不据缺失推断，`inputsSchemaVersion` 与 meta `schemaVersion` 维持现值。
+
+### 2026-09-11 验收补充：观测消费者契约
+
+- CostRecord 追加可选 ragDelivery 台账，按外部调用保存 callId/status、原文 fulltextRanges 和附带 attachedFacts。路径保留 kind/term/memberIds/category；完整来源登记仍在 trace/inputs。旧记录缺字段保持不可用；异常时未取得的观测不补零。
+- runner 的 records.jsonl、meta.ragDeliveryStats 与 report 接通同源聚合：内部 facts 查询次数、实际附带调用数、未附带词条数、送达卡次和原文范围数；显式 facts_search 仍按外部工具调用统计。同次卡去重、跨次重复计卡次，不改变工具预算。
+- snapshot 保留台账的有类型字段，过滤未知字段与正文、校验嵌套值并脱敏；汇总从 records 重算，不复制 meta 汇总。原 injected.json 仍为 chunk ID 列表，完整证据核查使用台账及 trace。均为向后兼容追加，不改工具返回、输入或快照版本。
+
+## 理由
+
+- 排除技能表主要降低注入噪声；机制证据送达主要由原文扩展承担，而非引入新打分塔。
+- 复用既有小节 BM25、小节目录与 store.factsSearch，避免第二套打分与事实解析，也避免新增 LLM 请求。
+- 以工具 data 的 UTF-16 长度为上限，与既有 `data.slice` 实现和可复现的离线复算一致。
+- 三个开关（是否含技能表、是否扩展原文、是否附带 facts）相互独立，便于步骤 6 的受控对照，且默认组合固定、不因模式暗中改变。
+
+## 备选方案
+
+- 方案 A：文件级 BM25 或字段/文档类型加权 — 放弃：引入第二打分塔，超出本轮范围，单列为另一条线。
+- 方案 B：向量检索或 rerank 重排 — 放弃：新增依赖与成本，且不解决入口与容量问题。
+- 方案 C：只加 facts 自动附带、不改范围 — 放弃：技能表仍占注入 40%+，机制小节持续被挤出。
+- 方案 D：把实体标记写入正式语料以增强召回 — 放弃：会改变分词、切块与排序，须另行端到端对照，本 ADR 不含该变更。
+
+## 后果
+
+- rag_search 默认返回范围与容量行为改变，需在 meta/inputs 记录三个开关；历史运行缺字段表示不可用。
+- gold/spec 的事实要求不因技能表退出而删减；小节排序命中、原文实际送达、facts 实际送达与最终回答覆盖分别计量，跨粒度结果不直接横比。
+- 容量额度须按最终 renderer 离线复算后再定稿，禁止在编码期由执行者临时选择。
+- 原文扩展与 facts 附带都会增加同次返回长度，可能带来截断与累计输入 token；调用次数下降不能替代费用测量。
+
+## 关联
+
+- 规划文档：docs/plan-rag-delivery-and-entry.md（步骤 0/1/2/3/5）
+- 前置决策：ADR-008（原文小节阅读）、ADR-010（facts 词条与同名契约）、ADR-011（工具收敛）、ADR-012（工具预算与尝试上限）

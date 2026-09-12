@@ -6,7 +6,7 @@ import { createHash } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import type { BenchConfig } from './config.js'
+import { effectiveAttachFacts, type BenchConfig } from './config.js'
 import type { CardStore } from './facts/store.js'
 import type { SectionDirectory } from './sections.js'
 import { currentEntityBoost, currentTokenizer } from './retriever.js'
@@ -61,6 +61,12 @@ export interface RunInputs {
     temperature: number | null
     maxTokens: number
     retriever: BenchConfig['retriever']
+    /** 检索语料是否包含技能表；false = 排除九份 references/技能-*.md（ADR-013）。 */
+    includeSkillTables: boolean
+    /** 是否把 base/guides 命中小节扩展到原文文件范围（ADR-013）。 */
+    expandFulltext: boolean
+    /** RAG 内部 facts 附带的有效开关；未显式声明时随模式默认（ADR-013）。 */
+    attachFacts: boolean
     corpusDir: string
     tokenizer: TokenizerId
     entityBoost: number
@@ -162,6 +168,9 @@ export function createRunInputs(options: RunInputsOptions): RunInputs {
       temperature: options.config.temperature ?? null,
       maxTokens: options.config.maxTokens,
       retriever: options.config.retriever,
+      includeSkillTables: options.config.includeSkillTables,
+      expandFulltext: options.config.expandFulltext,
+      attachFacts: effectiveAttachFacts(options.config),
       corpusDir: redactSensitiveText(options.config.corpusDir, sensitiveValues),
       tokenizer: currentTokenizer(),
       entityBoost: currentEntityBoost(),

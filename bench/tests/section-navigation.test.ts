@@ -52,7 +52,8 @@ function call(id: string, name: string, params: unknown): ToolCall {
 }
 
 function makeExecutor(overrides: Partial<BenchConfig> = {}, withSections = true) {
-  const config = { ...loadConfig(), retriever: 'bm25' as const, ...overrides }
+  // 这些用例隔离「小节上下文」行为，显式关闭原文扩展（ADR-013 对照组合之一）。
+  const config = { ...loadConfig(), retriever: 'bm25' as const, expandFulltext: false, ...overrides }
   return createKnowledgeToolExecutor({
     config,
     query: { id: 'SECTION-NAV', category: 'fact', question: '制造站效率' },

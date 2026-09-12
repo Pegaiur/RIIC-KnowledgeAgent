@@ -2,6 +2,8 @@
  * 基准共用类型定义
  */
 
+import type { RagDeliveryRecord } from './delivery.js'
+
 /** 思考深度档位（Hy3 reasoning_effort 映射） */
 export type ThinkingMode = 'off' | 'low' | 'high'
 
@@ -122,6 +124,8 @@ export interface CostRecord {
   tools?: ToolId[]
   /** 本轮工具批次统计；无工具调用的模型步骤省略。 */
   toolBatch?: ToolBatchStats
+  /** 本轮各次 RAG 的范围与卡片送达台账；历史缺失表示不可用。 */
+  ragDelivery?: RagDeliveryRecord[]
 }
 
 /** 基准问题 */

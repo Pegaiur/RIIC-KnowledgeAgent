@@ -65,6 +65,16 @@ export interface BenchReport {
   /** 独立工具调用统计；没有工具调用时返回空数组。 */
   toolUsage: ToolUsageAgg[]
   toolStats: ToolStatsAgg
+  ragDeliveryStats: RagDeliveryStats
+}
+
+/** 内部查询与送达分层；历史或异常缺观测时为 null，不补零。 */
+export interface RagDeliveryStats {
+  internalFactsQueries: number | null
+  attachedCalls: number | null
+  omittedTerms: number | null
+  deliveredCards: number | null
+  expandedRanges: number | null
 }
 
 /** 按 provider 聚合（跨模型对比用） */
@@ -98,9 +108,11 @@ export interface ToolStatsAgg {
   errors: number
   /** 获准尝试数；历史记录缺该字段时为 null（不可用）。 */
   attempts: number | null
-  /** 非空执行成功扣点数；历史记录缺该字段时为 null（不可用），不由 executed 推算。 */
+  /** 非空执行成功扣点数；历史记录缺该字段时为 null（不可用），不由 executed 推算。
+   *  按 ADR-013 决策 5，success 即「RAG/facts 任一部分实际送达非空证据」，故本字段就是实际证据送达计数。 */
   successes: number | null
-  /** 已执行且明确有命中的结果数。 */
+  /** 已执行且 hitIds 非空的结果数。旧 chunk 命中口径：只统计 RAG 分块/facts 卡命中，
+   *  不含仅由内部附带 facts 送达（hitIds 为空）的 rag_search，故不能等同于证据送达；仅作兼容与诊断保留。 */
   hitCount: number
   /** 已执行但旧记录或异常缺少 hitIds 的结果数。 */
   hitUnknown: number
@@ -339,6 +351,7 @@ export function aggregate(records: CostRecord[], queryContext: readonly ReportQu
     byProvider: providerAggs,
     toolUsage: aggregateToolUsage(records),
     toolStats: aggregateToolStats(records),
+    ragDeliveryStats: aggregateRagDelivery(records),
   }
 }
 
@@ -362,6 +375,23 @@ function aggregateToolUsage(records: CostRecord[]): ToolUsageAgg[] {
   return [...counter.entries()]
     .map(([tool, calls]) => ({ tool, calls }))
     .sort((a, b) => b.calls - a.calls || a.tool.localeCompare(b.tool))
+}
+
+function aggregateRagDelivery(records: CostRecord[]): RagDeliveryStats {
+  const unavailable = { internalFactsQueries: null, attachedCalls: null, omittedTerms: null, deliveredCards: null, expandedRanges: null }
+  if (records.some((record) => (record.tools ?? []).filter((tool) => tool === 'rag_search').length !== (record.ragDelivery?.length ?? 0))) return unavailable
+  const calls = records.flatMap((record) => record.ragDelivery ?? [])
+  const factsKnown = calls.every((call) => call.attachedFacts !== undefined)
+  const facts = calls.flatMap((call) => call.attachedFacts ?? [])
+  return {
+    internalFactsQueries: factsKnown ? facts.length : null,
+    attachedCalls: factsKnown ? calls.filter((call) => call.attachedFacts?.some((fact) => fact.delivered.length > 0)).length : null,
+    omittedTerms: factsKnown ? facts.filter((fact) => fact.matched.length > 0 && fact.omittedReason !== null).length : null,
+    // 同次跨词共享卡去重，跨次重复送达仍计入成本观测。
+    deliveredCards: factsKnown ? sum(calls.map((call) => new Set(call.attachedFacts?.flatMap((fact) => fact.delivered)).size)) : null,
+    expandedRanges: calls.every((call) => call.fulltextRanges !== undefined)
+      ? calls.flatMap((call) => call.fulltextRanges ?? []).filter((range) => range.endOffset > range.offset).length : null,
+  }
 }
 
 function aggregateToolStats(records: CostRecord[]): ToolStatsAgg {
@@ -418,7 +448,8 @@ export function renderMarkdown(report: BenchReport): string {
     `- 费用状态：${report.costComplete ? '完整' : '不完整'}｜不完整 usage 调用：${report.incompleteUsageCalls}｜用量未知调用：${report.unknownUsageCalls}`,
     `- HTTP 尝试：${report.totalHttpAttempts}｜重试：${report.retryAttempts}`,
     `- 每查询输出 tokens：均值 ${avgOut}｜P95 ${p95Out.toLocaleString()}`,
-    `- 工具批次：${report.toolStats.batches}｜提出 ${report.toolStats.requested}｜准入 ${report.toolStats.granted}｜执行 ${report.toolStats.executed}｜拒绝 ${report.toolStats.denied}｜错误 ${report.toolStats.errors}｜获准尝试 ${nullable(report.toolStats.attempts)}｜成功 ${nullable(report.toolStats.successes)}｜有命中 ${report.toolStats.hitCount}｜命中未知 ${report.toolStats.hitUnknown}`,
+    `- 工具批次：${report.toolStats.batches}｜提出 ${report.toolStats.requested}｜准入 ${report.toolStats.granted}｜执行 ${report.toolStats.executed}｜拒绝 ${report.toolStats.denied}｜错误 ${report.toolStats.errors}｜获准尝试 ${nullable(report.toolStats.attempts)}｜证据送达（成功） ${nullable(report.toolStats.successes)}｜有命中（旧 chunk 口径，不含 facts-only 送达） ${report.toolStats.hitCount}｜命中未知 ${report.toolStats.hitUnknown}`,
+    `- RAG 送达：原文范围 ${nullable(report.ragDeliveryStats.expandedRanges)}｜显式 facts_search ${report.toolUsage.find((item) => item.tool === 'facts_search')?.calls ?? 0}｜内部 facts 查询 ${nullable(report.ragDeliveryStats.internalFactsQueries)}｜实际附带调用 ${nullable(report.ragDeliveryStats.attachedCalls)}｜未附带词条 ${nullable(report.ragDeliveryStats.omittedTerms)}｜送达卡次 ${nullable(report.ragDeliveryStats.deliveredCards)}`,
     ...(report.toolUsage.length > 0
       ? [`- 工具调用：${report.toolUsage.map((u) => `${u.tool} ${u.calls} 次`).join('｜')}`]
       : []),

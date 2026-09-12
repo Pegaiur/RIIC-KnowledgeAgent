@@ -282,6 +282,19 @@ export async function runQuery(
           resultChars: 0,
         }
         record.toolBatch = toolBatch
+        record.ragDelivery = batch.results.filter((item) => item.operation === 'rag_search').map((item) => ({
+          callId: item.callId,
+          status: item.status,
+          // 未执行的拒绝/参数错误确认为零；执行异常缺观测时保持不可用。
+          fulltextRanges: item.fulltextRanges ?? (item.executed ? undefined : []),
+          attachedFacts: item.attachedFacts?.map((fact) => ({
+            ...fact,
+            paths: fact.paths.map((path) => ({
+              kind: path.kind, term: path.term, memberIds: path.memberIds,
+              ...('category' in path ? { category: path.category } : {}),
+            })),
+          })) ?? (item.fulltextRanges !== undefined || !item.executed ? [] : undefined),
+        }))
         if (llmEvent) llmEvent.toolBatch = toolBatch
 
         const pendingMessages: ChatMessage[] = []
@@ -307,6 +320,8 @@ export async function runQuery(
             toolEvent.actualParams = item.actualParams
             toolEvent.hitIds = item.hitIds
             toolEvent.injectedIds = item.injectedIds
+            toolEvent.fulltextRanges = item.fulltextRanges
+            toolEvent.attachedFacts = item.attachedFacts
             toolEvent.writtenContent = writtenContent
             toolEvent.reason = item.message
             if (isToolErrorStatus(item.status)) toolEvent.error = item.message

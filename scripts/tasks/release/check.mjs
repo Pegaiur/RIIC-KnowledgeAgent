@@ -68,7 +68,8 @@ export function collectReleaseChecks(root) {
     } else if (frozen) {
       warnings.push({ check: 'P1', message: `活动 plan ${f} 已冻结待归档（执行 release/archive-plan）` })
     } else {
-      warnings.push({ check: 'P1', message: `活动 plan ${f} 已勾选全部条目但未冻结归档` })
+      // 全勾选未冻结：verify merge 已纳入 release/check，此处为阻塞项，须执行 release/archive-plan 归档消解
+      errors.push({ check: 'P1', message: `活动 plan ${f} 已勾选全部条目但未冻结归档（执行 release/archive-plan）` })
     }
   }
 
@@ -180,10 +181,8 @@ async function runMain() {
     } else {
       if (p.warnings.length > 0) console.log(`  ⚡ ${p.warnings.length} 个警告`)
       if (p.errors.length > 0) console.log(`  ❌ ${p.errors.length} 个错误`)
-      for (const i of [...p.errors, ...p.warnings]) {
-        const icon = i.check === 'P4' ? '❌' : '⚠️ '
-        console.log(`  ${icon}[${i.check}] ${i.message}`)
-      }
+      for (const i of p.errors) console.log(`  ❌[${i.check}] ${i.message}`)
+      for (const i of p.warnings) console.log(`  ⚠️ [${i.check}] ${i.message}`)
     }
   }
 

@@ -24,6 +24,8 @@ export const BASE_STEPS = [
   { id: 'test', label: '测试', command: ['pnpm', 'run', 'test'] },
   // 文档一致性校验（plan checklist / ADR 索引 / 引用路径 / skills 结构），路径相对仓库根
   { id: 'doc-check', label: '文档一致性', command: ['node', 'scripts/doc-check.mjs'] },
+  // 发版准备态检查（活动 plan 冻结/归档、notes、inbox、archive INDEX）；P1「全勾选未冻结」为阻塞项
+  { id: 'release-check', label: '发版准备态', command: ['node', 'scripts/tooling.mjs', 'run', 'release/check'] },
 ]
 
 /**

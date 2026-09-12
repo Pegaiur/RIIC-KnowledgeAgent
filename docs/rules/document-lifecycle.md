@@ -17,8 +17,8 @@ description: 修改文档、操作 ADR、发版、合并分支时生效
 | `docs/adr/INDEX.md` | ADR 索引 | 项目初始化 | 新增/修改 ADR | 不删除 |
 | `docs/*-notes.md` | 实施笔记（plan→代码的决策/变更/权衡日志，仅为 plan 服务） | 开始实施 plan 时 | 流式追加，每完成一个决策/变更立即记录 | 归档时合并到 plan 末尾（新增 `## 实施纪要` 段）→ 删除 notes 文件 |
 | `docs/spec/*.md` | 评测/核查规格（判定口径与参考要点等**长期复用资产**，非实施蓝图） | 出现需跨运行复用的核查规格时 | 语料或判定口径演进时同步维护（文内版本递进） | 随语料失效或被替代时移入 `docs/archive/` 或删除 |
-| `docs/exp-*.md` | 试验记录（探针、对照、测量、诊断、技术评估、历史运行分析、答案核查） | inbox 路由试验工作时 | 按过程、结果、结论三段记录设计、执行、偏离、更正和独立复核情况 | 已结束或已取消后迁入 `docs/archive/exp/`；暂缓保留活动入口且须绑定 inbox 条目 |
-| `docs/archive/` | 已冻结计划；`exp/` 子目录存已结束或已取消的试验 | 项目初始化 | plan 经脚本归档并更新 INDEX；exp 直接迁入子目录并同步引用 | 不删除 |
+| `docs/exp-*.md` / `docs/exp/` | 试验记录（探针、对照、测量、诊断、技术评估、历史运行分析、答案核查）；`exp/` 子目录存已结束或已取消的记录 | inbox 路由试验工作时 | 按过程、结果、结论三段记录设计、执行、偏离、更正和独立复核情况 | 已结束或已取消后迁入 `docs/exp/`；暂缓保留活动入口且须绑定 inbox 条目 |
+| `docs/archive/` | 已冻结计划（plan） | 项目初始化 | plan 经脚本归档并更新 INDEX | 不删除 |
 | `docs/CHANGELOG.md` | 更新日志（版本变更事实，与 archive INDEX 分工：INDEX=计划索引） | 首个发版由脚本创建 | 发版收束时追加新版本段 | 只累积、不重写历史 |
 | `docs/templates/` | 模板（机械格式） | 一次性创建 | 格式升级 | 不删除 |
 
@@ -35,7 +35,7 @@ description: 修改文档、操作 ADR、发版、合并分支时生效
 
 ### exp 工作与收尾
 
-依据 ADR-009，exp 使用 `docs/templates/exp.md`（唯一模板），正文仅设「过程」「结果」「结论」三段，填写与操作契约（头部元数据定序、三段详略、状态语义、结束与归档动作、必要临时产物清理）以模板为准。状态为设计中、进行中、暂缓、已结束或已取消：终态仅「已结束」「已取消」，到终态即迁入 `docs/archive/exp/` 并按名称引用同步入链、出链；「暂缓」是唯一暂停态，须绑定 inbox 条目承载消解条件。归档与发版解耦，不套用 plan checklist 或冻结标记，不新增归档脚本或索引。未执行不得写为完成，负面或证据不足也可正常结束；未获独立复核的结果只在结论内标注，不得称最终结论或指定正式基线。
+依据 ADR-009，exp 使用 `docs/templates/exp.md`（唯一模板），正文仅设「过程」「结果」「结论」三段，填写与操作契约（头部元数据定序、三段详略、状态语义、结束与归档动作、必要临时产物清理）以模板为准。状态为设计中、进行中、暂缓、已结束或已取消：终态仅「已结束」「已取消」，到终态即迁入 `docs/exp/` 并按名称引用同步入链、出链；「暂缓」是唯一暂停态，须绑定 inbox 条目承载消解条件。归档与发版解耦，不套用 plan checklist 或冻结标记，不新增归档脚本或索引。未执行不得写为完成，负面或证据不足也可正常结束；未获独立复核的结果只在结论内标注，不得称最终结论或指定正式基线。
 
 exp 只保留文内过程、结果与结论，不另留试验附件或共享快照；必要临时产物的落位、清理与受保护时的结论写法按模板与 `scripts/INDEX.md` 执行，清理后不承诺完整重放。试验形成正式工程需求时另建 plan，架构决策按既有判据建 ADR；正面结果不自动授权策略修改。授权的一次性清理例外只写在对应 ADR 与该 exp 结论，本规则不登记具体试验。
 
@@ -88,17 +88,17 @@ notes 中发现的重大架构决策应升级为正式 ADR（见上「ADR 判定
 
 ## 合并门槛（gate-check）
 
-合并 feature 分支到主分支前，**必须**通过 `node scripts/verify.mjs merge`（merge profile 唯一入口，命令清单见 `scripts/gates.mjs` 与 `scripts/verify.mjs`，不在此复制底层命令）；其中文档一致性校验由 `node scripts/doc-check.mjs` 承担（verify merge 内含该步骤）：
+合并 feature 分支到主分支前，**必须**通过 `node scripts/verify.mjs merge`（merge profile 唯一入口，命令清单见 `scripts/gates.mjs` 与 `scripts/verify.mjs`，不在此复制底层命令）；其中文档一致性与发版准备态分别由 `node scripts/doc-check.mjs` 与 `node scripts/tooling.mjs run release/check` 承担（verify merge 均内含）：
 
 | 检查项 | 阻塞级 | 说明 |
 |--------|:---:|------|
 | 活动 plan checklist 全部 `[x]` | ❌ 阻塞 | 活动 plan（`docs/` 下）不能有未勾选条目；archive 内已归档不回溯检查（doc-check D1） |
-| 活动 plan 冻结归档 | ❌ 阻塞 | 活动 plan 含冻结标记（`已完成于`）即应已移入 `docs/archive/`（发版 checklist 原子动作，doc-check D1）；已冻结未归档阻塞合并/发版 |
+| 活动 plan 冻结归档 | ❌ 阻塞 | 活动 plan 含冻结标记（`已完成于`）即应已移入 `docs/archive/`（发版 checklist 原子动作，doc-check D1）；已勾选全部条目但未冻结归档同样阻塞（release/check P1，verify merge 内含） |
 | ADR 状态与 INDEX.md 一致 | ❌ 阻塞 | 两处状态字段必须相同（doc-check D2） |
 | 脚本引用路径有效（D4） | ❌ 阻塞 | package scripts / 源码静态 import / spawn 字符串 / docs/rules、docs/templates 引用的 `.mjs` 必须存在 |
 | ADR 引用方向单一（D5） | ❌ 阻塞 | ADR 文件只引用编号更小的 ADR，禁止前向/循环引用（doc-check D5） |
 
-**plan 归档判定依据**：验收清单全部 `[x]`（实施完成）的 plan 应在待合并 feature 分支的发布元数据收束阶段，经 `release/archive-plan --apply` 移入 `docs/archive/`，与版本信息一并提交后再执行合并门禁。判定链：施工中（存在 `[ ]`）→ D1 error，阻塞合并与发版（doc-check 规定活动 plan 不得有未勾选条目；release/check P1 对应 warning 不阻塞退出码）；全勾选且含「已完成于」冻结标记 → D1 强制已归档；全勾选未冻结 → P1「已勾选全部条目但未冻结归档」，发版收束时必须归档消解。
+**plan 归档判定依据**：验收清单全部 `[x]`（实施完成）的 plan 应在待合并 feature 分支的发布元数据收束阶段，经 `release/archive-plan --apply` 移入 `docs/archive/`，与版本信息一并提交后再执行合并门禁。判定链：施工中（存在 `[ ]`）→ D1 error，阻塞合并与发版（doc-check 规定活动 plan 不得有未勾选条目；release/check P1 对施工中仍为 warning，不阻塞退出码）；全勾选且含「已完成于」冻结标记 → D1 强制已归档；全勾选未冻结 → release/check P1 error，阻塞合并与发版，须执行 release/archive-plan 归档消解（verify merge 已纳入 release/check）。
 
 ## 合并与发版流程
 

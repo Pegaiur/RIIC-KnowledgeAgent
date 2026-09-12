@@ -1,6 +1,6 @@
 # 计划归档索引
 
-试验记录另存于 [exp 归档目录](exp/)，以各文档状态和结束日期为准。
+试验记录另存于 [exp 目录](../exp/)，以各文档状态和结束日期为准。
 
 > 按完成日期降序排列。版本列为发版归档时的根版本（非发版归档填 `—`）。
 > 摘要写一句话成果摘要（归档脚本缺省从 plan「## 目标」段首条 bullet 提取，可 --summary 覆盖）。
@@ -8,6 +8,10 @@
 | 完成日期 | 版本 | 文件 | 摘要 |
 |----------|------|------|------|
 
+| 2026-09-12 | — | [plan-rag-delivery-and-entry.md](plan-rag-delivery-and-entry.md) | 技能表退出检索、base/guides 原文扩展与精确词条自动附带 facts 契约落地（ADR-013） |
+| 2026-09-11 | — | [plan-facts-crossref-navigation.md](plan-facts-crossref-navigation.md) | plan-facts-crossref-navigation |
+| 2026-09-11 | — | [plan-facts-operator-notes-expansion.md](plan-facts-operator-notes-expansion.md) | plan-facts-operator-notes-expansion |
+| 2026-09-11 | — | [plan-hybrid-default-tool-budget.md](plan-hybrid-default-tool-budget.md) | plan-hybrid-default-tool-budget |
 | 2026-09-10 | — | [plan-facts-legacy-purge.md](plan-facts-legacy-purge.md) | plan-facts-legacy-purge |
 | 2026-09-10 | — | [plan-facts-substring-pairs.md](plan-facts-substring-pairs.md) | plan-facts-substring-pairs |
 | 2026-09-10 | — | [plan-facts-term-alias.md](plan-facts-term-alias.md) | plan-facts-term-alias |

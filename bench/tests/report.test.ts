@@ -86,7 +86,7 @@ describe('report：聚合与渲染', () => {
     expect(report.costComplete).toBe(false)
     expect(report.toolStats).toEqual({ batches: 1, requested: 3, granted: 2, executed: 2, denied: 1, errors: 0, attempts: null, successes: null, hitCount: 0, hitUnknown: 2, resultChars: 120 })
     expect(renderMarkdown(report)).toContain('费用状态：不完整')
-    expect(renderMarkdown(report)).toContain('获准尝试 不可用｜成功 不可用')
+    expect(renderMarkdown(report)).toContain('获准尝试 不可用｜证据送达（成功） 不可用')
   })
 
   it('新批次聚合获准尝试与非空成功数，缺失时保持不可用', () => {
@@ -95,7 +95,7 @@ describe('report：聚合与渲染', () => {
       rec({ round: 2, toolBatch: { requested: 2, granted: 2, executed: 2, denied: 0, errors: 0, attempts: 2, successes: 1, budgetBefore: 4, budgetAfter: 3, resultChars: 60 } }),
     ])
     expect(withNewStats.toolStats).toMatchObject({ attempts: 4, successes: 2 })
-    expect(renderMarkdown(withNewStats)).toContain('获准尝试 4｜成功 2')
+    expect(renderMarkdown(withNewStats)).toContain('获准尝试 4｜证据送达（成功） 2')
 
     const mixed = aggregate([
       rec({ toolBatch: { requested: 1, granted: 1, executed: 1, denied: 0, errors: 0, attempts: 1, successes: 1, budgetBefore: 5, budgetAfter: 4, resultChars: 10 } }),
@@ -107,13 +107,35 @@ describe('report：聚合与渲染', () => {
   it('历史记录有工具调用但缺整个 toolBatch 时尝试与成功数不可用', () => {
     const report = aggregate([rec({ tools: ['grep_search'] })])
     expect(report.toolStats).toMatchObject({ batches: 0, attempts: null, successes: null })
-    expect(renderMarkdown(report)).toContain('获准尝试 不可用｜成功 不可用')
+    expect(renderMarkdown(report)).toContain('获准尝试 不可用｜证据送达（成功） 不可用')
   })
 
   it('完全无工具调用的运行尝试与成功数为 0 而非不可用', () => {
     const report = aggregate([rec({})])
     expect(report.toolStats).toMatchObject({ batches: 0, attempts: 0, successes: 0 })
-    expect(renderMarkdown(report)).toContain('获准尝试 0｜成功 0')
+    expect(renderMarkdown(report)).toContain('获准尝试 0｜证据送达（成功） 0')
+  })
+
+  it('内部附带按查询、调用与去重卡次分别聚合，历史和异常观测不补零', () => {
+    const fact = { term: '测试', start: 0, end: 2, matched: ['甲'], delivered: ['甲'], omittedReason: null, chars: 20, elapsedMs: 0, paths: [] }
+    const current = rec({ tools: ['rag_search'], ragDelivery: [{ callId: 'a', status: 'success', fulltextRanges: [], attachedFacts: [fact, { ...fact, term: '别名' }] }] })
+    expect(aggregate([current, { ...current, round: 2 }]).ragDeliveryStats).toEqual({
+      internalFactsQueries: 4, attachedCalls: 2, omittedTerms: 0, deliveredCards: 2, expandedRanges: 0,
+    })
+    expect(aggregate([current, rec({ tools: ['rag_search'] })]).ragDeliveryStats.internalFactsQueries).toBeNull()
+    expect(aggregate([rec({ tools: ['rag_search'], ragDelivery: [{ callId: 'a', status: 'error' }] })]).ragDeliveryStats.internalFactsQueries).toBeNull()
+    const omitted = { ...fact, delivered: [], omittedReason: '容量不足' }
+    expect(aggregate([rec({ tools: ['rag_search'], ragDelivery: [{ callId: 'a', status: 'empty', fulltextRanges: [], attachedFacts: [omitted] }] })]).ragDeliveryStats).toMatchObject({ internalFactsQueries: 1, attachedCalls: 0, omittedTerms: 1, deliveredCards: 0 })
+  })
+
+  it('仅 facts 送达的 rag_search 计入证据送达，但不计入旧 chunk 命中口径', () => {
+    // facts-only 成功：hitIds 为空（hitCount 0），但 status=success（successes 1）。
+    const report = aggregate([
+      rec({ toolBatch: { requested: 1, granted: 1, executed: 1, denied: 0, errors: 0, attempts: 1, successes: 1, hitCount: 0, hitUnknown: 0, budgetBefore: 5, budgetAfter: 4, resultChars: 30 } }),
+    ])
+    const markdown = renderMarkdown(report)
+    expect(markdown).toContain('证据送达（成功） 1')
+    expect(markdown).toContain('有命中（旧 chunk 口径，不含 facts-only 送达） 0')
   })
 
   it('部分 usage 仍汇总已知费用，并把重试未知用量标为不完整', () => {

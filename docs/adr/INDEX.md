@@ -18,3 +18,4 @@
 | [010](ADR-010-facts-alias-disambiguation.md) | 已实施 | facts 别名、集合词条真源与同名全部返回契约 | 2026-09-09 |
 | [011](ADR-011-retriever-tool-convergence.md) | 已实施 | 检索模式与工具集合收敛 | 2026-09-10 |
 | [012](ADR-012-tool-budget-attempt-limit.md) | 已实施 | 工具预算改为失败不消耗与双上限，取消并行调用 | 2026-09-10 |
+| [013](ADR-013-rag-delivery-range-and-entry.md) | 已实施 | 检索范围、原文扩展与 RAG 内部 facts 附带契约 | 2026-09-11 |
