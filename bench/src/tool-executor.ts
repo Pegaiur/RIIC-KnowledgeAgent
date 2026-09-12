@@ -605,7 +605,9 @@ function factsSearchOperation(
     })
     const header = `第 ${segmentNumber} 段｜${term}｜命中 ${canonicals.length} 张`
     const body = canonicals.length === 0
-      ? `未收录精确词条：${term}`
+      ? result.paths.length === 0
+        ? `未收录精确词条：${term}`
+        : '匹配说明：本次路径没有可返回的记录卡。'
       : result.matches.map((match) => {
           const canonical = match.card.canonical
           const firstSegment = deliveredAt.get(canonical)

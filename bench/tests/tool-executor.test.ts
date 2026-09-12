@@ -517,6 +517,29 @@ describe('facts_search 多词分段、去重与原子性', () => {
     expect(spy).toHaveBeenCalledTimes(3)
   })
 
+  it('有登记路径但无可返回卡时保留路径，不误报未收录，空查不扣点', async () => {
+    vi.spyOn(getCardStore(), 'factsSearch').mockReturnValue({
+      query: '测试登记别名',
+      paths: [{ kind: 'alias', term: '测试登记别名', targets: ['operator:测试目标'], memberIds: [], evidence: [] }],
+      matches: [],
+    })
+    const batch = await multiExecutor().executeBatch([call('known-empty', 'facts_search', { queries: ['测试登记别名'] })])
+    const item = batch.results[0]!
+    const envelope = JSON.parse(serializeToolResult(item))
+    expect(envelope).toMatchObject({
+      status: 'empty', executed: true, complete: true, matchedCount: 0, returnedCount: 0,
+      resolution: { items: [{ index: 0, query: '测试登记别名', status: 'empty', canonicals: [], message: null,
+        paths: [{ kind: 'alias', term: '测试登记别名', memberIds: [] }],
+      }] },
+    })
+    expect(item.data).toContain('别名：测试登记别名 → 测试目标')
+    expect(item.data).toContain('本次路径没有可返回的记录卡')
+    expect(item.data).not.toContain('未收录精确词条')
+    expect(item.hitIds).toEqual([])
+    expect(item.injectedIds).toEqual([])
+    expect(batch.snapshot).toMatchObject({ successUsed: 0, attemptUsed: 1, executed: 1 })
+  })
+
   it('非法段占位后，后续重复词的引用仍指向首次出现的段号', async () => {
     const batch = await multiExecutor().executeBatch([call('gap', 'facts_search', { queries: ['刻俄柏', 1, '刻俄柏'] })])
     const item = batch.results[0]!
@@ -533,12 +556,4 @@ describe('facts_search 多词分段、去重与原子性', () => {
     expect(envelope.resolution).not.toHaveProperty('paths')
   })
 
-  it('历史 v5 结果仍按原版本与 paths 结构读取，不混入 v6 items', () => {
-    const legacy = JSON.parse('{"factsResultVersion":5,"matchedCount":1,"returnedCount":1,"complete":true,"scope":{"query":"刻俄柏"},"resolution":{"paths":[{"kind":"exact","category":"operator","term":"刻俄柏","memberIds":["刻俄柏"]}]}}') as {
-      factsResultVersion: number
-      resolution: { paths: unknown[] }
-    }
-    expect(legacy.factsResultVersion).toBe(5)
-    expect(legacy.resolution.paths).toHaveLength(1)
-  })
 })

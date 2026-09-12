@@ -5,6 +5,34 @@ import { createQueryTrace, markTraceFailed, serializeTrace } from '../src/trace.
 const QUERY: BenchQuery = { id: 'TRACE-UNIT', category: 'fact', question: '测试记录' }
 
 describe('trace 记录模型', () => {
+  it('历史 v5 工具消息经实际 trace 序列化与脱敏后保留原版本和路径', () => {
+    const trace = createQueryTrace(QUERY)
+    const legacy = {
+      status: 'success', executed: true, data: '测试正文 sensitive-key', budget_remaining: 4,
+      factsResultVersion: 5, matchedCount: 1, returnedCount: 1, complete: true,
+      scope: { query: '刻俄柏' },
+      resolution: { paths: [{ kind: 'exact', category: 'operator', term: '刻俄柏', memberIds: ['刻俄柏'] }] },
+    }
+    trace.events.push({
+      type: 'tool_call', round: 1, callId: 'legacy', tool: 'facts_search',
+      rawArguments: '{"query":"刻俄柏"}', actualParams: { query: '刻俄柏' },
+      elapsedMs: 0, status: 'success', executed: true, budgetRemaining: 4,
+      hitIds: ['刻俄柏'], injectedIds: ['刻俄柏'], writtenContent: JSON.stringify(legacy),
+    })
+
+    const serialized = serializeTrace(trace, ['sensitive-key'])
+    const restored = JSON.parse(serialized)
+    const message = JSON.parse(restored.events[0].writtenContent)
+    expect(message).toEqual({ ...legacy, data: '测试正文 [已遮蔽]' })
+    expect(message.resolution).not.toHaveProperty('items')
+    expect(restored.events[0]).toMatchObject({
+      rawArguments: '{"query":"刻俄柏"}', actualParams: { query: '刻俄柏' },
+      hitIds: ['刻俄柏'], injectedIds: ['刻俄柏'],
+    })
+    expect(serialized).not.toContain('sensitive-key')
+    expect(trace.events[0]).toMatchObject({ writtenContent: JSON.stringify(legacy) })
+  })
+
   it('失败时保留第一处阶段定位', () => {
     const trace = createQueryTrace(QUERY)
 
