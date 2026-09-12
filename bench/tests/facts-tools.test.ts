@@ -417,11 +417,12 @@ describe('第一阶段 facts 结果 envelope', () => {
     expect(result.results).toHaveLength(2)
     for (const item of result.results) {
       expect(item).toMatchObject({ status: 'empty', executed: true, hitIds: [], injectedIds: [], factsResult: {
-        factsResultVersion: 5, matchedCount: 0, returnedCount: 0, complete: true, resolution: { paths: [] },
+        factsResultVersion: 6, matchedCount: 0, returnedCount: 0, complete: true,
+        resolution: { items: [{ index: 0, status: 'empty', paths: [], canonicals: [], message: null }] },
       } })
       expect(item.factsResult?.scope).toEqual(item.actualParams)
       const envelope = JSON.parse(serializeToolResult(item)) as Record<string, unknown>
-       expect(envelope).toMatchObject({ status: 'empty', executed: true, factsResultVersion: 5, matchedCount: 0, returnedCount: 0, complete: true, resolution: { paths: [] } })
+       expect(envelope).toMatchObject({ status: 'empty', executed: true, factsResultVersion: 6, matchedCount: 0, returnedCount: 0, complete: true, resolution: { items: [{ index: 0, status: 'empty' }] } })
        expect(envelope.data).toContain('未收录精确词条')
     }
     expect(JSON.parse(serializeToolResult(result.results[0]!)).scope).toEqual({ queries: ['__不存在的规范名_核查__'] })
@@ -446,7 +447,7 @@ describe('第一阶段 facts 结果 envelope', () => {
     expect(result.results[0]).toMatchObject({ status: 'invalid_params', executed: false })
     expect(result.results[0]?.factsResult).toBeUndefined()
     expect(JSON.parse(serializeToolResult(result.results[0]!))).not.toHaveProperty('factsResultVersion')
-    expect(result.results[1]).toMatchObject({ status: 'empty', executed: true, factsResult: { factsResultVersion: 5, matchedCount: 0, complete: true, resolution: { paths: [] } } })
+    expect(result.results[1]).toMatchObject({ status: 'empty', executed: true, factsResult: { factsResultVersion: 6, matchedCount: 0, complete: true, resolution: { items: [{ index: 0, status: 'empty' }] } } })
   })
 })
 
@@ -554,12 +555,27 @@ describe('runQuery（facts_search 派发）', () => {
       index,
     )
     const secondMessages = mockCall.mock.calls[1]?.[0] as Array<{ role: string; content: string }>
-    const structured = JSON.parse(secondMessages.find((message) => message.role === 'tool')?.content ?? '{}') as { status: string; data: string }
+    const structured = JSON.parse(secondMessages.find((message) => message.role === 'tool')?.content ?? '{}') as {
+      status: string
+      data: string
+      matchedCount: number
+      resolution: { items: Array<{ index: number; query: string | null; status: string; canonicals: string[]; message: string | null }> }
+    }
     expect(structured.status).toBe('success')
     expect(structured.data).toContain('第 1 段｜刻俄柏')
     expect(structured.data).toContain('第 2 段｜参数错误：第 2 项必须是非空字符串')
     expect(structured.data).toContain('第 3 段｜参数错误：第 3 项必须是非空字符串')
     expect(structured.data).toContain('第 4 段｜制造站')
+    expect(structured.resolution.items.map(({ index, query, status, message }) => ({ index, query, status, message }))).toEqual([
+      { index: 0, query: '刻俄柏', status: 'success', message: null },
+      { index: 1, query: null, status: 'invalid', message: '第 2 项必须是非空字符串' },
+      { index: 2, query: null, status: 'invalid', message: '第 3 项必须是非空字符串' },
+      { index: 3, query: '制造站', status: 'success', message: null },
+    ])
+    expect(structured.matchedCount).toBe(new Set([
+      ...structured.resolution.items[0]!.canonicals,
+      ...structured.resolution.items[3]!.canonicals,
+    ]).size)
     expect(result.budget).toMatchObject({ successUsed: 1, attemptUsed: 1 })
   })
 
@@ -672,7 +688,7 @@ describe('runQuery（facts_search 派发）', () => {
     })
     const writtenContent = (trace.events[1] as { writtenContent: string }).writtenContent
     expect(writtenContent).toContain('【刻俄柏】')
-    expect(JSON.parse(writtenContent)).toMatchObject({ factsResultVersion: 5, matchedCount: 1, returnedCount: 1, complete: true, scope: { queries: ['刻俄柏'] }, resolution: { paths: [{ kind: 'exact', term: '刻俄柏' }] } })
+    expect(JSON.parse(writtenContent)).toMatchObject({ factsResultVersion: 6, matchedCount: 1, returnedCount: 1, complete: true, scope: { queries: ['刻俄柏'] }, resolution: { items: [{ index: 0, query: '刻俄柏', status: 'success', canonicals: ['刻俄柏'], message: null, paths: [{ kind: 'exact', term: '刻俄柏' }] }] } })
     const secondMessages = mockCall.mock.calls[1]?.[0] as Array<{ role: string; content: string }>
     expect(secondMessages.find((message) => message.role === 'tool')?.content).toBe(writtenContent)
   })

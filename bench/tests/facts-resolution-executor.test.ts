@@ -21,7 +21,7 @@ function expectEnvelope(item: ToolExecutionResult, expectedIds: string[]) {
   expect(item.hitIds).toEqual(expectedIds)
   expect(item.injectedIds).toEqual(expectedIds)
   expect(item.factsResult).toMatchObject({
-    factsResultVersion: 5, matchedCount: expectedIds.length, returnedCount: expectedIds.length, complete: true,
+    factsResultVersion: 6, matchedCount: expectedIds.length, returnedCount: expectedIds.length, complete: true,
   })
   const envelope = JSON.parse(serializeToolResult(item))
   expect(envelope).toMatchObject({
@@ -40,7 +40,7 @@ describe('真实词条的 executor 解析协议', () => {
     const item = batch.results[0]!
     expect(item).toMatchObject({ status: 'success', executed: true })
     expectEnvelope(item, ['推进之王', '维娜·维多利亚'])
-    expect(item.factsResult?.resolution.paths).toEqual([{
+    expect(item.factsResult?.resolution.items[0]?.paths).toEqual([{
       kind: 'alias', term: '推王', targets: ['operator:推进之王', 'operator:维娜·维多利亚'],
       memberIds: ['推进之王', '维娜·维多利亚'], evidence: expect.any(Array),
     }])
@@ -48,7 +48,7 @@ describe('真实词条的 executor 解析协议', () => {
 
   it('叙拉古分别保留真实阵营和搭配成员，共享卡只输出和计数一次', async () => {
     const item = (await executor().executeBatch([call('叙拉古')])).results[0]!
-    const paths = item.factsResult!.resolution.paths
+    const paths = item.factsResult!.resolution.items[0]!.paths
     expect(paths.map((path) => path.kind)).toEqual(['exact', 'combo'])
     // 阵营名单取自 references/类别.md，搭配名单取自 guides/贸易站组合.md。
     const faction = '安洁莉娜、拉普兰德、普罗旺斯、红云、布洛卡、巫恋、铃兰、贾维、奥斯塔、斥罪、子月、伺夜、阿罗玛、忍冬、裁度、荒芜拉普兰德、贝洛内、复奏'.split('、')
@@ -65,11 +65,11 @@ describe('真实词条的 executor 解析协议', () => {
   it('临光按登记返回短名自身与长名，substring 路径进入 resolution 与正文', async () => {
     const item = (await executor().executeBatch([call('临光')])).results[0]!
     expect(item).toMatchObject({ status: 'success', executed: true })
-    expect(item.factsResult?.resolution.paths.map((path) => path.kind)).toEqual(['exact', 'substring'])
-    expect(item.factsResult?.resolution.paths[1]).toMatchObject({
+    expect(item.factsResult?.resolution.items[0]?.paths.map((path) => path.kind)).toEqual(['exact', 'substring'])
+    expect(item.factsResult?.resolution.items[0]?.paths[1]).toMatchObject({
       kind: 'substring', term: '临光', targets: ['operator:耀骑士临光'], memberIds: ['耀骑士临光'],
     })
-    expect(item.factsResult).toMatchObject({ factsResultVersion: 5, matchedCount: 2, returnedCount: 2, complete: true })
+    expect(item.factsResult).toMatchObject({ factsResultVersion: 6, matchedCount: 2, returnedCount: 2, complete: true })
     expect(new Set(item.hitIds)).toEqual(new Set(['临光', '耀骑士临光']))
     expectEnvelope(item, item.hitIds!)
     expect(item.data).toContain('子串：临光 → 耀骑士临光')
@@ -77,7 +77,7 @@ describe('真实词条的 executor 解析协议', () => {
 
   it.each(['能天使', '嘉维尔'])('%s 的长名已被阵营精确路径覆盖，不产出 substring 路径', async (query) => {
     const item = (await executor().executeBatch([call(query)])).results[0]!
-    const paths = item.factsResult!.resolution.paths
+    const paths = item.factsResult!.resolution.items[0]!.paths
     expect(paths.some((path) => path.kind === 'substring')).toBe(false)
     expect(paths).toContainEqual(expect.objectContaining({ kind: 'exact', category: 'faction' }))
     expect(item.status).toBe('success')
@@ -85,13 +85,13 @@ describe('真实词条的 executor 解析协议', () => {
 
   it('企鹅物流仅返回已登记搭配，不伪造真源中不存在的阵营路径', async () => {
     const item = (await executor().executeBatch([call('企鹅物流')])).results[0]!
-    expect(item.factsResult?.resolution.paths).toMatchObject([{ kind: 'combo', combo: { id: 'combo:企鹅物流' } }])
+    expect(item.factsResult?.resolution.items[0]?.paths).toMatchObject([{ kind: 'combo', combo: { id: 'combo:企鹅物流' } }])
     expectEnvelope(item, ['能天使', '德克萨斯', '拉普兰德'])
   })
 
   it('莱茵科技的开放范围不影响已匹配卡的 complete', async () => {
     const item = (await executor().executeBatch([call('莱茵科技')])).results[0]!
-    expect(item.factsResult?.resolution.paths).toMatchObject([{
+    expect(item.factsResult?.resolution.items[0]?.paths).toMatchObject([{
       kind: 'combo', combo: { coverage: 'open', openScope: expect.stringContaining('莱茵科技类制造技能') },
     }])
     expectEnvelope(item, ['多萝西', '娜斯提', '淬羽赫默'])
@@ -100,7 +100,7 @@ describe('真实词条的 executor 解析协议', () => {
 
   it.each(['德狼', '能蕾', '银崖', '孑拉德'])('%s 不作为简写合称接入', async (query) => {
     const item = (await executor().executeBatch([call(query)])).results[0]!
-    expect(item).toMatchObject({ status: 'empty', executed: true, factsResult: { resolution: { paths: [] } } })
+    expect(item).toMatchObject({ status: 'empty', executed: true, factsResult: { resolution: { items: [{ index: 0, status: 'empty', paths: [], canonicals: [], message: null }] } } })
     expectEnvelope(item, [])
   })
 })

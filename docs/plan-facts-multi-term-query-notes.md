@@ -46,6 +46,12 @@
 - **原因**：plan 未指定引用文案，沿用 plan「消息形状示例」的措辞以保证契约样例与实现一致。
 - **后果**：去重状态只存在于单次调用内，跨调用重新返回完整卡；原子性用例已锁定「无部分注入、不扣成功额度、占一次尝试」。
 
+### 2026-09-12 — 步骤 5：v6 逐项记录取代 resolution.paths
+- **plan 原文**：v6 以 `resolution.items` 承载逐项记录（index/query/status/paths/canonicals/message）；根级 `scope: {queries:[...]}`；`complete` 只表示合法词条命中的卡已完整送达；`matchedCount`/`returnedCount` 取跨词并集；`FACTS_RESULT_VERSION` 5→6；参数错误与运行时异常不返回证据元数据。
+- **实际做法**：新增导出类型 `FactsResolutionItem`，`FactsResultMetadata.resolution` 改为 `{ items }`；`factsSearchOperation` 逐项产出 items（非法项 query=null、message 为非空串中文原因、paths/canonicals 为空），并移除步骤 3 的逐词 `resolution.paths` 汇总，避免两份路径真源并存；`executeOne` 以 items 填充元数据，计数沿用并集 hitIds 长度。
+- **原因**：reviewer 在步骤 4 已指出汇总是过渡态且会重复 push 同一路径；本步按计划一次收口，不再保留并列结构。
+- **后果**：v5 的 `resolution.paths` 历史结果不再由本运行生成；trace/report 消费方只读取 `hitIds` 与 `writtenContent` 字符串，无需改动即可继续读旧结果。
+
 ## 债务记录
 > 遗留的技术债、被牺牲的改进与延期偿还事项（纯权衡取舍、无遗留债务的决策记入「决策偏离」）
 > 可定位到代码的债务须在代码处写 `TODO(tech-debt) <编号>：` 注释（AGENTS.md 编码核心约束 #5），此处只记编号、结论与未来偿还条件

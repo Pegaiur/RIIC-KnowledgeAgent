@@ -291,15 +291,15 @@ describe('独立函数 executor：逐项结算双上限预算', () => {
     expect(item).toMatchObject({
       status: 'success',
       factsResult: {
-        factsResultVersion: 5,
+        factsResultVersion: 6,
         matchedCount: 1,
         returnedCount: 1,
         complete: true,
-        resolution: { paths: [{ kind: 'alias', term: '维娜', targets: ['operator:维娜·维多利亚'] }] },
+        resolution: { items: [{ index: 0, query: '维娜', status: 'success', canonicals: ['维娜·维多利亚'], message: null, paths: [{ kind: 'alias', term: '维娜', targets: ['operator:维娜·维多利亚'] }] }] },
       },
     })
     const envelope = JSON.parse(serializeToolResult(item)) as Record<string, any>
-    expect(envelope).toMatchObject({ factsResultVersion: 5, resolution: { paths: [{ kind: 'alias', term: '维娜' }] } })
+    expect(envelope).toMatchObject({ factsResultVersion: 6, resolution: { items: [{ index: 0, status: 'success', paths: [{ kind: 'alias', term: '维娜' }] }] } })
     expect(envelope.data).toContain('别名：维娜 → 维娜·维多利亚')
   })
 
@@ -425,6 +425,11 @@ describe('facts_search 多词分段、去重与原子性', () => {
     const item = batch.results[0]!
     expect(item.status).toBe('success')
     expect(item.factsResult?.scope).toEqual({ queries: ['刻俄柏', '刻俄柏'] })
+    expect(item.factsResult).toMatchObject({ factsResultVersion: 6, matchedCount: 1, returnedCount: 1, complete: true })
+    expect(item.factsResult?.resolution.items).toEqual([
+      { index: 0, query: '刻俄柏', status: 'success', paths: expect.any(Array), canonicals: ['刻俄柏'], message: null },
+      { index: 1, query: '刻俄柏', status: 'success', paths: expect.any(Array), canonicals: ['刻俄柏'], message: null },
+    ])
     expect(item.data).toContain('第 1 段｜刻俄柏')
     expect(item.data).toContain('第 2 段｜刻俄柏')
     expect(item.data).toContain('刻俄柏（已在第 1 段返回，此处仅列名）')

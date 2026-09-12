@@ -176,14 +176,14 @@ executor 已支持同一模型响应内多个 tool_calls。当多个原本独立
 - [x] 根级状态符合契约：有命中 success 扣 1 点；合法词全部未命中（含夹非法元素）empty；无合法元素 invalid_params
 - [x] 元素级非法只记为该项 invalid 并继续其余合法词；上限按原数组长度检查
 - [ ] 新 queries 数组接受；旧 query 两种形态、双字段、非数组、空数组、全非法及原长度超限均按契约拒绝，并覆盖错误示例迁移
-- [ ] 逐项结构化记录（原索引、规范化词条、状态、命中路径、canonical 列表）可供统计区分全量与部分失败
-- [ ] v6 仅以 resolution.items 承载逐项记录；非法项 query=null 且带中文原因；非法项占段，段号为 index+1；参数错误和运行时异常不返回证据元数据
+- [x] 逐项结构化记录（原索引、规范化词条、状态、命中路径、canonical 列表）可供统计区分全量与部分失败
+- [x] v6 仅以 resolution.items 承载逐项记录；非法项 query=null 且带中文原因；非法项占段，段号为 index+1；参数错误和运行时异常不返回证据元数据
 - [x] 中途 store 抛错为整次 error + fatal，无部分注入、不扣成功额度、占一次获准尝试
 - [x] 逐词分段按输入顺序、卡顺序沿用 store；重复词保留分段；交叉引用用「第 N 段」
 - [x] 去重仅限本次调用，不因之前 RAG/facts 返回过而省略正文；首现完整、后续仅列名
-- [ ] `complete` 语义为「合法词条命中的卡已完整送达」；matchedCount/returnedCount 取并集
-- [ ] scope 为 `{ queries: [...] }` 对象外壳，值为 trim 后合法词条，逐项经原索引关联
-- [ ] FACTS_RESULT_VERSION 与 TOOL_SCHEMA_VERSION 递增，历史结果仍可读，trace/report 消费方同步
+- [x] `complete` 语义为「合法词条命中的卡已完整送达」；matchedCount/returnedCount 取并集
+- [x] scope 为 `{ queries: [...] }` 对象外壳，值为 trim 后合法词条，逐项经原索引关联
+- [x] FACTS_RESULT_VERSION 与 TOOL_SCHEMA_VERSION 递增，历史结果仍可读，trace/report 消费方同步
 - [ ] 混合非法与空结果、中途抛错、重复词与别名重叠、跨调用重返回、非默认上限贯通、旧版本读取用例先红后绿
 - [ ] 宽查/低重叠组合的序列化字符量已离线记录，并接受首版完整返回的容量边界
 - [ ] `pnpm run typecheck` 全通过

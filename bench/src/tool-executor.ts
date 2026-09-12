@@ -52,7 +52,7 @@ export type ToolResultStatus =
   | 'error'
   | 'budget_exhausted'
 
-export const FACTS_RESULT_VERSION = 5 as const
+export const FACTS_RESULT_VERSION = 6 as const
 
 /**
  * RAG 内部附带 facts 的独立额度（UTF-16 字符，ADR-013 决策 4 定稿）：
@@ -64,13 +64,28 @@ export const RAG_ATTACH_FACTS_QUOTA_CHARS = 4_000 as const
  * TODO(tech-debt) R5-5：协议层直接内嵌 store 的 ResolutionPath 联合类型，路径种类变更会牵动 wire 契约；
  * 待协议与领域类型分层后把该类型下沉到共享 terms 模块（只沉 wire 契约，不沉内部行形状）。
  */
+/** v6 逐项结构化记录：与原始 queries 数组一一对应，非法项也占位。 */
+export interface FactsResolutionItem {
+  /** 原数组零基索引 */
+  index: number
+  /** 合法词条 trim 后字符串；非法项为 null */
+  query: string | null
+  status: 'success' | 'empty' | 'invalid'
+  /** 该词命中的完整解析路径；invalid 为空 */
+  paths: ResolutionPath[]
+  /** 该词全部命中 canonical（沿 store 顺序去重，保留跨词重复卡）；empty / invalid 为空 */
+  canonicals: string[]
+  /** 非法项的中文原因；合法项为 null */
+  message: string | null
+}
+
 export interface FactsResultMetadata {
   factsResultVersion: typeof FACTS_RESULT_VERSION
   matchedCount: number
   returnedCount: number
   complete: true
   scope: Record<string, unknown>
-  resolution: { paths: ResolutionPath[] }
+  resolution: { items: FactsResolutionItem[] }
 }
 
 export interface ToolExecutionResult {
@@ -349,7 +364,7 @@ async function executeOne(
           returnedCount: output.hitIds.length,
           complete: true as const,
           scope: parsed.value,
-          resolution: output.factsResolution ?? { paths: [] },
+          resolution: { items: output.factsItems ?? [] },
         }
       : undefined
     return {
@@ -528,7 +543,7 @@ function runOperation(
   data: string
   hitIds: string[]
   injectedIds: string[]
-  factsResolution?: { paths: ResolutionPath[] }
+  factsItems?: FactsResolutionItem[]
   fulltextRanges?: FulltextRange[]
   attachedFacts?: AttachedFactsObservation[]
   status?: ToolResultStatus
@@ -543,7 +558,7 @@ function runOperation(
  * 逐词在本次调用内复用查询结果（重复词不重复查询底层）；跨词命中同一 canonical 时首现段返回完整卡，
  * 后续段只列名称并引用首次段号（去重范围仅限本次调用）。hitIds / injectedIds 取跨词并集、按首次出现顺序排列。
  * 全部结果先在局部组装，任一步 store 抛错整次失败，不留下部分注入记录。
- * 逐词路径按输入顺序汇总进 resolution.paths（步骤 3 过渡契约，v6 改为逐项 items）。
+ * 逐项记录（原索引、规范化词条、状态、路径、canonical）经 resolution.items 进入元数据，items 取并集计数。
  */
 function factsSearchOperation(
   parsed: ParsedToolParams,
@@ -552,30 +567,40 @@ function factsSearchOperation(
   data: string
   hitIds: string[]
   injectedIds: string[]
-  factsResolution: { paths: ResolutionPath[] }
+  factsItems: FactsResolutionItem[]
 } {
   const store = loadFactsStore(context)
-  const items = parsed.factsItems ?? []
+  const entries = parsed.factsItems ?? []
   const cache = new Map<string, FactsSearchResult>()
   // canonical → 首次送达它的段号（1 基），仅本次调用内有效。
   const deliveredAt = new Map<string, number>()
+  const items: FactsResolutionItem[] = []
   const segments: string[] = []
   const hitIds: string[] = []
   const seen = new Set<string>()
-  const paths: ResolutionPath[] = []
-  for (const item of items) {
-    if (item.query === null) {
-      segments.push(`第 ${item.index + 1} 段｜参数错误：${item.message ?? '参数错误'}`)
+  for (const entry of entries) {
+    if (entry.query === null) {
+      const message = entry.message ?? '参数错误'
+      items.push({ index: entry.index, query: null, status: 'invalid', paths: [], canonicals: [], message })
+      segments.push(`第 ${entry.index + 1} 段｜参数错误：${message}`)
       continue
     }
-    const term = item.query
-    const segmentNumber = item.index + 1
+    const term = entry.query
+    const segmentNumber = entry.index + 1
     let result = cache.get(term)
     if (!result) {
       result = store.factsSearch(term)
       cache.set(term, result)
     }
     const canonicals = dedupeCanonicals(result.matches.map((match) => match.card.canonical))
+    items.push({
+      index: entry.index,
+      query: term,
+      status: canonicals.length > 0 ? 'success' : 'empty',
+      paths: [...result.paths],
+      canonicals: [...canonicals],
+      message: null,
+    })
     const header = `第 ${segmentNumber} 段｜${term}｜命中 ${canonicals.length} 张`
     const body = canonicals.length === 0
       ? `未收录精确词条：${term}`
@@ -588,14 +613,13 @@ function factsSearchOperation(
         }).join('\n\n')
     const pathText = result.paths.length > 0 ? `\n${serializeResolutionPaths(result.paths)}` : ''
     segments.push(`${header}${pathText}\n${body}`)
-    paths.push(...result.paths)
     for (const canonical of canonicals) {
       if (seen.has(canonical)) continue
       seen.add(canonical)
       hitIds.push(canonical)
     }
   }
-  return { data: segments.join('\n\n'), hitIds, injectedIds: [...hitIds], factsResolution: { paths } }
+  return { data: segments.join('\n\n'), hitIds, injectedIds: [...hitIds], factsItems: items }
 }
 
 /**
