@@ -91,4 +91,6 @@ R2 G3（15-39-08）原 F07 第 3 轮 HTTP 500 重试的 usage 未知，使该 ru
 
 局限：仅 GLM-5.3-Flash low、单模型、每配置两轮、20 题诊断集且无未参与调优的留出集；本轮只记录服务/协议/计量/工具/送达等机械观测，未对 160 份回答做全量必答项覆盖核查（仅对 G3 补跑的 F07 单题做了子代理核查，判「完整且有据」），故不就整体回答质量或答对率下结论、不设达标线；R2 G3 为 F07 补跑拼接结果（非单次连续执行），跨组对比含该拼接；两轮间存在模型不确定性，组间差异不构成受控因果。不做受控横比，不因结果触发题集追分或自动修复。
 
-后续入口：如需判断四组对回答质量的影响，另按 spec 对选定组做回答覆盖核查（独立任务，用户指示用子代理执行）；本轮运行原件位于 bench-runs/（gitignore，未入库），F07 拼接产物位于 dev-temp/work/g3-splice/（含 backup、questions-f07.json、splice.mjs）与 dev-temp/runs/g3-rerun/，上述均按 scripts/INDEX.md 于交接或结束时清理（本轮用户要求暂不清理；解除条件：待四组对照复盘结束或用户确认后清理）。
+后续入口：如需判断四组对回答质量的影响，另按 spec 对选定组做回答覆盖核查——该核查已由独立 exp 完成，见 docs/exp/exp-rag-delivery-four-group-coverage-audit.md。
+
+清理（2026-09-12 已执行）：解除条件（用户确认）已满足，按 scripts/INDEX.md 以显式清单（node scripts/tooling.mjs tmp manifest / tmp clean --apply）清理运行原件——bench-runs/ 下四组对照 8 个与补测 4 个共 12 个 run（与覆盖核查 exp 同批一次清理，归属亦见该 exp），及 F07 拼接产物目录 dev-temp/work/g3-splice/。dev-temp/runs/g3-rerun/ 被清理器保护跳过（runs 下要求存在结束产物 result.json 方可删除，该目录未确认结束），按 scripts/INDEX.md 不绕过检查、予以保留并记录原因：补齐结束产物或经人工确认后另行清理。清理后不承诺完整重放。
