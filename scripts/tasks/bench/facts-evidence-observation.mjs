@@ -9,8 +9,8 @@
  *   - 分母仅取问题原文中出现的名册正式名，字面包含匹配并按规范对象去重；不做别名扩展、分词、模糊匹配或技能名识别。
  *   - 显式 facts 送达取 trace 中 facts_search 成功结果实际返回的 hitIds（canonical）；RAG 附带送达取 records.ragDelivery 的
  *     attachedFacts.delivered；matched、paths、触发词都不算送达。
- *   - 数据完整且无送达才判为未送达；缺 trace、结果记录、问题原文或名册不可用时标不可判定，不填零。
- *   - 名册版本对应：仅当运行记录与当前 HEAD 一致且非脏树，或调用方用 --assume-roster-matches/显式 --roster 确认时，才用当前名册解释该运行；否则标不可判定，不拿当前名册无条件解释旧运行。
+ *   - 数据完整且无送达才判为未送达；缺 trace、结果记录、问题原文或名册不可用，或成功 facts 事件缺 hitIds 时标不可判定，不填零。
+ *   - 名册版本对应：仅当运行记录与当前 HEAD 一致、运行当时非脏树且当前名册文件在工作区无未提交修改，或调用方用 --assume-roster-matches/显式 --roster 确认时，才用当前名册解释该运行；否则标不可判定，不拿当前名册无条件解释旧运行。
  *   - 无正式名命中的题记不适用，不计为合规。本输出只统计字面命中与事实卡送达，不代表真实意图识别，也不判断卡片是否足以支撑结论。
  * 只读边界：仅读取运行目录与名册，结果只输出终端表格，不写任何持久化字段。
  */
@@ -20,7 +20,7 @@ import { basename, isAbsolute, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parseArgs } from 'node:util'
 import { resolveRepoRoot } from '../../lib/repo-context.mjs'
-import { head as gitHead } from '../../lib/git.mjs'
+import { head as gitHead, diffFiles } from '../../lib/git.mjs'
 
 export const STATS_NAME = '正式名命中对象的事实卡送达统计'
 export const LITERAL_MATCH_NOTE = '命中为问题原文对名册正式名的字面包含匹配（字面命中），不代表真实意图识别，也不判断卡片是否足以支撑结论。'
@@ -98,7 +98,7 @@ export function loadQuestions(meta, runDir, root) {
 function collectDelivery(records, traces) {
   const recordsByQuery = new Set()
   // RAG 附带维度按题聚合：台账缺失或 attachedFacts 不可用时标 available=false，不当作零送达。
-  // 与 report.ts 的口径差异：report 以「rag_search 请求数 !== ragDelivery 长度」判整轮不可用，
+  // 与 report.ts 的口径差异：report 以「请求过 rag_search 却缺整套 ragDelivery」判整轮不可用（已与 agent.ts 排除 protocol_rejected 的口径同步），
   // 本脚本改按 ADR-013 语义只据「有工具批次却缺 ragDelivery」与 attachedFacts 是否可读判定，
   // 以保留 protocol_rejected 场景下已执行调用真实 delivered 的可观测性；两者不可用口径可能不同。
   const ragByQuery = new Map()
@@ -127,15 +127,20 @@ function collectDelivery(records, traces) {
   for (const line of traces) {
     const id = line?.queryId
     if (typeof id !== 'string') continue
-    const set = traceByQuery.get(id) ?? new Set()
+    // missingHitIds：成功 facts 事件缺少 hitIds 数组，送达观测不完整，须与「已知空结果」区分。
+    const entry = traceByQuery.get(id) ?? { delivered: new Set(), missingHitIds: false }
     for (const event of Array.isArray(line.events) ? line.events : []) {
       if (event?.type !== 'tool_call' || event.tool !== 'facts_search') continue
-      if (event.status !== 'success' || !Array.isArray(event.hitIds)) continue
+      if (event.status !== 'success') continue
+      if (!Array.isArray(event.hitIds)) {
+        entry.missingHitIds = true
+        continue
+      }
       for (const canonical of event.hitIds) {
-        if (typeof canonical === 'string' && canonical) set.add(canonical)
+        if (typeof canonical === 'string' && canonical) entry.delivered.add(canonical)
       }
     }
-    traceByQuery.set(id, set)
+    traceByQuery.set(id, entry)
   }
   return { recordsByQuery, ragByQuery, traceByQuery }
 }
@@ -169,9 +174,10 @@ const emptyRow = (base, verdict, reason) => ({
 
 /**
  * 核心逻辑（可注入 root、名册路径，便于隔离测试）：统计正式名命中对象的事实卡送达。
- * @param {{ runDir: string, rosterPath: string, root?: string, currentHead?: string, rosterConfirmed?: boolean }} options
+ * @param {{ runDir: string, rosterPath: string, root?: string, currentHead?: string, rosterConfirmed?: boolean, rosterDirty?: boolean }} options
+ *   rosterDirty：当前名册文件相对 HEAD 是否有未提交修改；false 表示确认干净，true 表示已修改，缺省表示无法确认。
  */
-export function observeFactsEvidence({ runDir, rosterPath, root, currentHead, rosterConfirmed = false }) {
+export function observeFactsEvidence({ runDir, rosterPath, root, currentHead, rosterConfirmed = false, rosterDirty }) {
   const resolvedRunDir = resolve(runDir)
   let formalNames = []
   let rosterError = null
@@ -187,7 +193,7 @@ export function observeFactsEvidence({ runDir, rosterPath, root, currentHead, ro
   const source = meta && typeof meta.source === 'object' && meta.source !== null ? meta.source : null
   const runningHead = typeof source?.gitHead === 'string' ? source.gitHead : null
   const rosterMatches = Boolean(rosterConfirmed)
-    || Boolean(currentHead && runningHead && runningHead === currentHead && source?.gitDirty !== true)
+    || Boolean(currentHead && runningHead && runningHead === currentHead && source?.gitDirty !== true && rosterDirty === false)
   const records = readJsonLines(join(resolvedRunDir, 'records.jsonl'))
   const traces = readJsonLines(join(resolvedRunDir, 'trace.jsonl'))
   const traceFileExists = existsSync(join(resolvedRunDir, 'trace.jsonl'))
@@ -215,7 +221,11 @@ export function observeFactsEvidence({ runDir, rosterPath, root, currentHead, ro
     if (!traceFileExists || !traceByQuery.has(id)) {
       return { ...emptyRow(base, 'undecidable', '缺少 trace，无法确认显式 facts 是否送达'), hitObjects }
     }
-    const explicitSet = traceByQuery.get(id)
+    const traceEntry = traceByQuery.get(id)
+    if (traceEntry.missingHitIds) {
+      return { ...emptyRow(base, 'undecidable', '成功 facts 事件缺少 hitIds，无法确认显式 facts 是否送达'), hitObjects }
+    }
+    const explicitSet = traceEntry.delivered
     const explicitDelivered = hitObjects.filter((name) => explicitSet.has(name))
     // 仅当仍有未被显式 facts 覆盖的对象时，RAG 附带台账才是判定送达所必需的数据。
     const pending = hitObjects.filter((name) => !explicitSet.has(name))
@@ -330,7 +340,7 @@ async function main() {
   --run <path|id>   运行目录（绝对/相对仓库根）或 bench-runs 下的 run-id，必填
   --root <path>     仓库根（默认自动定位）
   --roster <path>   名册真源路径（默认 <仓库根>/knowledge/references/名册.md；显式指定即视为确认与该运行对应）
-  --assume-roster-matches  允许用当前名册解释运行记录，即使无法确认与运行版本对应
+  --assume-roster-matches  允许用当前名册解释运行记录，即使无法确认与运行版本对应（默认仅在运行 HEAD 与当前一致、运行当时非脏树且当前名册无未提交修改时自动采用）
   --json            以 JSON 输出完整结果
   --help            显示本帮助
 
@@ -354,12 +364,22 @@ async function main() {
     process.exit(1)
   }
 
-  // 运行记录与当前 HEAD 一致且非脏树时默认采用当前名册；否则需显式确认。
+  // 运行记录与当前 HEAD 一致、运行当时非脏树且当前名册无未提交修改时默认采用当前名册；否则需显式确认。
   let currentHead
   try {
     currentHead = await gitHead(repoRoot)
   } catch {
     currentHead = undefined
+  }
+
+  // 当前名册文件在工作区是否有未提交修改：false 确认干净，true 已修改，undefined 无法确认（git 不可用）。
+  let rosterDirty
+  try {
+    const changed = await diffFiles(repoRoot, { untracked: true })
+    const relRoster = relative(repoRoot, rosterPath).split(/[\\/]/).join('/')
+    rosterDirty = changed.includes(relRoster)
+  } catch {
+    rosterDirty = undefined
   }
 
   try {
@@ -368,6 +388,7 @@ async function main() {
       rosterPath,
       root: repoRoot,
       currentHead,
+      rosterDirty,
       rosterConfirmed: Boolean(values['assume-roster-matches']) || values.roster !== undefined,
     })
     console.log(values.json ? JSON.stringify(result, null, 2) : renderObservation(result))

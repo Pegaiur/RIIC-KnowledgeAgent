@@ -147,7 +147,7 @@ describe('bench/facts-evidence-observation：正式名命中对象的事实卡�
   it('区分部分送达、附带省略、重复送达、不适用与缺失观测', () => {
     const dir = writeRunDir()
     try {
-      const result = observeFactsEvidence({ runDir: dir, rosterPath: join(dir, '名册.md'), currentHead: 'fixture-head' })
+      const result = observeFactsEvidence({ runDir: dir, rosterPath: join(dir, '名册.md'), currentHead: 'fixture-head', rosterDirty: false })
       const byId = Object.fromEntries(result.questions.map((row) => [row.id, row]))
 
       expect(byId.Q1).toMatchObject({
@@ -207,7 +207,7 @@ describe('bench/facts-evidence-observation：正式名命中对象的事实卡�
   it('渲染终端表格含统计名、字面命中说明与逐题明细', () => {
     const dir = writeRunDir()
     try {
-      const result = observeFactsEvidence({ runDir: dir, rosterPath: join(dir, '名册.md'), currentHead: 'fixture-head' })
+      const result = observeFactsEvidence({ runDir: dir, rosterPath: join(dir, '名册.md'), currentHead: 'fixture-head', rosterDirty: false })
       const text = renderObservation(result)
       expect(text).toContain('正式名命中对象的事实卡送达统计')
       expect(text).toContain('字面命中')
@@ -226,6 +226,53 @@ describe('bench/facts-evidence-observation：正式名命中对象的事实卡�
       expect(result.questions.every((row) => row.verdict === 'undecidable')).toBe(true)
       expect(result.questions[0]?.reason).toContain('名册')
       expect(result.totals).toMatchObject({ applicable: 0, undecidable: result.questions.length })
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('成功 facts 事件缺 hitIds 判不可判定，已知空结果仍按未送达判定', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'rag-facts-observation-missing-'))
+    try {
+      writeFileSync(join(dir, '名册.md'), ROSTER)
+      writeFileSync(join(dir, 'meta.json'), JSON.stringify({
+        questionIds: ['Q1', 'Q2'],
+        questionDefinitions: [
+          { id: 'Q1', category: 'fact', question: '甲干员的基建技能是什么？' },
+          { id: 'Q2', category: 'fact', question: '乙干员的基建技能是什么？' },
+        ],
+        source: { gitHead: 'fixture-head', gitDirty: false },
+      }))
+      writeFileSync(join(dir, 'records.jsonl'), [record('Q1'), record('Q2'), ''].join('\n'))
+      writeFileSync(join(dir, 'trace.jsonl'), [
+        // Q1：成功事件缺 hitIds，送达观测缺失，不得当作零送达列入 undelivered。
+        trace('Q1', [factsEvent('a', undefined)]),
+        // Q2：empty 事件是已知空结果，观测完整，按未送达判定。
+        trace('Q2', [{ ...factsEvent('b', []), status: 'empty' }]),
+        '',
+      ].join('\n'))
+      const result = observeFactsEvidence({ runDir: dir, rosterPath: join(dir, '名册.md'), currentHead: 'fixture-head', rosterDirty: false })
+      const byId = Object.fromEntries(result.questions.map((row) => [row.id, row]))
+      expect(byId.Q1).toMatchObject({ verdict: 'undecidable', hitObjects: ['甲干员'] })
+      expect(byId.Q1.reason).toContain('hitIds')
+      expect(byId.Q2).toMatchObject({ verdict: 'applicable', hitObjects: ['乙干员'], undelivered: ['乙干员'] })
+      expect(result.totals).toMatchObject({ applicable: 1, undecidable: 1 })
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('当前名册在工作区被修改或无法确认时，即便 HEAD 一致也判不可判定', () => {
+    const dir = writeRunDir()
+    try {
+      const rosterPath = join(dir, '名册.md')
+      const dirty = observeFactsEvidence({ runDir: dir, rosterPath, currentHead: 'fixture-head', rosterDirty: true })
+      expect(dirty.questions.every((row) => row.verdict === 'undecidable')).toBe(true)
+      expect(dirty.questions[0]?.reason).toContain('名册')
+      // rosterDirty 缺省（无法确认当前名册是否被修改）同样不自动认可。
+      const unknown = observeFactsEvidence({ runDir: dir, rosterPath, currentHead: 'fixture-head' })
+      expect(unknown.questions.every((row) => row.verdict === 'undecidable')).toBe(true)
+      expect(unknown.questions[0]?.reason).toContain('名册')
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
