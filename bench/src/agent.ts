@@ -150,7 +150,7 @@ export async function runQuery(
     for (;;) {
       if (sessionController.signal.aborted) throw abortErrorForSession(timedOut)
       rounds++
-      const offeredTools = toolsForRetriever(config.retriever)
+      const offeredTools = toolsForRetriever(config.retriever, config.factsQueryListLimit)
       const llmEvent: TraceLlmEvent | undefined = opts.trace
         ? { type: 'llm_call', round: rounds, offeredTools: toolNamesForRetriever(config.retriever), elapsedMs: 0 }
         : undefined

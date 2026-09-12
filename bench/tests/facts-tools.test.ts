@@ -452,7 +452,7 @@ describe('第一阶段 facts 结果 envelope', () => {
 
 describe('agent：hybrid 独立工具 schema 与系统提示', () => {
   it('hybrid 模式同时暴露 rag_search、facts_search 与 read_section', () => {
-    expect(toolsForRetriever('hybrid').map((tool) => (tool.function as { name: string }).name))
+    expect(toolsForRetriever('hybrid', 3).map((tool) => (tool.function as { name: string }).name))
       .toEqual(['rag_search', 'facts_search', 'read_section'])
   })
 

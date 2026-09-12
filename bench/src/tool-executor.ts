@@ -26,7 +26,7 @@ import {
 export type CurrentToolId = 'rag_search' | 'facts_search' | 'read_section'
 
 /** 工具 schema 发生协议变化时递增；快照保留该值供对照分组。 */
-export const TOOL_SCHEMA_VERSION = 10 as const
+export const TOOL_SCHEMA_VERSION = 11 as const
 
 export interface ToolBudgetState {
   /** 非空执行成功额度上限（每题默认 5） */
@@ -123,7 +123,8 @@ const ATTEMPT_BUDGET_HINT = '工具获准尝试次数已用尽，请依据已有
 
 type JsonObject = Record<string, unknown>
 
-const TOOL_DEFINITIONS: Record<CurrentToolId, JsonObject> = {
+/** 与配置无关的静态工具定义；facts_search 的 maxItems 由配置上限派生，见 factsSearchDefinition。 */
+const STATIC_TOOL_DEFINITIONS: Record<'rag_search' | 'read_section', JsonObject> = {
   rag_search: {
     type: 'function',
     function: {
@@ -133,21 +134,6 @@ const TOOL_DEFINITIONS: Record<CurrentToolId, JsonObject> = {
         type: 'object',
         properties: {
           query: { type: 'string', minLength: 1, description: '非空自然语言查询' },
-        },
-        required: ['query'],
-        additionalProperties: false,
-      },
-    },
-  },
-  facts_search: {
-    type: 'function',
-    function: {
-      name: 'facts_search',
-      description: '用一个完整词条精确查询干员事实卡：干员正式名、技能名、已收录技能组词、设施、阵营或职业；支持已确认别名（干员别名）、已登记子串短名、阵营规范名和搭配规范名。同名命中全部返回并保留命中路径，短名按登记返回全部长名，不做消歧；不支持简写合称，不拆词，不解析句子或多个条件。',
-      parameters: {
-        type: 'object',
-        properties: {
-          query: { type: 'string', minLength: 1, description: '一个完整名称或分类词条；保留名称内部标点。' },
         },
         required: ['query'],
         additionalProperties: false,
@@ -172,28 +158,61 @@ const TOOL_DEFINITIONS: Record<CurrentToolId, JsonObject> = {
   },
 }
 
+/**
+ * facts_search 定义：queries 为完整词条数组，maxItems 由 factsQueryListLimit 派生，
+ * 使发送给模型的 schema 与运行时校验共用同一配置来源，避免两处上限漂移。
+ */
+function factsSearchDefinition(factsQueryListLimit: number): JsonObject {
+  return {
+    type: 'function',
+    function: {
+      name: 'facts_search',
+      description: '用一个完整词条精确查询干员事实卡：干员正式名、技能名、已收录技能组词、设施、阵营或职业；支持已确认别名（干员别名）、已登记子串短名、阵营规范名和搭配规范名。同名命中全部返回并保留命中路径，短名按登记返回全部长名，不做消歧；不支持简写合称，不拆词，不解析句子或多个条件。',
+      parameters: {
+        type: 'object',
+        properties: {
+          queries: {
+            type: 'array',
+            minItems: 1,
+            maxItems: factsQueryListLimit,
+            items: { type: 'string', minLength: 1, description: '一个完整名称或分类词条；保留名称内部标点。' },
+            description: '一个或多个完整名称或分类词条；保留名称内部标点。',
+          },
+        },
+        required: ['queries'],
+        additionalProperties: false,
+      },
+    },
+  }
+}
+
+/** 按工具名取定义；facts_search 需要配置上限，其余取静态定义。 */
+function toolDefinitionFor(name: CurrentToolId, factsQueryListLimit: number): JsonObject {
+  return name === 'facts_search' ? factsSearchDefinition(factsQueryListLimit) : STATIC_TOOL_DEFINITIONS[name]
+}
+
 function allowedOperations(retriever: RetrieverId): CurrentToolId[] {
   return retriever === 'hybrid'
     ? ['rag_search', 'facts_search', 'read_section']
     : ['rag_search', 'read_section']
 }
 
-/** 返回当前模式实际发送的独立函数工具数组。 */
-export function toolsForRetriever(retriever: RetrieverId = 'hybrid'): Record<string, unknown>[] {
-  return allowedOperations(retriever).map((name) => cloneJson(TOOL_DEFINITIONS[name]))
+/** 返回当前模式实际发送的独立函数工具数组；facts maxItems 由调用方传入的配置上限派生。 */
+export function toolsForRetriever(retriever: RetrieverId, factsQueryListLimit: number): Record<string, unknown>[] {
+  return allowedOperations(retriever).map((name) => cloneJson(toolDefinitionFor(name, factsQueryListLimit)))
 }
 
 export function toolNamesForRetriever(retriever: RetrieverId = 'hybrid'): CurrentToolId[] {
   return allowedOperations(retriever)
 }
 
-/** 供运行 meta 与离线探针使用的稳定 schema 指纹。 */
-export function toolSchemaMetadata(retriever: RetrieverId = 'hybrid'): {
+/** 供运行 meta 与离线探针使用的稳定 schema 指纹；上限入参保证与发送给模型的 schema 一致。 */
+export function toolSchemaMetadata(retriever: RetrieverId, factsQueryListLimit: number): {
   toolSchemaVersion: number
   toolSchemaSha256: string
   toolNames: CurrentToolId[]
 } {
-  const tools = toolsForRetriever(retriever)
+  const tools = toolsForRetriever(retriever, factsQueryListLimit)
   const serialized = stableJson(tools)
   return {
     toolSchemaVersion: TOOL_SCHEMA_VERSION,

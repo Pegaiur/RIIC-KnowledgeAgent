@@ -75,8 +75,8 @@ export async function runBenchmark(
   const started = Date.now()
   const agentInstructions = loadKnowledgeAgentInstructions()
   const systemPrompt = buildSystemPrompt(config.retriever, agentInstructions, config.toolBudget, config.toolAttemptLimit)
-  const toolSchema = toolSchemaMetadata(config.retriever)
-  const toolDefinitions = toolsForRetriever(config.retriever)
+  const toolSchema = toolSchemaMetadata(config.retriever, config.factsQueryListLimit)
+  const toolDefinitions = toolsForRetriever(config.retriever, config.factsQueryListLimit)
   const sourceAtStart = collectSourceMetadata()
 
   // 语料 + 索引（一次构建，全部查询复用）；检索范围按 ADR-013 在装配层过滤，真源与 manifest 不变。

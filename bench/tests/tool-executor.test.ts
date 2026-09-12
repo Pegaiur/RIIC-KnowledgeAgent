@@ -19,12 +19,15 @@ function call(id: string, name: string, params: unknown): ToolCall {
   return { id, name, arguments: JSON.stringify(params) }
 }
 
+/** facts 词条上限的测试取值；断言 schema maxItems 由该上限派生。 */
+const FACTS_LIMIT = 3
+
 describe('独立函数工具 schema', () => {
   it.each([
     ['bm25', ['rag_search', 'read_section']],
     ['hybrid', ['rag_search', 'facts_search', 'read_section']],
   ] as const)('%s 只暴露当前模式允许的函数工具', (retriever, names) => {
-    const tools = toolsForRetriever(retriever)
+    const tools = toolsForRetriever(retriever, FACTS_LIMIT)
     expect(tools.map((tool) => (tool.function as { name: string }).name)).toEqual(names)
     for (const tool of tools) {
       const fn = tool.function as { name: string; parameters: Record<string, unknown> }
@@ -33,25 +36,40 @@ describe('独立函数工具 schema', () => {
     }
   })
 
-  it('facts_search schema 只有 query 一个必填字段，不暴露分类或组合参数', () => {
-    const facts = toolsForRetriever('hybrid').find((tool) => (tool.function as { name: string }).name === 'facts_search')!
-    const fn = facts.function as { name: string; description: string; parameters: { properties: Record<string, unknown>; required: string[]; additionalProperties: boolean; anyOf?: unknown[] } }
+  it('facts_search schema 以 queries 数组为唯一必填字段，maxItems 由配置上限派生', () => {
+    const facts = toolsForRetriever('hybrid', FACTS_LIMIT).find((tool) => (tool.function as { name: string }).name === 'facts_search')!
+    const fn = facts.function as { name: string; description: string; parameters: { properties: Record<string, Record<string, unknown>>; required: string[]; additionalProperties: boolean; anyOf?: unknown[] } }
     expect(fn.name).toBe('facts_search')
     expect(fn.description).toContain('完整词条')
     expect(fn.description).toContain('已确认别名')
     expect(fn.description).toContain('同名命中全部返回')
     expect(fn.description).toContain('短名按登记返回全部长名，不做消歧')
     expect(fn.description).toContain('不支持简写合称')
-    expect(fn.parameters.properties).toEqual({ query: expect.any(Object) })
-    expect(fn.parameters.required).toEqual(['query'])
+    expect(Object.keys(fn.parameters.properties)).toEqual(['queries'])
+    expect(fn.parameters.properties.queries).toMatchObject({ type: 'array', minItems: 1, maxItems: FACTS_LIMIT, items: { type: 'string' } })
+    expect(fn.parameters.required).toEqual(['queries'])
     expect(fn.parameters.additionalProperties).toBe(false)
     expect(fn.parameters.anyOf).toBeUndefined()
   })
 
+  it('facts schema 的 maxItems 随配置上限变化且先后生成互不污染', () => {
+    const maxItemsFor = (limit: number): number => {
+      const facts = toolsForRetriever('hybrid', limit).find((tool) => (tool.function as { name: string }).name === 'facts_search')!
+      const params = (facts.function as { parameters: { properties: { queries: { maxItems: number } } } }).parameters
+      return params.properties.queries.maxItems
+    }
+
+    expect(maxItemsFor(2)).toBe(2)
+    expect(maxItemsFor(5)).toBe(5)
+    // 再次以同一上限生成应与首次一致，证明无跨配置缓存残留。
+    expect(maxItemsFor(2)).toBe(2)
+    expect(toolSchemaMetadata('hybrid', 2).toolSchemaSha256).not.toBe(toolSchemaMetadata('hybrid', 5).toolSchemaSha256)
+  })
+
   it('schema 指纹只由当前实际工具数组决定', () => {
-    expect(toolSchemaMetadata('bm25')).toMatchObject({ toolSchemaVersion: 10, toolNames: ['rag_search', 'read_section'] })
-    expect(toolSchemaMetadata('bm25').toolSchemaSha256).toMatch(/^[a-f0-9]{64}$/)
-    expect(toolSchemaMetadata('bm25').toolSchemaSha256).not.toBe(toolSchemaMetadata('hybrid').toolSchemaSha256)
+    expect(toolSchemaMetadata('bm25', FACTS_LIMIT)).toMatchObject({ toolSchemaVersion: 11, toolNames: ['rag_search', 'read_section'] })
+    expect(toolSchemaMetadata('bm25', FACTS_LIMIT).toolSchemaSha256).toMatch(/^[a-f0-9]{64}$/)
+    expect(toolSchemaMetadata('bm25', FACTS_LIMIT).toolSchemaSha256).not.toBe(toolSchemaMetadata('hybrid', FACTS_LIMIT).toolSchemaSha256)
   })
 
   it('拼接的多个名称仍是合法 facts_search，未命中时执行为空查并扣点', async () => {

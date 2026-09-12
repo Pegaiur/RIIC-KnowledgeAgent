@@ -171,7 +171,7 @@ executor 已支持同一模型响应内多个 tool_calls。当多个原本独立
 ## 验收清单
 
 - [x] 配置项 factsQueryListLimit 集中于 EXPERIMENT 并贯通 BenchConfig/loadConfig/validateBenchConfig/inputs 捕获与 meta 投影，非正整数被拒绝
-- [ ] facts_search 参数为 `queries: string[]`，maxItems 动态取自配置；不同配置的 schema 互不污染
+- [x] facts_search 参数为 `queries: string[]`，maxItems 动态取自配置；不同配置的 schema 互不污染
 - [ ] 工具 description 与 knowledge/AGENTS.md 未硬编码上限数字，未引入自然语言解析或复合条件
 - [ ] 根级状态符合契约：有命中 success 扣 1 点；合法词全部未命中（含夹非法元素）empty；无合法元素 invalid_params
 - [ ] 元素级非法只记为该项 invalid 并继续其余合法词；上限按原数组长度检查

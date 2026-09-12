@@ -19,7 +19,7 @@ vi.mock('../src/provider.js', () => ({ callLLM: mockCall }))
 
 describe('agent：独立函数工具 schema', () => {
   it('按模式直接暴露独立函数工具', () => {
-    expect(toolsForRetriever('hybrid').map((tool) => (tool.function as { name: string }).name))
+    expect(toolsForRetriever('hybrid', 3).map((tool) => (tool.function as { name: string }).name))
       .toEqual(['rag_search', 'facts_search', 'read_section'])
   })
 
