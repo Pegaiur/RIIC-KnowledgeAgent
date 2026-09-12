@@ -51,6 +51,8 @@ export type ToolResultStatus =
   | 'unknown_operation'
   | 'error'
   | 'budget_exhausted'
+  /** 同一步骤中首项之外的超量调用：未执行、不计额度。 */
+  | 'protocol_rejected'
 
 export const FACTS_RESULT_VERSION = 6 as const
 
@@ -129,7 +131,7 @@ export interface KnowledgeToolContext {
 }
 
 export interface KnowledgeToolExecutor {
-  executeBatch(calls: ToolCall[]): Promise<ToolBatchResult>
+  executeStep(calls: ToolCall[]): Promise<ToolBatchResult>
   snapshot(): ToolBudgetState
 }
 
@@ -273,22 +275,23 @@ export function createKnowledgeToolExecutor(
     return undefined
   }
 
-  async function executeBatch(calls: ToolCall[]): Promise<ToolBatchResult> {
+  async function executeStep(calls: ToolCall[]): Promise<ToolBatchResult> {
     const protocolError = validateCallIds(calls)
-    // 缺失或重复 ID 会让宿主无法安全回写；整批不准入、不扣点、不执行。
+    // 缺失或重复 ID 会让宿主无法安全回写；整步不准入、不扣点、不执行。
     if (protocolError) return { results: [], snapshot: snapshot(), protocolError }
 
     const results: ToolExecutionResult[] = []
-    // 同批逐项「检查上限 → 获准 → 执行 → 结算」；后一项使用前一项结算后的状态，不做整批预扣。
-    for (const call of calls) {
-      state.requested++
-      if (state.attemptUsed >= state.attemptLimit || state.successUsed >= state.successLimit) {
-        state.denied++
-        results.push(exhaustedResult(call, state))
-        continue
-      }
+    if (calls.length === 0) return { results, snapshot: snapshot() }
+
+    // requested 含所有提出项；每次模型步骤只准入首项，其余调用不递补也不计额度。
+    state.requested += calls.length
+    const first = calls[0]!
+    if (state.attemptUsed >= state.attemptLimit || state.successUsed >= state.successLimit) {
+      state.denied++
+      results.push(exhaustedResult(first, state))
+    } else {
       state.attemptUsed++
-      const item = await executeOne(call, allowed, context, config, state)
+      const item = await executeOne(first, allowed, context, config, state)
       if (item.executed && item.status === 'success') state.successUsed++
       state.remaining = state.successLimit - state.successUsed
       item.budgetRemaining = state.remaining
@@ -296,10 +299,37 @@ export function createKnowledgeToolExecutor(
       if (hint) item.message = item.message && item.message !== hint ? `${item.message}；${hint}` : hint
       results.push(item)
     }
+
+    // 超量项以本步位置为稳定分类：不解析参数、不执行、不计额度；余额取首项结算后的值。
+    const retryAvailable = state.successUsed < state.successLimit && state.attemptUsed < state.attemptLimit
+    for (const call of calls.slice(1)) {
+      state.denied++
+      results.push(protocolRejectedResult(call, state, retryAvailable))
+    }
     return { results, snapshot: snapshot() }
   }
 
-  return { executeBatch, snapshot }
+  return { executeStep, snapshot }
+}
+
+/**
+ * 同一步骤中首项之外的超量调用：不解析参数、不执行、不占用获准尝试或成功额度。
+ * 仅当成功额度与获准尝试均仍有余额时才提示在下一步重新提出，否则提示依据已有证据作答。
+ */
+function protocolRejectedResult(call: ToolCall, state: ToolBudgetState, retryAvailable: boolean): ToolExecutionResult {
+  const advice = retryAvailable
+    ? '若仍缺这项证据，请在下一步重新提出。'
+    : '请依据已有证据作答，未覆盖部分明确说明。'
+  const message = `本次模型步骤只准入首个工具调用（单调用规则）；该调用未执行（同批超量拒绝）。${advice}`
+  return {
+    callId: call.id,
+    operation: call.name,
+    status: 'protocol_rejected',
+    executed: false,
+    data: message,
+    budgetRemaining: state.successLimit - state.successUsed,
+    message,
+  }
 }
 
 /** 超限拒绝结果：不占用获准尝试数，message 区分成功额度用尽与尝试次数用尽。 */

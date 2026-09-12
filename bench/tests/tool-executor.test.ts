@@ -3,7 +3,15 @@ import { loadConfig } from '../src/config.js'
 import { buildIndex } from '../src/retriever.js'
 import type { DocChunk, ToolCall } from '../src/types.js'
 import { getCardStore } from '../src/facts/store.js'
-import { createKnowledgeToolExecutor, serializeToolResult, toolSchemaMetadata, toolsForRetriever } from '../src/tool-executor.js'
+import {
+  createKnowledgeToolExecutor,
+  serializeToolResult,
+  toolSchemaMetadata,
+  toolsForRetriever,
+  type KnowledgeToolExecutor,
+  type ToolBudgetState,
+  type ToolExecutionResult,
+} from '../src/tool-executor.js'
 
 const chunks: DocChunk[] = [
   {
@@ -18,6 +26,26 @@ const chunks: DocChunk[] = [
 
 function call(id: string, name: string, params: unknown): ToolCall {
   return { id, name, arguments: JSON.stringify(params) }
+}
+
+/** 逐步执行：每个数组元素是一次独立模型步骤（每步只提出该步的调用）。 */
+async function runSteps(
+  executor: KnowledgeToolExecutor,
+  steps: ToolCall[][],
+): Promise<{ results: ToolExecutionResult[]; snapshot: ToolBudgetState }> {
+  const results: ToolExecutionResult[] = []
+  let snapshot = executor.snapshot()
+  for (const calls of steps) {
+    const batch = await executor.executeStep(calls)
+    results.push(...batch.results)
+    snapshot = batch.snapshot
+  }
+  return { results, snapshot }
+}
+
+/** 把一串调用拆成每步一个的独立模型步骤。 */
+function runSequential(executor: KnowledgeToolExecutor, calls: ToolCall[]) {
+  return runSteps(executor, calls.map((single) => [single]))
 }
 
 /** facts 词条上限的测试取值；断言 schema maxItems 由该上限派生。 */
@@ -80,16 +108,16 @@ describe('独立函数工具 schema', () => {
       index: buildIndex(chunks),
     }, 5)
 
-    const result = await executor.executeBatch([
+    const { results } = await runSequential(executor, [
       call('facts-bad', 'facts_search', {}),
       call('rag-bad', 'rag_search', {}),
       call('read-bad', 'read_section', {}),
     ])
 
-    expect(result.results[0]?.data).toContain('{"queries":["完整词条"]}')
-    expect(result.results[0]?.data).not.toContain('{"query":"查询"}')
-    expect(result.results[1]?.data).toContain('{"query":"查询"}')
-    expect(result.results[2]?.data).toContain('{"section_id":"检索结果中的小节 ID"}')
+    expect(results[0]?.data).toContain('{"queries":["完整词条"]}')
+    expect(results[0]?.data).not.toContain('{"query":"查询"}')
+    expect(results[1]?.data).toContain('{"query":"查询"}')
+    expect(results[2]?.data).toContain('{"section_id":"检索结果中的小节 ID"}')
   })
 
   it('schema 指纹只由当前实际工具数组决定', () => {
@@ -108,7 +136,7 @@ describe('独立函数工具 schema', () => {
       index: buildIndex([]),
     }, 1)
 
-    const result = await executor.executeBatch([
+    const result = await executor.executeStep([
       call('concat', 'facts_search', { queries: ['不存在技能甲＝不存在技能乙'] }),
     ])
 
@@ -129,7 +157,7 @@ describe('独立函数工具 schema', () => {
       onFactsStoreUsed: (store) => used.push(store),
       onFactsStoreLoadFailed: (error) => failed.push(error),
     }, 1)
-    await rag.executeBatch([call('rag', 'rag_search', { query: '制造站' })])
+    await rag.executeStep([call('rag', 'rag_search', { query: '制造站' })])
     expect(used).toHaveLength(0)
     expect(failed).toHaveLength(0)
 
@@ -140,7 +168,7 @@ describe('独立函数工具 schema', () => {
       chunks: [],
       index: buildIndex([]),
     }, 1)
-    const baselineResult = await baseline.executeBatch([call('facts', 'facts_search', { queries: ['刻俄柏'] })])
+    const baselineResult = await baseline.executeStep([call('facts', 'facts_search', { queries: ['刻俄柏'] })])
 
     const facts = createKnowledgeToolExecutor({
       config,
@@ -150,20 +178,95 @@ describe('独立函数工具 schema', () => {
       onFactsStoreUsed: (store) => { used.push(store); throw new Error('观测回调异常') },
       onFactsStoreLoadFailed: (error) => failed.push(error),
     }, 1)
-    const observedResult = await facts.executeBatch([call('facts', 'facts_search', { queries: ['刻俄柏'] })])
+    const observedResult = await facts.executeStep([call('facts', 'facts_search', { queries: ['刻俄柏'] })])
     expect(used).toHaveLength(1)
     expect(failed).toHaveLength(0)
     expect(observedResult).toEqual(baselineResult)
   })
 })
 
-describe('独立函数 executor：逐项结算双上限预算', () => {
+describe('单工具调用准入（每步只准入首项）', () => {
+  function bm25Executor(limit = 5) {
+    const config = loadConfig()
+    config.retriever = 'bm25'
+    return createKnowledgeToolExecutor({ config, query: { id: 'ADMISSION', category: 'fact', question: '单调用准入' }, chunks, index: buildIndex(chunks) }, limit)
+  }
+
+  it('同批超量项按位置记 protocol_rejected：不解析参数、不执行、不计额度', async () => {
+    const executor = bm25Executor(5)
+    const step = await executor.executeStep([
+      call('first', 'rag_search', { query: '制造站效率' }),
+      // 参数不是合法 JSON，若被解析应记 invalid_params；超量项应保持 protocol_rejected。
+      { id: 'second', name: 'rag_search', arguments: '{ 不是 JSON' },
+      call('third', 'read_section', { section_id: '不存在的小节' }),
+    ])
+
+    expect(step.results.map((item) => item.status)).toEqual(['success', 'protocol_rejected', 'protocol_rejected'])
+    expect(step.results.map((item) => item.executed)).toEqual([true, false, false])
+    expect(step.results[1]?.actualParams).toBeUndefined()
+    expect(step.results[1]?.factsResult).toBeUndefined()
+    expect(step.results[1]?.operation).toBe('rag_search')
+    expect(step.results[1]?.message).toContain('未执行')
+    expect(step.results[1]?.message).toContain('单调用')
+    expect(step.results[1]?.message).toContain('在下一步重新提出')
+    expect(step.snapshot).toMatchObject({ requested: 3, denied: 2, attemptUsed: 1, successUsed: 1, executed: 1, remaining: 4 })
+  })
+
+  it('首项无效或为空时后续调用一律拒绝，不递补第二项', async () => {
+    const executor = bm25Executor(5)
+    const step = await executor.executeStep([
+      call('invalid', 'rag_search', {}),
+      call('valid', 'rag_search', { query: '制造站效率' }),
+    ])
+
+    expect(step.results.map((item) => item.status)).toEqual(['invalid_params', 'protocol_rejected'])
+    expect(step.results[1]?.executed).toBe(false)
+    expect(step.results[1]?.message).toContain('在下一步重新提出')
+    expect(step.snapshot).toMatchObject({ requested: 2, denied: 1, attemptUsed: 1, successUsed: 0, executed: 0, remaining: 5 })
+  })
+
+  it('首项因成功额度被拒绝时，后续超量项仍记 protocol_rejected 且提示依据已有证据作答', async () => {
+    const executor = bm25Executor(1)
+    const first = await executor.executeStep([call('first', 'rag_search', { query: '制造站效率' })])
+    expect(first.results[0]?.status).toBe('success')
+
+    const second = await executor.executeStep([
+      call('denied', 'rag_search', { query: '制造站效率' }),
+      call('excess', 'rag_search', { query: '制造站效率' }),
+    ])
+
+    expect(second.results.map((item) => item.status)).toEqual(['budget_exhausted', 'protocol_rejected'])
+    expect(second.results[1]?.message).toContain('依据已有证据作答')
+    expect(second.results[1]?.message).not.toContain('在下一步重新提出')
+    expect(second.snapshot).toMatchObject({ requested: 3, denied: 2, attemptUsed: 1, successUsed: 1, executed: 1, remaining: 0 })
+  })
+
+  it('获准尝试余额耗尽时超量项不提示重试', async () => {
+    const config = loadConfig()
+    config.retriever = 'bm25'
+    config.toolAttemptLimit = 1
+    const executor = createKnowledgeToolExecutor({ config, query: { id: 'ADMISSION-ATTEMPT', category: 'fact', question: '尝试上限' }, chunks, index: buildIndex(chunks) }, 5)
+    await executor.executeStep([call('first', 'rag_search', { query: '制造站效率' })])
+
+    const second = await executor.executeStep([
+      call('denied', 'rag_search', { query: '制造站效率' }),
+      call('excess', 'rag_search', { query: '制造站效率' }),
+    ])
+
+    expect(second.results.map((item) => item.status)).toEqual(['budget_exhausted', 'protocol_rejected'])
+    expect(second.results[1]?.message).toContain('依据已有证据作答')
+    expect(second.results[1]?.message).not.toContain('在下一步重新提出')
+    expect(second.snapshot).toMatchObject({ requested: 3, denied: 2, attemptUsed: 1, successUsed: 1, remaining: 4 })
+  })
+})
+
+describe('独立函数 executor：逐步单调用结算双上限预算', () => {
   it('空结果与参数错误不扣成功额度，仅非空成功扣点，超限后按成功额度拒绝', async () => {
     const config = loadConfig()
     config.retriever = 'bm25'
     const executor = createKnowledgeToolExecutor({ config, query: { id: 'SETTLE', category: 'fact', question: '制造站效率？' }, chunks, index: buildIndex(chunks) }, 2)
 
-    const result = await executor.executeBatch([
+    const { results, snapshot } = await runSequential(executor, [
       call('a', 'rag_search', {}),
       call('b', 'rag_search', { query: '制造站效率' }),
       call('c', 'rag_search', { query: '不存在的词条' }),
@@ -171,11 +274,11 @@ describe('独立函数 executor：逐项结算双上限预算', () => {
       call('e', 'rag_search', { query: '制造站效率' }),
     ])
 
-    expect(result.results.map((item) => item.status)).toEqual(['invalid_params', 'success', 'empty', 'success', 'budget_exhausted'])
-    expect(result.results.map((item) => item.executed)).toEqual([false, true, true, true, false])
-    expect(result.results[4]?.message).toContain('成功额度已用尽')
-    expect(result.results[4]?.factsResult).toBeUndefined()
-    expect(result.snapshot).toMatchObject({ successLimit: 2, successUsed: 2, attemptLimit: 10, attemptUsed: 4, requested: 5, denied: 1, executed: 3, remaining: 0 })
+    expect(results.map((item) => item.status)).toEqual(['invalid_params', 'success', 'empty', 'success', 'budget_exhausted'])
+    expect(results.map((item) => item.executed)).toEqual([false, true, true, true, false])
+    expect(results[4]?.message).toContain('成功额度已用尽')
+    expect(results[4]?.factsResult).toBeUndefined()
+    expect(snapshot).toMatchObject({ successLimit: 2, successUsed: 2, attemptLimit: 10, attemptUsed: 4, requested: 5, denied: 1, executed: 3, remaining: 0 })
   })
 
   it('RAG 未送达正文证据（仅截断头部）判空并免扣成功额度，不拒绝后续调用', async () => {
@@ -184,15 +287,15 @@ describe('独立函数 executor：逐项结算双上限预算', () => {
     config.maxContextChars = 1
     const executor = createKnowledgeToolExecutor({ config, query: { id: 'RAG-NO-BODY', category: 'fact', question: '制造站效率？' }, chunks, index: buildIndex(chunks) }, 1)
 
-    const result = await executor.executeBatch([
+    const { results, snapshot } = await runSequential(executor, [
       call('a', 'rag_search', { query: '制造站效率' }),
       call('b', 'rag_search', { query: '制造站效率' }),
     ])
 
-    expect(result.results.map((item) => item.status)).toEqual(['empty', 'empty'])
-    expect(result.results.every((item) => item.executed)).toBe(true)
-    expect(result.results[0]?.injectedIds).toEqual([])
-    expect(result.snapshot).toMatchObject({ successUsed: 0, attemptUsed: 2, denied: 0, executed: 2, remaining: 1 })
+    expect(results.map((item) => item.status)).toEqual(['empty', 'empty'])
+    expect(results.every((item) => item.executed)).toBe(true)
+    expect(results[0]?.injectedIds).toEqual([])
+    expect(snapshot).toMatchObject({ successUsed: 0, attemptUsed: 2, denied: 0, executed: 2, remaining: 1 })
   })
 
   it('尝试次数上限与成败无关：连续失败占满后拒绝，成功余额仍在', async () => {
@@ -202,11 +305,11 @@ describe('独立函数 executor：逐项结算双上限预算', () => {
     const executor = createKnowledgeToolExecutor({ config, query: { id: 'ATTEMPT', category: 'fact', question: '参数试错' }, chunks, index: buildIndex(chunks) }, 5)
     const calls = Array.from({ length: 5 }, (_, i) => call(`bad-${i + 1}`, 'rag_search', {}))
 
-    const result = await executor.executeBatch(calls)
+    const { results, snapshot } = await runSequential(executor, calls)
 
-    expect(result.results.map((item) => item.status)).toEqual(['invalid_params', 'invalid_params', 'invalid_params', 'budget_exhausted', 'budget_exhausted'])
-    expect(result.results[2]?.message).toContain('获准尝试次数已用尽')
-    expect(result.snapshot).toMatchObject({ successUsed: 0, attemptUsed: 3, attemptLimit: 3, requested: 5, denied: 2, executed: 0, remaining: 5 })
+    expect(results.map((item) => item.status)).toEqual(['invalid_params', 'invalid_params', 'invalid_params', 'budget_exhausted', 'budget_exhausted'])
+    expect(results[2]?.message).toContain('获准尝试次数已用尽')
+    expect(snapshot).toMatchObject({ successUsed: 0, attemptUsed: 3, attemptLimit: 3, requested: 5, denied: 2, executed: 0, remaining: 5 })
   })
 
   it('两项上限同时用尽时优先提示成功额度', async () => {
@@ -215,16 +318,16 @@ describe('独立函数 executor：逐项结算双上限预算', () => {
     config.toolAttemptLimit = 1
     const executor = createKnowledgeToolExecutor({ config, query: { id: 'BOTH', category: 'fact', question: '双限' }, chunks, index: buildIndex(chunks) }, 1)
 
-    const result = await executor.executeBatch([
+    const { results, snapshot } = await runSequential(executor, [
       call('a', 'rag_search', { query: '制造站效率' }),
       call('b', 'rag_search', { query: '制造站效率' }),
     ])
 
-    expect(result.results[0]).toMatchObject({ status: 'success' })
-    expect(result.results[0]?.message).toContain('成功额度已用尽')
-    expect(result.results[1]).toMatchObject({ status: 'budget_exhausted' })
-    expect(result.results[1]?.message).toContain('成功额度已用尽')
-    expect(result.snapshot).toMatchObject({ successLimit: 1, successUsed: 1, attemptLimit: 1, attemptUsed: 1, denied: 1, remaining: 0 })
+    expect(results[0]).toMatchObject({ status: 'success' })
+    expect(results[0]?.message).toContain('成功额度已用尽')
+    expect(results[1]).toMatchObject({ status: 'budget_exhausted' })
+    expect(results[1]?.message).toContain('成功额度已用尽')
+    expect(snapshot).toMatchObject({ successLimit: 1, successUsed: 1, attemptLimit: 1, attemptUsed: 1, denied: 1, remaining: 0 })
   })
 
   it('最后一次获准尝试耗尽尝试次数时提示尝试次数已用尽，即使成功余额大于零', async () => {
@@ -233,29 +336,14 @@ describe('独立函数 executor：逐项结算双上限预算', () => {
     config.toolAttemptLimit = 2
     const executor = createKnowledgeToolExecutor({ config, query: { id: 'LAST-ATTEMPT', category: 'fact', question: '空结果边界' }, chunks, index: buildIndex(chunks) }, 5)
 
-    const result = await executor.executeBatch([
+    const { results, snapshot } = await runSequential(executor, [
       call('a', 'rag_search', { query: '不存在的词条甲' }),
       call('b', 'rag_search', { query: '不存在的词条乙' }),
     ])
 
-    expect(result.results.every((item) => item.status === 'empty')).toBe(true)
-    expect(result.results[1]?.message).toContain('获准尝试次数已用尽')
-    expect(result.snapshot).toMatchObject({ successUsed: 0, attemptUsed: 2, attemptLimit: 2, remaining: 5 })
-  })
-
-  it('批内顺序结算：前一项参数错误不阻止后一项使用最后一个成功额度', async () => {
-    const config = loadConfig()
-    config.retriever = 'bm25'
-    const executor = createKnowledgeToolExecutor({ config, query: { id: 'ORDER', category: 'fact', question: '逐项结算' }, chunks, index: buildIndex(chunks) }, 1)
-
-    const result = await executor.executeBatch([
-      call('a', 'rag_search', {}),
-      call('b', 'rag_search', { query: '制造站效率' }),
-      call('c', 'rag_search', { query: '制造站效率' }),
-    ])
-
-    expect(result.results.map((item) => item.status)).toEqual(['invalid_params', 'success', 'budget_exhausted'])
-    expect(result.snapshot).toMatchObject({ successUsed: 1, attemptUsed: 2, requested: 3, denied: 1 })
+    expect(results.every((item) => item.status === 'empty')).toBe(true)
+    expect(results[1]?.message).toContain('获准尝试次数已用尽')
+    expect(snapshot).toMatchObject({ successUsed: 0, attemptUsed: 2, attemptLimit: 2, remaining: 5 })
   })
 
   it('第五次成功扣点后拒绝第六次，每项余额按结算后状态生成', async () => {
@@ -263,14 +351,14 @@ describe('独立函数 executor：逐项结算双上限预算', () => {
     const executor = createKnowledgeToolExecutor({ config, query: { id: 'BATCH-5', category: 'fact', question: '查询' }, chunks, index: buildIndex(chunks) }, 5)
     const calls = Array.from({ length: 6 }, (_, i) => call(`call-${i + 1}`, 'rag_search', { query: '制造站效率' }))
 
-    const result = await executor.executeBatch(calls)
+    const { results, snapshot } = await runSequential(executor, calls)
 
-    expect(result.results.slice(0, 5).every((item) => item.status === 'success' && item.executed)).toBe(true)
-    expect(result.results.map((item) => item.budgetRemaining)).toEqual([4, 3, 2, 1, 0, 0])
-    expect(result.results[5]).toMatchObject({ status: 'budget_exhausted', executed: false })
-    expect(result.results[4]?.message).toContain('成功额度已用尽')
-    expect(JSON.parse(serializeToolResult(result.results[4]!))).toMatchObject({ message: expect.stringContaining('依据已有证据作答') })
-    expect(result.snapshot).toMatchObject({ successUsed: 5, attemptUsed: 5, executed: 5, denied: 1 })
+    expect(results.slice(0, 5).every((item) => item.status === 'success' && item.executed)).toBe(true)
+    expect(results.map((item) => item.budgetRemaining)).toEqual([4, 3, 2, 1, 0, 0])
+    expect(results[5]).toMatchObject({ status: 'budget_exhausted', executed: false })
+    expect(results[4]?.message).toContain('成功额度已用尽')
+    expect(JSON.parse(serializeToolResult(results[4]!))).toMatchObject({ message: expect.stringContaining('依据已有证据作答') })
+    expect(snapshot).toMatchObject({ successUsed: 5, attemptUsed: 5, executed: 5, denied: 1 })
   })
 
   it('facts 空查不扣成功额度，后续合法调用仍执行', async () => {
@@ -283,18 +371,18 @@ describe('独立函数 executor：逐项结算双上限预算', () => {
       call('fact-3', 'facts_search', { queries: ['制造站'] }),
     ]
 
-    const result = await executor.executeBatch(calls)
-    expect(result.results[0]).toMatchObject({ status: 'success', executed: true })
-    expect(result.results[1]).toMatchObject({ status: 'empty', executed: true, factsResult: { matchedCount: 0, returnedCount: 0, complete: true } })
-    expect(result.results[2]).toMatchObject({ status: 'success', executed: true })
-    expect(result.snapshot).toMatchObject({ successUsed: 2, attemptUsed: 3, requested: 3, denied: 0, executed: 3, remaining: 3 })
+    const { results, snapshot } = await runSequential(executor, calls)
+    expect(results[0]).toMatchObject({ status: 'success', executed: true })
+    expect(results[1]).toMatchObject({ status: 'empty', executed: true, factsResult: { matchedCount: 0, returnedCount: 0, complete: true } })
+    expect(results[2]).toMatchObject({ status: 'success', executed: true })
+    expect(snapshot).toMatchObject({ successUsed: 2, attemptUsed: 3, requested: 3, denied: 0, executed: 3, remaining: 3 })
   })
 
   it('T12 facts 宽查按完整卡集合返回，计数按卡去重且不套 RAG 字符上限', async () => {
     const config = loadConfig()
     config.retriever = 'hybrid'
     const executor = createKnowledgeToolExecutor({ config, query: { id: 'FACTS-WIDE', category: 'fact', question: '进驻设施的干员' }, chunks, index: buildIndex(chunks) }, 5)
-    const result = await executor.executeBatch([call('wide', 'facts_search', { queries: ['制造站'] })])
+    const result = await executor.executeStep([call('wide', 'facts_search', { queries: ['制造站'] })])
     const item = result.results[0]!
     expect(item.status).toBe('success')
     expect(item.factsResult).toMatchObject({
@@ -311,7 +399,7 @@ describe('独立函数 executor：逐项结算双上限预算', () => {
     const config = loadConfig()
     config.retriever = 'hybrid'
     const executor = createKnowledgeToolExecutor({ config, query: { id: 'FACTS-RESOLUTION', category: 'fact', question: '别名查询' }, chunks, index: buildIndex(chunks) }, 2)
-    const result = await executor.executeBatch([call('alias', 'facts_search', { queries: ['维娜'] })])
+    const result = await executor.executeStep([call('alias', 'facts_search', { queries: ['维娜'] })])
     const item = result.results[0]!
     expect(item).toMatchObject({
       status: 'success',
@@ -331,7 +419,7 @@ describe('独立函数 executor：逐项结算双上限预算', () => {
   it('旧 knowledge 外壳被视为未知工具，不自动解包', async () => {
     const config = loadConfig()
     const executor = createKnowledgeToolExecutor({ config, query: { id: 'LEGACY', category: 'fact', question: '查询' }, chunks, index: buildIndex(chunks) }, 5)
-    const result = await executor.executeBatch([call('legacy', 'knowledge', { operation: 'rag_search', params: { query: '查询' } })])
+    const result = await executor.executeStep([call('legacy', 'knowledge', { operation: 'rag_search', params: { query: '查询' } })])
 
     expect(result.results[0]).toMatchObject({ operation: 'knowledge', status: 'unknown_operation', executed: false })
     expect(result.snapshot).toMatchObject({ successUsed: 0, attemptUsed: 1, executed: 0 })
@@ -341,41 +429,41 @@ describe('独立函数 executor：逐项结算双上限预算', () => {
     const config = loadConfig()
     config.retriever = retriever
     const executor = createKnowledgeToolExecutor({ config, query: { id: 'LEGACY-FACTS', category: 'fact', question: '历史入口' }, chunks, index: buildIndex(chunks) }, 2)
-    const result = await executor.executeBatch([
+    const { results, snapshot } = await runSequential(executor, [
       call('old-lookup', 'lookup', { term: '刻俄柏' }),
       call('old-query', 'query_operators', { room: '制造站' }),
     ])
 
-    expect(result.results).toMatchObject([
+    expect(results).toMatchObject([
       { operation: 'lookup', status: 'unknown_operation', executed: false },
       { operation: 'query_operators', status: 'unknown_operation', executed: false },
     ])
-    expect(result.results.every((item) => item.factsResult === undefined)).toBe(true)
-    expect(result.snapshot).toMatchObject({ successUsed: 0, attemptUsed: 2, requested: 2, executed: 0, remaining: 2 })
+    expect(results.every((item) => item.factsResult === undefined)).toBe(true)
+    expect(snapshot).toMatchObject({ successUsed: 0, attemptUsed: 2, requested: 2, executed: 0, remaining: 2 })
   })
 
   it('未知字段、空白、错误类型和只有 excludeIds 都拒绝且不执行底层检索', async () => {
     const config = loadConfig()
     config.retriever = 'hybrid'
     const executor = createKnowledgeToolExecutor({ config, query: { id: 'INVALID', category: 'fact', question: '查询' }, chunks, index: buildIndex(chunks) }, 5)
-    const result = await executor.executeBatch([
+    const { results, snapshot } = await runSequential(executor, [
       call('a', 'facts_search', { query: '   ' }),
       call('b', 'facts_search', { query: '刻俄柏', extra: true }),
       call('c', 'facts_search', { excludeIds: ['刻俄柏'] }),
       call('d', 'facts_search', { query: 1 }),
     ])
 
-    expect(result.results.map((item) => item.status)).toEqual(['invalid_params', 'invalid_params', 'invalid_params', 'invalid_params'])
-    expect(result.results.every((item) => !item.executed)).toBe(true)
-    expect(result.snapshot).toMatchObject({ successUsed: 0, attemptUsed: 4, executed: 0, denied: 0, remaining: 5 })
-    expect(result.results[0]?.data).toContain('query')
+    expect(results.map((item) => item.status)).toEqual(['invalid_params', 'invalid_params', 'invalid_params', 'invalid_params'])
+    expect(results.every((item) => !item.executed)).toBe(true)
+    expect(snapshot).toMatchObject({ successUsed: 0, attemptUsed: 4, executed: 0, denied: 0, remaining: 5 })
+    expect(results[0]?.data).toContain('query')
   })
 
   it('重复 call ID 作为协议失败，工具不执行且预算不变', async () => {
     const config = loadConfig()
     const executor = createKnowledgeToolExecutor({ config, query: { id: 'PROTOCOL', category: 'fact', question: '查询' }, chunks, index: buildIndex(chunks) }, 5)
 
-    const result = await executor.executeBatch([
+    const result = await executor.executeStep([
       call('same', 'rag_search', { query: '甲' }),
       call('same', 'rag_search', { query: '乙' }),
     ])
@@ -392,7 +480,7 @@ describe('独立函数 executor：逐项结算双上限预算', () => {
     const config = loadConfig()
     const executor = createKnowledgeToolExecutor({ config, query: { id: 'PROTOCOL-EMPTY', category: 'fact', question: '查询' }, chunks, index: buildIndex(chunks) }, 5)
 
-    const result = await executor.executeBatch([call(id, 'rag_search', { query: '查询' })])
+    const result = await executor.executeStep([call(id, 'rag_search', { query: '查询' })])
 
     expect(result.protocolError).toContain('call ID')
     expect(result.results).toEqual([])
@@ -403,7 +491,7 @@ describe('独立函数 executor：逐项结算双上限预算', () => {
     const config = loadConfig()
     const executor = createKnowledgeToolExecutor({ config, query: { id: 'PROTOCOL-MISSING', category: 'fact', question: '查询' }, chunks, index: buildIndex(chunks) }, 5)
 
-    const result = await executor.executeBatch([{
+    const result = await executor.executeStep([{
       name: 'rag_search',
       arguments: '{"query":"查询"}',
     } as unknown as ToolCall])
@@ -417,7 +505,7 @@ describe('独立函数 executor：逐项结算双上限预算', () => {
     const config = loadConfig()
     const executor = createKnowledgeToolExecutor({ config, query: { id: 'PROTOCOL-TYPE', category: 'fact', question: '查询' }, chunks, index: buildIndex(chunks) }, 5)
 
-    const result = await executor.executeBatch([{
+    const result = await executor.executeStep([{
       id: 123,
       name: 'rag_search',
       arguments: '{"query":"查询"}',
@@ -446,7 +534,7 @@ describe('facts_search 多词分段、去重与原子性', () => {
 
   it('重复词保留各自分段，正文只首现一次，底层只查询一次', async () => {
     const spy = vi.spyOn(getCardStore(), 'factsSearch')
-    const batch = await multiExecutor().executeBatch([call('dup', 'facts_search', { queries: ['刻俄柏', '刻俄柏'] })])
+    const batch = await multiExecutor().executeStep([call('dup', 'facts_search', { queries: ['刻俄柏', '刻俄柏'] })])
     const item = batch.results[0]!
     expect(item.status).toBe('success')
     expect(item.factsResult?.scope).toEqual({ queries: ['刻俄柏', '刻俄柏'] })
@@ -463,7 +551,7 @@ describe('facts_search 多词分段、去重与原子性', () => {
   })
 
   it('别名重叠按首次出现段保留完整卡，后续段仅列名并引用首次段号', async () => {
-    const batch = await multiExecutor().executeBatch([call('overlap', 'facts_search', { queries: ['推王', '推进之王'] })])
+    const batch = await multiExecutor().executeStep([call('overlap', 'facts_search', { queries: ['推王', '推进之王'] })])
     const item = batch.results[0]!
     expect(item.hitIds).toEqual(['推进之王', '维娜·维多利亚'])
     expect(item.data).toContain('第 1 段｜推王')
@@ -474,8 +562,8 @@ describe('facts_search 多词分段、去重与原子性', () => {
 
   it('去重仅限本次调用：另一次 facts_search 仍返回完整卡', async () => {
     const executor = multiExecutor()
-    const first = await executor.executeBatch([call('re-1', 'facts_search', { queries: ['刻俄柏'] })])
-    const second = await executor.executeBatch([call('re-2', 'facts_search', { queries: ['刻俄柏'] })])
+    const first = await executor.executeStep([call('re-1', 'facts_search', { queries: ['刻俄柏'] })])
+    const second = await executor.executeStep([call('re-2', 'facts_search', { queries: ['刻俄柏'] })])
     expect(first.results[0]?.data).toContain('【刻俄柏】')
     expect(second.results[0]?.data).toContain('【刻俄柏】')
     expect(second.results[0]?.data).not.toContain('已在第')
@@ -489,7 +577,7 @@ describe('facts_search 多词分段、去重与原子性', () => {
       return original(term)
     })
     const sharedInjected: string[] = []
-    const batch = await multiExecutor(sharedInjected).executeBatch([call('boom', 'facts_search', { queries: ['刻俄柏', '制造站'] })])
+    const batch = await multiExecutor(sharedInjected).executeStep([call('boom', 'facts_search', { queries: ['刻俄柏', '制造站'] })])
     const item = batch.results[0]!
     expect(item).toMatchObject({ status: 'error', executed: true, fatal: true })
     expect(item.message).toBe('中途 store 抛错')
@@ -501,7 +589,7 @@ describe('facts_search 多词分段、去重与原子性', () => {
 
   it('含非法项或重复项的超限数组仍整批拒绝且不查询 store', async () => {
     const spy = vi.spyOn(getCardStore(), 'factsSearch')
-    const batch = await multiExecutor().executeBatch([call('over', 'facts_search', { queries: [1, '刻俄柏', '刻俄柏', '制造站'] })])
+    const batch = await multiExecutor().executeStep([call('over', 'facts_search', { queries: [1, '刻俄柏', '刻俄柏', '制造站'] })])
     const item = batch.results[0]!
     expect(item).toMatchObject({ status: 'invalid_params', executed: false })
     expect(item.factsResult).toBeUndefined()
@@ -510,7 +598,7 @@ describe('facts_search 多词分段、去重与原子性', () => {
 
   it('恰好等于上限的数组被接受，逐项执行且空查不扣点', async () => {
     const spy = vi.spyOn(getCardStore(), 'factsSearch')
-    const batch = await multiExecutor().executeBatch([call('exact', 'facts_search', { queries: ['__不存在甲__', '__不存在乙__', '__不存在丙__'] })])
+    const batch = await multiExecutor().executeStep([call('exact', 'facts_search', { queries: ['__不存在甲__', '__不存在乙__', '__不存在丙__'] })])
     const item = batch.results[0]!
     expect(item).toMatchObject({ status: 'empty', executed: true })
     expect(item.factsResult?.resolution.items).toHaveLength(3)
@@ -523,7 +611,7 @@ describe('facts_search 多词分段、去重与原子性', () => {
       paths: [{ kind: 'alias', term: '测试登记别名', targets: ['operator:测试目标'], memberIds: [], evidence: [] }],
       matches: [],
     })
-    const batch = await multiExecutor().executeBatch([call('known-empty', 'facts_search', { queries: ['测试登记别名'] })])
+    const batch = await multiExecutor().executeStep([call('known-empty', 'facts_search', { queries: ['测试登记别名'] })])
     const item = batch.results[0]!
     const envelope = JSON.parse(serializeToolResult(item))
     expect(envelope).toMatchObject({
@@ -541,7 +629,7 @@ describe('facts_search 多词分段、去重与原子性', () => {
   })
 
   it('非法段占位后，后续重复词的引用仍指向首次出现的段号', async () => {
-    const batch = await multiExecutor().executeBatch([call('gap', 'facts_search', { queries: ['刻俄柏', 1, '刻俄柏'] })])
+    const batch = await multiExecutor().executeStep([call('gap', 'facts_search', { queries: ['刻俄柏', 1, '刻俄柏'] })])
     const item = batch.results[0]!
     expect(item.data).toContain('第 2 段｜参数错误：第 2 项必须是非空字符串')
     expect(item.data).toContain('第 3 段｜刻俄柏')
@@ -549,7 +637,7 @@ describe('facts_search 多词分段、去重与原子性', () => {
   })
 
   it('v6 输出只携带 resolution.items，不同时携带 v5 的 resolution.paths', async () => {
-    const batch = await multiExecutor().executeBatch([call('shape', 'facts_search', { queries: ['刻俄柏'] })])
+    const batch = await multiExecutor().executeStep([call('shape', 'facts_search', { queries: ['刻俄柏'] })])
     const envelope = JSON.parse(serializeToolResult(batch.results[0]!)) as { factsResultVersion: number; resolution: Record<string, unknown> }
     expect(envelope.factsResultVersion).toBe(6)
     expect(envelope.resolution).toHaveProperty('items')

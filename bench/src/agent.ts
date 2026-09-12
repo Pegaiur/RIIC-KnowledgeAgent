@@ -98,7 +98,7 @@ export function buildSystemPrompt(
     '## 本次运行能力',
     `- 检索模式：${retriever}`,
     `- 可用工具：${toolNames.join('、')}`,
-    `- 工具预算：${toolBudget} 点成功额度 + ${toolAttemptLimit} 次获准尝试上限；仅非空执行成功扣 1 点，空结果、参数错误与执行错误不扣成功额度但各占一次尝试；同批调用逐项结算，任一上限用尽后新增调用不会执行。`,
+    `- 工具预算：${toolBudget} 点成功额度 + ${toolAttemptLimit} 次获准尝试上限；仅非空执行成功扣 1 点，空结果、参数错误与执行错误不扣成功额度但各占一次尝试；每次模型步骤只准入首个工具调用，同批额外调用只被拒绝并回写；任一上限用尽后新增调用不会执行。`,
   ]
   return `${agentInstructions.trim()}\n\n${runtime.join('\n')}`
 }
@@ -246,7 +246,7 @@ export async function runQuery(
           tool_calls: executorCalls.map((tc) => ({ id: tc.id, type: 'function' as const, function: { name: tc.name, arguments: tc.arguments } })),
         })
         const budgetBefore = executor.snapshot()
-        const batch = await awaitWithAbort(executor.executeBatch(executorCalls), sessionController.signal)
+        const batch = await awaitWithAbort(executor.executeStep(executorCalls), sessionController.signal)
         if (batch.protocolError) {
           const protocolStats: ToolBatchStats = {
             requested: executorCalls.length,
@@ -269,11 +269,11 @@ export async function runQuery(
 
         const toolBatch: ToolBatchStats = {
           requested: executorCalls.length,
-          granted: batch.results.filter((item) => item.status !== 'budget_exhausted').length,
+          granted: batch.results.filter((item) => !isDeniedStatus(item.status)).length,
           executed: batch.results.filter((item) => item.executed).length,
-          denied: batch.results.filter((item) => item.status === 'budget_exhausted').length,
+          denied: batch.results.filter((item) => isDeniedStatus(item.status)).length,
           errors: batch.results.filter((item) => isToolErrorStatus(item.status)).length,
-          attempts: batch.results.filter((item) => item.status !== 'budget_exhausted').length,
+          attempts: batch.results.filter((item) => !isDeniedStatus(item.status)).length,
           successes: batch.results.filter((item) => item.executed && item.status === 'success').length,
           hitCount: batch.results.filter((item) => item.executed && Array.isArray(item.hitIds) && item.hitIds.length > 0).length,
           hitUnknown: batch.results.filter((item) => item.executed && !Array.isArray(item.hitIds)).length,
@@ -282,7 +282,7 @@ export async function runQuery(
           resultChars: 0,
         }
         record.toolBatch = toolBatch
-        record.ragDelivery = batch.results.filter((item) => item.operation === 'rag_search').map((item) => ({
+        record.ragDelivery = batch.results.filter((item) => item.operation === 'rag_search' && item.status !== 'protocol_rejected').map((item) => ({
           callId: item.callId,
           status: item.status,
           // 未执行的拒绝/参数错误确认为零；执行异常缺观测时保持不可用。
@@ -331,6 +331,7 @@ export async function runQuery(
           if (item.fatal) fatalResult = item
         }
         toolTrace.push(batch.results
+          .filter((item) => item.status !== 'protocol_rejected')
           .map((item) => item.operation)
           .filter((name): name is ToolId => typeof name === 'string' && isObservedTool(name)))
         if (fatalResult) throw new AgentExecutionError(fatalResult.message ?? '工具执行失败', 'tool_error', 'tool')
@@ -469,6 +470,11 @@ function createCostRecord(
 
 function isToolErrorStatus(status: ToolExecutionResult['status']): boolean {
   return status === 'invalid_params' || status === 'unknown_operation' || status === 'error'
+}
+
+/** 未获准执行的拒绝：预算耗尽与同批超量；不计入获准尝试或执行。 */
+function isDeniedStatus(status: ToolExecutionResult['status']): boolean {
+  return status === 'budget_exhausted' || status === 'protocol_rejected'
 }
 
 function abortErrorForSession(timedOut: boolean): AgentExecutionError {

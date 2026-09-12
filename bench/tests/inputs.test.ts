@@ -250,7 +250,7 @@ describe('运行输入记录', () => {
         onFactsStoreUsed: (store) => used.push(store),
         onFactsStoreLoadFailed: (error) => failures.push(error),
       }, 1)
-      const ragResult = await rag.executeBatch([{ id: 'rag', name: 'rag_search', arguments: JSON.stringify({ query: '检索' }) }])
+      const ragResult = await rag.executeStep([{ id: 'rag', name: 'rag_search', arguments: JSON.stringify({ query: '检索' }) }])
       expect(ragResult.results[0]).toMatchObject({ status: 'success', executed: true })
       expect(used).toHaveLength(0)
       expect(failures).toHaveLength(0)
@@ -263,7 +263,7 @@ describe('运行输入记录', () => {
         onFactsStoreUsed: () => { throw new Error('成功观测不应触发') },
         onFactsStoreLoadFailed: (error) => { failures.push(error); throw new Error('失败观测异常') },
       }, 1)
-      const factsResult = await facts.executeBatch([{ id: 'facts', name: 'facts_search', arguments: JSON.stringify({ queries: ['刻俄柏'] }) }])
+      const factsResult = await facts.executeStep([{ id: 'facts', name: 'facts_search', arguments: JSON.stringify({ queries: ['刻俄柏'] }) }])
       expect(factsResult.results[0]).toMatchObject({ status: 'error', executed: true, message: loadError.message, actualParams: { queries: ['刻俄柏'] } })
       expect(failures).toHaveLength(1)
       expect(failures[0]).toBe(loadError)

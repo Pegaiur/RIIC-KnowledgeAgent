@@ -409,13 +409,13 @@ describe('第一阶段 facts 结果 envelope', () => {
       index: buildIndex([]),
     }, 5)
 
-    const result = await executor.executeBatch([
-      { id: 'empty-one', name: 'facts_search', arguments: '{"queries":["__不存在的规范名_核查__"]}' },
-      { id: 'empty-two', name: 'facts_search', arguments: '{"queries":["不存在设施"]}' },
-    ])
+    // 每步只准入一个调用，两次空查拆成两个独立模型步骤。
+    const first = await executor.executeStep([{ id: 'empty-one', name: 'facts_search', arguments: '{"queries":["__不存在的规范名_核查__"]}' }])
+    const second = await executor.executeStep([{ id: 'empty-two', name: 'facts_search', arguments: '{"queries":["不存在设施"]}' }])
+    const results = [first.results[0]!, second.results[0]!]
 
-    expect(result.results).toHaveLength(2)
-    for (const item of result.results) {
+    expect(results).toHaveLength(2)
+    for (const item of results) {
       expect(item).toMatchObject({ status: 'empty', executed: true, hitIds: [], injectedIds: [], factsResult: {
         factsResultVersion: 6, matchedCount: 0, returnedCount: 0, complete: true,
         resolution: { items: [{ index: 0, status: 'empty', paths: [], canonicals: [], message: null }] },
@@ -425,9 +425,9 @@ describe('第一阶段 facts 结果 envelope', () => {
        expect(envelope).toMatchObject({ status: 'empty', executed: true, factsResultVersion: 6, matchedCount: 0, returnedCount: 0, complete: true, resolution: { items: [{ index: 0, status: 'empty' }] } })
        expect(envelope.data).toContain('未收录精确词条')
     }
-    expect(JSON.parse(serializeToolResult(result.results[0]!)).scope).toEqual({ queries: ['__不存在的规范名_核查__'] })
-    expect(JSON.parse(serializeToolResult(result.results[1]!)).scope).toEqual({ queries: ['不存在设施'] })
-    expect(result.snapshot).toMatchObject({ successUsed: 0, attemptUsed: 2, executed: 2, remaining: 5 })
+    expect(JSON.parse(serializeToolResult(results[0]!)).scope).toEqual({ queries: ['__不存在的规范名_核查__'] })
+    expect(JSON.parse(serializeToolResult(results[1]!)).scope).toEqual({ queries: ['不存在设施'] })
+    expect(second.snapshot).toMatchObject({ successUsed: 0, attemptUsed: 2, executed: 2, remaining: 5 })
   })
 
   it('T07 参数错误不携带事实结果元数据，合法未知值仍是空查', async () => {
@@ -440,14 +440,12 @@ describe('第一阶段 facts 结果 envelope', () => {
       index: buildIndex([]),
     }, 5)
 
-    const result = await executor.executeBatch([
-      { id: 'invalid', name: 'facts_search', arguments: '{"queries":["   "]}' },
-      { id: 'unknown-but-valid', name: 'facts_search', arguments: '{"queries":["不存在职业"]}' },
-    ])
-    expect(result.results[0]).toMatchObject({ status: 'invalid_params', executed: false })
-    expect(result.results[0]?.factsResult).toBeUndefined()
-    expect(JSON.parse(serializeToolResult(result.results[0]!))).not.toHaveProperty('factsResultVersion')
-    expect(result.results[1]).toMatchObject({ status: 'empty', executed: true, factsResult: { factsResultVersion: 6, matchedCount: 0, complete: true, resolution: { items: [{ index: 0, status: 'empty' }] } } })
+    const invalid = await executor.executeStep([{ id: 'invalid', name: 'facts_search', arguments: '{"queries":["   "]}' }])
+    const valid = await executor.executeStep([{ id: 'unknown-but-valid', name: 'facts_search', arguments: '{"queries":["不存在职业"]}' }])
+    expect(invalid.results[0]).toMatchObject({ status: 'invalid_params', executed: false })
+    expect(invalid.results[0]?.factsResult).toBeUndefined()
+    expect(JSON.parse(serializeToolResult(invalid.results[0]!))).not.toHaveProperty('factsResultVersion')
+    expect(valid.results[0]).toMatchObject({ status: 'empty', executed: true, factsResult: { factsResultVersion: 6, matchedCount: 0, complete: true, resolution: { items: [{ index: 0, status: 'empty' }] } } })
   })
 })
 
@@ -812,9 +810,17 @@ describe('runQuery（hybrid 模式）', () => {
         content: null,
         toolCalls: [
           { id: 'call_rag', name: 'rag_search', arguments: '{"query":"制造站 效率计算"}' },
-          { id: 'call_facts', name: 'facts_search', arguments: '{"queries":["刻俄柏"]}' },
         ],
         usage: { input: 100, output: 50, cached: 0, reasoning: 0 },
+        model: 'qwen',
+        truncated: false,
+      })
+      .mockResolvedValueOnce({
+        content: null,
+        toolCalls: [
+          { id: 'call_facts', name: 'facts_search', arguments: '{"queries":["刻俄柏"]}' },
+        ],
+        usage: { input: 120, output: 50, cached: 0, reasoning: 0 },
         model: 'qwen',
         truncated: false,
       })
@@ -835,11 +841,12 @@ describe('runQuery（hybrid 模式）', () => {
 
     const exposed = (mockCall.mock.calls[0]?.[1] as Record<string, unknown>[]).map(toolName)
     expect(exposed).toEqual(['rag_search', 'facts_search', 'read_section'])
-    expect(result.toolTrace[0]).toEqual(['rag_search', 'facts_search'])
+    expect(result.toolTrace).toEqual([['rag_search'], ['facts_search']])
     expect(result.injectedIds).toEqual(['base/机制-制造站.md#效率计算'])
-    const secondMessages = mockCall.mock.calls[1]?.[0] as Array<{ role: string; tool_call_id?: string; content: string }>
-    expect(secondMessages.some((message) => message.role === 'tool' && message.tool_call_id === 'call_rag')).toBe(true)
-    expect(secondMessages.some((message) => message.role === 'tool' && message.tool_call_id === 'call_facts' && message.content.includes('刻俄柏'))).toBe(true)
+    const afterRag = mockCall.mock.calls[1]?.[0] as Array<{ role: string; tool_call_id?: string; content: string }>
+    expect(afterRag.some((message) => message.role === 'tool' && message.tool_call_id === 'call_rag')).toBe(true)
+    const afterFacts = mockCall.mock.calls[2]?.[0] as Array<{ role: string; tool_call_id?: string; content: string }>
+    expect(afterFacts.some((message) => message.role === 'tool' && message.tool_call_id === 'call_facts' && message.content.includes('刻俄柏'))).toBe(true)
     expect(result.finalAnswer).toBe('混合工具最终答案')
   })
 })

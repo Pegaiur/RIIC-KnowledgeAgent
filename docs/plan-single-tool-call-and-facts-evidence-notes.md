@@ -34,7 +34,17 @@
 ## 实现调整
 > plan 中有描述，但实际实现方式不同
 
-尚无实现调整：本轮仅完成计划定稿、证据归口与提示层先行提交，未开始 tool-executor.ts / agent.ts 编码。
+### 2026-09-12 — 步骤 1 与步骤 2 在 agent.ts 上交叠，先交付宿主侧计量口径
+- **plan 原文**：步骤 1 只做单调用准入与异常边界；requested/denied、granted/attempts、resultChars、toolTrace/ragDelivery 口径与报告标签列在步骤 2。
+- **实际做法**：步骤 1 的提交同时改了 agent.ts 的 toolBatch 计数（denied 含 protocol_rejected、granted/attempts 排除它）、toolTrace 与 ragDelivery 过滤；报告/answers.md/快照等消费者留待步骤 2。
+- **原因**：宿主计数与 executor 返回状态属于同一可观测行为；若步骤 1 只改 executor，agent 层会把 protocol_rejected 计成获准/执行，中间提交出现与 ADR-016 决策 4 冲突的过渡态，新用例无法转绿。
+- **后果**：步骤 2 收敛为报告、answers.md、历史读取与文档标签的消费者改动，无重复实现。
+
+### 2026-09-12 — executeBatch 调用点实际多于初次统计
+- **plan 原文**：迁移 executeBatch 调用点，正常先后查询改多次 executeStep，同批用例断言首项准入。
+- **实际做法**：除 tool-executor/agent-auto-loop/facts-attach/facts-resolution-executor/inputs 外，facts-tools、section-navigation、fulltext-expansion 也含调用点；同批语义用例（facts 双空查、read_section 空/正文、非法参数多项、rag+facts 混合）改为逐步调用，单调用用例仅改方法名。
+- **原因**：初次全仓替换点检索被输出截断遗漏，typecheck 暴露后补齐。
+- **后果**：全仓 `executeBatch` 已无残留（文档中的历史说明不受影响）。
 
 ## 债务记录
 > 遗留的技术债、被牺牲的改进与延期偿还事项（纯权衡取舍、无遗留债务的决策记入「决策偏离」）
@@ -46,7 +56,7 @@
 
 ### 2026-09-12 — 提示层与宿主、能力块不一致的过渡态
 - **债务**：knowledge/AGENTS.md 已声明「同批额外调用不会被执行、只会被拒绝并回写」，宿主仍整批逐项执行；agent.ts 能力块与 bench/tests/agent-auto-loop.test.ts 的「同批调用逐项结算」断言未同步。
-- **未来偿还**：计划步骤 1–5 同一变更内同步实现、能力块文案与测试断言。
+- **未来偿还**：无。2026-09-12 步骤 1 在同一变更内同步了 executor 准入、agent.ts 能力块与计数、provider/inputs/runner 注释及 agent-auto-loop 断言；全仓 `executeBatch` 调用点已迁移为 `executeStep`。
 
 ## 意外发现
 > 实施中发现的 plan 未覆盖的依赖/边界/风险
@@ -62,4 +72,4 @@
 ## 阻塞与解决
 > 遇到的阻塞问题及解决方案
 
-暂无计划相关的实现阻塞；本轮未开始编码。
+暂无计划相关的实现阻塞；2026-09-12 已完成 ADR-016 与步骤 1（单调用准入），步骤 2–5 待续。

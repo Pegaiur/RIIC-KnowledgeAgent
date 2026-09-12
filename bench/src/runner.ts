@@ -263,7 +263,7 @@ export async function runBenchmark(
         sessionTimeoutMs: config.sessionTimeoutMs,
         feedbackOnNoToolAnswer: config.feedbackOnNoToolAnswer,
         toolChoice: 'auto',
-        // 宿主未开启并行工具调用：同批按返回顺序逐项串行执行与结算。
+        // 宿主未开启并行工具调用：每次模型步骤只准入首个工具调用，同批其余调用被拒绝。
         parallelToolCalls: false,
         agentInstructionsSha256: sha256(agentInstructions),
         ...toolSchema,

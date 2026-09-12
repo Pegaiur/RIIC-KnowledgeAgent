@@ -186,7 +186,7 @@ export function createRunInputs(options: RunInputsOptions): RunInputs {
       sessionTimeoutMs: options.config.sessionTimeoutMs,
       feedbackOnNoToolAnswer: options.config.feedbackOnNoToolAnswer,
       toolChoice: 'auto',
-      // 宿主不再开启并行工具调用：同批按返回顺序逐项串行执行与结算。
+      // 宿主不开启并行工具调用：每次模型步骤只准入首个工具调用，同批其余调用被拒绝。
       parallelToolCalls: false,
       stringCaptures: configStrings,
       prices: {

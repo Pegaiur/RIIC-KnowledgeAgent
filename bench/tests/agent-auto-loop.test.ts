@@ -36,12 +36,14 @@ describe('Agent auto 主循环', () => {
     expect(prompt).toContain('可用工具：rag_search、facts_search、read_section')
     expect(prompt).toContain('2 点成功额度 + 10 次获准尝试上限')
     expect(prompt).toContain('仅非空执行成功扣 1 点')
-    expect(prompt).toContain('同批调用逐项结算')
+    expect(prompt).toContain('每次模型步骤只准入首个工具调用')
+    expect(prompt).toContain('同批额外调用只被拒绝并回写')
     expect(prompt).toContain('任一上限用尽后新增调用不会执行')
     expect(prompt).not.toContain('工具调用上限：2 次')
+    expect(prompt).not.toContain('同批调用逐项结算')
   })
 
-  it('同批逐项结算：空结果不扣成功额度，成功额度用尽后拒绝后续调用并按原顺序回写', async () => {
+  it('同批超量：只准入首项，其余按位置拒绝并按原顺序回写', async () => {
     const config = loadConfig()
     config.retriever = 'hybrid'
     config.toolBudget = 2
@@ -63,31 +65,45 @@ describe('Agent auto 主循环', () => {
     )
 
     expect(agentResult.finalAnswer).toBe('最终答案')
-    expect(agentResult.budget).toMatchObject({ successLimit: 2, successUsed: 2, attemptLimit: 10, attemptUsed: 3, requested: 4, denied: 1, executed: 3, remaining: 0 })
+    expect(agentResult.budget).toMatchObject({ successLimit: 2, successUsed: 1, attemptLimit: 10, attemptUsed: 1, requested: 4, denied: 3, executed: 1, remaining: 1 })
     expect(agentResult.records[0]?.toolBatch).toMatchObject({
       requested: 4,
-      granted: 3,
-      executed: 3,
-      denied: 1,
+      granted: 1,
+      executed: 1,
+      denied: 3,
       errors: 0,
+      attempts: 1,
+      successes: 1,
       budgetBefore: 2,
-      budgetAfter: 0,
+      budgetAfter: 1,
     })
     expect(trace.summary).toMatchObject({
       modelSteps: 2,
       toolBatches: 1,
       toolCallsRequested: 4,
-      toolCallsExecuted: 3,
-      toolCallsDenied: 1,
+      toolCallsExecuted: 1,
+      toolCallsDenied: 3,
       feedbackUsed: false,
-      budget: { successUsed: 2, remaining: 0 },
+      budget: { successUsed: 1, remaining: 1 },
     })
-    expect(agentResult.toolTrace[0]).toEqual(['rag_search', 'read_section', 'rag_search', 'rag_search'])
+    expect(agentResult.toolTrace[0]).toEqual(['rag_search'])
     const toolMessages = (mockCall.mock.calls[1]?.[0] as Array<{ role: string; tool_call_id?: string; content: string }>).filter((message) => message.role === 'tool')
     expect(toolMessages.map((message) => message.tool_call_id)).toEqual(['a', 'b', 'c', 'd'])
-    expect(JSON.parse(toolMessages[1]!.content)).toMatchObject({ status: 'empty', executed: true })
-    expect(JSON.parse(toolMessages[3]!.content)).toMatchObject({ status: 'budget_exhausted', executed: false, budget_remaining: 0 })
-    expect(JSON.parse(toolMessages[3]!.content).message).toContain('成功额度已用尽')
+    expect(JSON.parse(toolMessages[0]!.content)).toMatchObject({ status: 'success', executed: true })
+    expect(JSON.parse(toolMessages[1]!.content)).toMatchObject({ status: 'protocol_rejected', executed: false, budget_remaining: 1 })
+    expect(JSON.parse(toolMessages[1]!.content).message).toContain('单调用')
+    expect(JSON.parse(toolMessages[1]!.content).message).toContain('在下一步重新提出')
+    // trace 仍逐项记录超量项：原 call ID、原参数、拒绝状态与原因，不伪填命中或执行证据。
+    const toolEvents = trace.events.filter((event) => event.type === 'tool_call')
+    expect(toolEvents.map((event) => [event.callId, event.status, event.executed]))
+      .toEqual([['a', 'success', true], ['b', 'protocol_rejected', false], ['c', 'protocol_rejected', false], ['d', 'protocol_rejected', false]])
+    const rejectedEvent = toolEvents[1]!
+    expect(rejectedEvent.rawArguments).toBe('{"section_id":"sec-不存在"}')
+    expect(rejectedEvent.actualParams).toBeUndefined()
+    expect(rejectedEvent.hitIds).toBeUndefined()
+    expect(rejectedEvent.fulltextRanges).toBeUndefined()
+    expect(JSON.parse(rejectedEvent.writtenContent!)).toMatchObject({ status: 'protocol_rejected', executed: false })
+    expect(rejectedEvent.reason).toContain('单调用')
   })
 
   it('允许五次有依赖的工具步骤后由模型作答，不再使用旧 maxRounds 上限', async () => {
@@ -166,7 +182,7 @@ describe('Agent auto 主循环', () => {
     config.toolAttemptLimit = 1
     mockCall
       .mockResolvedValueOnce(result({ toolCalls: [toolCall('first')] }))
-      .mockResolvedValueOnce(result({ toolCalls: [toolCall('second'), toolCall('third', 'rag_search', { query: '制造站效率' })] }))
+      .mockResolvedValueOnce(result({ toolCalls: [toolCall('second')] }))
       .mockResolvedValueOnce(result({ content: '基于已有证据的答案' }))
 
     const agentResult = await runQuery(
@@ -177,13 +193,13 @@ describe('Agent auto 主循环', () => {
     )
 
     expect(agentResult.finalAnswer).toBe('基于已有证据的答案')
-    expect(agentResult.budget).toMatchObject({ successLimit: 5, successUsed: 1, attemptLimit: 1, attemptUsed: 1, requested: 3, denied: 2, executed: 1 })
-    expect(agentResult.records[1]?.toolBatch).toMatchObject({ requested: 2, granted: 0, executed: 0, denied: 2, attempts: 0, successes: 0 })
+    expect(agentResult.budget).toMatchObject({ successLimit: 5, successUsed: 1, attemptLimit: 1, attemptUsed: 1, requested: 2, denied: 1, executed: 1 })
+    expect(agentResult.records[1]?.toolBatch).toMatchObject({ requested: 1, granted: 0, executed: 0, denied: 1, attempts: 0, successes: 0 })
     const toolMessages = (mockCall.mock.calls[2]?.[0] as Array<{ role: string; tool_call_id?: string; content: string }>)
-      .filter((message) => message.role === 'tool' && (message.tool_call_id === 'second' || message.tool_call_id === 'third'))
-    expect(toolMessages.map((message) => message.tool_call_id)).toEqual(['second', 'third'])
-    expect(toolMessages.every((message) => JSON.parse(message.content).status === 'budget_exhausted')).toBe(true)
-    expect(toolMessages.every((message) => JSON.parse(message.content).message.includes('获准尝试次数已用尽'))).toBe(true)
+      .filter((message) => message.role === 'tool' && message.tool_call_id === 'second')
+    expect(toolMessages.map((message) => message.tool_call_id)).toEqual(['second'])
+    expect(JSON.parse(toolMessages[0]!.content).status).toBe('budget_exhausted')
+    expect(JSON.parse(toolMessages[0]!.content).message).toContain('获准尝试次数已用尽')
   })
 
   it('批内重复 call ID 直接失败，不回写不完整工具结果', async () => {
