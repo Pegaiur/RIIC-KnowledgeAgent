@@ -14,6 +14,7 @@
 | `scripts/prose-terms-check.mjs` | RAG 玩家侧散文统一术语检查（扫描 base/guides） | ✅ |
 | `scripts/lib/` | 共享基元（单一职责、只读边界显式、接受注入依赖便于测试） | ✅ |
 | `scripts/tasks/` | 可复用开发任务（目录发现即注册，无 manifest） | ✅ |
+| `scripts/tests/` | 脚本测试目录（首次新增测试时创建；不参与 task/lib 发现；测试约定见 docs/rules/testing.md） | ✅ |
 
 ## 脚本落位与复用
 

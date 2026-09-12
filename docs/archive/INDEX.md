@@ -9,6 +9,7 @@
 |----------|------|------|------|
 
 | 2026-09-12 | — | [plan-rag-delivery-and-entry.md](plan-rag-delivery-and-entry.md) | 技能表退出检索、base/guides 原文扩展与精确词条自动附带 facts 契约落地（ADR-013） |
+| 2026-09-12 | — | [plan-testing-architecture.md](plan-testing-architecture.md) | 测试约定规则文本先行：新增 testing.md 六组约定与 ADR-014，并加 TDD 核心约束，不引入机械门禁与覆盖率阈值 |
 | 2026-09-11 | — | [plan-facts-crossref-navigation.md](plan-facts-crossref-navigation.md) | plan-facts-crossref-navigation |
 | 2026-09-11 | — | [plan-facts-operator-notes-expansion.md](plan-facts-operator-notes-expansion.md) | plan-facts-operator-notes-expansion |
 | 2026-09-11 | — | [plan-hybrid-default-tool-budget.md](plan-hybrid-default-tool-budget.md) | plan-hybrid-default-tool-budget |
