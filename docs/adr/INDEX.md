@@ -21,3 +21,4 @@
 | [013](ADR-013-rag-delivery-range-and-entry.md) | 已实施 | 检索范围、原文扩展与 RAG 内部 facts 附带契约 | 2026-09-11 |
 | [014](ADR-014-testing-convention.md) | 已实施 | 测试约定采用规则文本先行，不引入机械门禁与覆盖率阈值 | 2026-09-12 |
 | [015](ADR-015-facts-multi-term-query.md) | 已决策 | facts 多词条数组查询 | 2026-09-12 |
+| [016](ADR-016-single-tool-call-admission.md) | 已决策 | 工具步骤只准入首个调用，同批超量拒绝 | 2026-09-12 |
