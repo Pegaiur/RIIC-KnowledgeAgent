@@ -85,7 +85,7 @@ rag-test/
 
 1. **首先**：阅读本文件，了解全局规则和项目架构
 2. **按需读取复杂规则**：任务涉及文档/ADR/发版/合并 → 读 `docs/rules/document-lifecycle.md`；其余场景按规则索引表从 `docs/rules/` 挑选匹配描述
-3. **新需求入口**：所有新需求/决策从 `docs/inbox.md` 起步，评估后路由到 `docs/plan-*.md`（工程定稿）、`docs/exp-*.md`（试验）或 `docs/adr/ADR-NNN.md`（架构决策）
+3. **新需求入口**：所有新需求/决策从 `docs/inbox.md` 起步，评估后路由到 `docs/plan-*.md`（工程定稿）、`docs/draft-*.md`（未定稿工程提案）、`docs/exp-*.md`（试验）或 `docs/adr/ADR-NNN.md`（架构决策）
 4. **确定任务范围**：判断当前任务涉及哪些模块（bench 工具 / 语料 / 过程管理文档）
 5. **阅读代码**：参考同模块内其他实现风格
 
