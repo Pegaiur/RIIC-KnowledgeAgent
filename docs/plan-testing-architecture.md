@@ -154,19 +154,19 @@ afterEach(() => {
 
 ## 验收清单
 
-- [ ] docs/adr/ADR-014-testing-convention.md 建立并在 docs/adr/INDEX.md 登记，状态一致、无前向引用
-- [ ] docs/rules/testing.md 成文：六组齐全，覆盖 scripts 副作用及测试维护，检查方式如实标注，不含未生效的候选条款
-- [ ] 规则包含默认离线、合成密钥、临时目录与异步资源清理、模块状态与 mock 注册分别复位的执行约定
-- [ ] 规则包含存量增量适用边界、fetch/EXPERIMENT 清理范例，以及旧落位和断言更新/删除的处理判据
-- [ ] AGENTS.md 与 scripts/INDEX.md 入口、目录职责及验证路由更新到位，人工确认 Markdown 引用有效
-- [ ] skills/commit-convention/SKILL.md 按完整行为分组，并在变更分析/验证中引用测试规则，与 testing.md 无冲突
-- [ ] 六类变更人工走查完成，结论记入既有 notes，无新增测试台账或逐文件豁免表
-- [ ] 未新增机械门禁或覆盖率门槛，scripts/gates.mjs、vitest.config.ts、依赖及运行时/测试代码未改动，无空样板测试
-- [ ] ADR/INDEX 状态同步为已实施，inbox 对应需求标记完成，活动入口不残留原草案名称
-- [ ] `git diff --check` 全通过
-- [ ] `pnpm run typecheck` 全通过
-- [ ] `pnpm run test` 全通过
-- [ ] `node scripts/doc-check.mjs` 全通过
+- [x] docs/adr/ADR-014-testing-convention.md 建立并在 docs/adr/INDEX.md 登记，状态一致、无前向引用
+- [x] docs/rules/testing.md 成文：六组齐全，覆盖 scripts 副作用及测试维护，检查方式如实标注，不含未生效的候选条款
+- [x] 规则包含默认离线、合成密钥、临时目录与异步资源清理、模块状态与 mock 注册分别复位的执行约定
+- [x] 规则包含存量增量适用边界、fetch/EXPERIMENT 清理范例，以及旧落位和断言更新/删除的处理判据
+- [x] AGENTS.md 与 scripts/INDEX.md 入口、目录职责及验证路由更新到位，人工确认 Markdown 引用有效
+- [x] skills/commit-convention/SKILL.md 按完整行为分组，并在变更分析/验证中引用测试规则，与 testing.md 无冲突
+- [x] 六类变更人工走查完成，结论记入既有 notes，无新增测试台账或逐文件豁免表
+- [x] 未新增机械门禁或覆盖率门槛，scripts/gates.mjs、vitest.config.ts、依赖及运行时/测试代码未改动，无空样板测试
+- [x] ADR/INDEX 状态同步为已实施，inbox 对应需求标记完成，活动入口不残留原草案名称
+- [x] `git diff --check` 全通过
+- [x] `pnpm run typecheck` 全通过
+- [x] `pnpm run test` 全通过
+- [x] `node scripts/doc-check.mjs` 全通过
 
 ## 关联 ADR
 
