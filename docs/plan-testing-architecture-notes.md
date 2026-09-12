@@ -17,6 +17,14 @@
 - **后果**：第 5 步须将 ADR-014 与 INDEX 状态同步为「已实施」。
 - **验证**：`git diff --cached --check` 通过；`node scripts/doc-check.mjs --json` 仅 13 条施工中 D1，D2/D5 零错误；首轮独立审查指出的编号占位缺项已在同一提交内修复。
 
+### 2026-09-12 — 第 2 步：起草 docs/rules/testing.md
+
+- **plan 原文**：新建 docs/rules/testing.md，frontmatter description 为「新增或修改 bench/src、scripts 的运行时行为，或新增、修改、删除相关测试时生效」；六组内容（覆盖对象与豁免、落位与命名、行为与回归断言、隔离与替身、数据与断言维护、验证与变更说明）分批收录；纳入存量处理原则、A/B 两段清理示例与六类变更判据；每组如实标注检查方式，API 语义依据两条 Vitest 2 文档链接。
+- **实际做法**：按上述结构成文，「存量差异的增量适用」含四条处理范围、范例 A（fetch 全局替身清理）、范例 B（EXPERIMENT 前值恢复）与范例 C（旧落位/CLI/数据维护对照表）；六类变更判据独立成表；未写入未生效的候选条款。
+- **原因**：检查方式尚无机械实现，全部如实标注为人工审查或现有门禁执行结果，避免条文写出 API 即被误认为已自动校验。
+- **后果**：AGENTS.md 与 skills/commit-convention 按名称引用本文件（第 3、4 步），不复制条文。
+- **验证**：`git diff --cached --check` 通过；`node scripts/doc-check.mjs --json` 仅 13 条施工中 D1，无新增 D3/D4/S 错误（规则内 Vitest 为外部 URL，不受引用名称约定限制）。
+
 ## 债务记录
 
 未新增技术债登记；计划中的存量实例用于说明规则适用方式，不作为新增补测任务清单。
