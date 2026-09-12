@@ -33,7 +33,7 @@
 
 - [ ] **AGENTS.md 流程指引：具名干员必须调用一次 facts 工具** — 现状：knowledge/AGENTS.md 第 3 条仅将 `facts_search` 列为「完整词条事实」的按需选项，第 4 条明确「证据足够时直接作答，不为工具偏好重复查询」；hybrid 下 rag_search 会自动附带触发词事实卡，故具名干员不必然触发显式 facts 调用，当前无强制要求。拟在流程指引中规定：问题涉及具名干员时必须至少调用一次 facts 工具。 — 2026-09-12 — 待评估
 
-- [ ] **facts 工具支持数组单词查询** — 现状：`facts_search` 参数 schema 只接受单个字符串 `query`（tool-executor.ts 的 parseToolParams 仅允许 `query` 键，多余字段直接判 invalid_params），底层 store.factsSearch 也只接受单字符串。拟支持一次传入多个单词/词条（数组），并明确多词的返回组织、预算计量与去重口径，以及是否作为一次调用扣 1 点成功额度。 — 2026-09-12 — 待评估
+- [ ] **facts 工具支持数组单词查询** — 现状：`facts_search` 参数 schema 只接受单个字符串 `query`（tool-executor.ts 的 parseToolParams 仅允许 `query` 键，多余字段直接判 invalid_params），底层 store.factsSearch 也只接受单字符串。拟支持一次传入多个单词/词条（数组），并明确多词的返回组织、预算计量与去重口径，以及是否作为一次调用扣 1 点成功额度。 — 2026-09-12 — 已转实施计划，见 docs/plan-facts-multi-term-query.md（含逐项结构化状态、根级状态与 complete 语义、运行时异常原子性、去重范围与重复词引用、scope 外壳、动态上限贯通、输出容量边界）与 ADR-015；已在 feature/facts-multi-term-query 分支施工。「具名干员必须调用一次 facts」的强制取证策略独立评估，不并入本计划。
 
 - [ ] **强制性串行工具调用实现** — 现状：provider.ts 未发送 parallel_tool_calls，但 agent.ts 会接受单次响应中的多个 tool_calls，交由 executor.executeBatch 在同批内逐项串行执行与结算；AGENTS.md 第 4 条允许「独立证据需求可同批查询」。拟强制每次模型步骤只执行一个工具调用（禁止批内并行/多调用），并明确超量调用的处理（拒绝、截断或协议错误）与相应计量、trace 口径。 — 2026-09-12 — 待评估
 
