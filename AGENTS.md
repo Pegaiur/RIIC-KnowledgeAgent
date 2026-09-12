@@ -34,6 +34,7 @@
 | 4 | 文档模板：ADR 参照 `docs/templates/adr.md`，plan 参照 `docs/templates/plan.md`，草案参照 `docs/templates/draft.md`，实施笔记参照 `docs/templates/notes.md`，试验参照 `docs/templates/exp.md` | — |
 | 5 | RAG 散文清洗统一使用玩家侧规范词；references 直出层保留原格式 | `docs/rules/rag-prose-terminology.md` |
 | 6 | 文档引用仓库内其他文档一律写名称（路径/编号），不使用 Markdown 链接；例外为 ADR 索引与归档索引的机械契约表格 | `docs/rules/document-lifecycle.md` |
+| 7 | 新增或修改 bench/src、scripts 运行时行为，或新增/修改/删除相关测试时遵循测试约定 | `docs/rules/testing.md` |
 
 ## 工作流路由
 
@@ -84,7 +85,7 @@ rag-test/
 ## AI 代理发现流程
 
 1. **首先**：阅读本文件，了解全局规则和项目架构
-2. **按需读取复杂规则**：任务涉及文档/ADR/发版/合并 → 读 `docs/rules/document-lifecycle.md`；其余场景按规则索引表从 `docs/rules/` 挑选匹配描述
+2. **按需读取复杂规则**：任务涉及文档/ADR/发版/合并 → 读 `docs/rules/document-lifecycle.md`；新增或修改 bench/src、scripts 运行时行为，或新增/修改/删除相关测试 → 先读 `docs/rules/testing.md`（不等到已经决定写测试才读）；其余场景按规则索引表从 `docs/rules/` 挑选匹配描述
 3. **新需求入口**：所有新需求/决策从 `docs/inbox.md` 起步，评估后路由到 `docs/plan-*.md`（工程定稿）、`docs/draft-*.md`（未定稿工程提案）、`docs/exp-*.md`（试验）或 `docs/adr/ADR-NNN.md`（架构决策）
 4. **确定任务范围**：判断当前任务涉及哪些模块（bench 工具 / 语料 / 过程管理文档）
 5. **阅读代码**：参考同模块内其他实现风格
@@ -116,7 +117,7 @@ node scripts/doc-check.mjs          # 文档一致性校验
 node scripts/verify.mjs merge -- --base main   # 合并门禁
 ```
 
-> 验证命令以 `scripts/gates.mjs` 门禁清单为准。普通代码修改运行 typecheck + test；修改文档/skills 先跑 `node scripts/doc-check.mjs`；合并前一律 `node scripts/verify.mjs merge -- --base main`。
+> 验证命令以 `scripts/gates.mjs` 门禁清单为准。普通代码修改运行 typecheck + test；修改测试代码后必须运行全套 `pnpm run test`（定向命令不能替代最终全套验证）；修改文档/skills 先跑 `node scripts/doc-check.mjs`；合并前一律 `node scripts/verify.mjs merge -- --base main`。
 
 ## 文档导航
 

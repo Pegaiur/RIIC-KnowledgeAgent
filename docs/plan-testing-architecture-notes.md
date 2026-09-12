@@ -25,6 +25,14 @@
 - **后果**：AGENTS.md 与 skills/commit-convention 按名称引用本文件（第 3、4 步），不复制条文。
 - **验证**：`git diff --cached --check` 通过；`node scripts/doc-check.mjs --json` 仅 13 条施工中 D1，无新增 D3/D4/S 错误（规则内 Vitest 为外部 URL，不受引用名称约定限制）。
 
+### 2026-09-12 — 第 3 步：AGENTS.md 与 scripts 导航、验证路由
+
+- **plan 原文**：规则索引表新增一行指向 docs/rules/testing.md；「运行与验证」补充修改测试代码后运行全套 `pnpm run test`；「AI 代理发现流程」注明新增/修改运行时行为及新增/修改/删除测试前先读该规则；scripts/INDEX.md 目录职责追加 scripts/tests/（只在首次新增测试时实际创建）并按名称引用该规则，不复制断言规范或新增注册表。
+- **实际做法**：AGENTS.md 规则索引新增第 7 行；发现流程第 2 条加入 testing.md 触发场景并注明「不等到已经决定写测试才读」；运行与验证注释补「修改测试代码后必须运行全套 `pnpm run test`（定向命令不能替代最终全套验证）」；scripts/INDEX.md 目录职责追加一行，注明不参与 task/lib 发现并引用 testing.md 名称。
+- **原因**：让规则可从入口发现，避免只在已决定写测试时才读取。
+- **后果**：AGENTS.md 与 scripts/INDEX.md 均只按名称引用，不复制六组条文。
+- **验证**：`git diff --cached --check` 通过；`node scripts/doc-check.mjs --json` 仅 13 条施工中 D1；已人工核对 AGENTS、scripts/INDEX 到 docs/rules/testing.md 的引用存在、触发范围完整（D4 不覆盖这两处 Markdown 引用）。
+
 ## 债务记录
 
 未新增技术债登记；计划中的存量实例用于说明规则适用方式，不作为新增补测任务清单。
