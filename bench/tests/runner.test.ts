@@ -108,4 +108,29 @@ describe('runBenchmark：trace 逐题落盘', () => {
       rmSync(outDir, { recursive: true, force: true })
     }
   })
+
+  it('非默认 factsQueryListLimit 贯通 meta、inputs 捕获与工具 schema', async () => {
+    const outDir = mkdtempSync(join(tmpdir(), 'rag-facts-limit-runner-'))
+    try {
+      const config = loadConfig('qwen')
+      config.retriever = 'hybrid'
+      config.factsQueryListLimit = 2
+      config.feedbackOnNoToolAnswer = false
+      const output = await runBenchmark(
+        [{ id: 'RUN-LIMIT-1', category: 'fact', question: '第一题' }],
+        { thinking: 'off', dry: true, outDir, config },
+      )
+      const meta = JSON.parse(readFileSync(output.metaPath, 'utf-8')) as Record<string, unknown>
+      const inputs = JSON.parse(readFileSync(output.inputsPath, 'utf-8')) as Record<string, any>
+      expect(meta.factsQueryListLimit).toBe(2)
+      expect(inputs.config.factsQueryListLimit).toBe(2)
+      const definitions = inputs.toolSchema.definitions as Array<{
+        function: { name: string; parameters: { properties: { queries: { maxItems: number } } } }
+      }>
+      const facts = definitions.find((tool) => tool.function.name === 'facts_search')!
+      expect(facts.function.parameters.properties.queries.maxItems).toBe(2)
+    } finally {
+      rmSync(outDir, { recursive: true, force: true })
+    }
+  })
 })

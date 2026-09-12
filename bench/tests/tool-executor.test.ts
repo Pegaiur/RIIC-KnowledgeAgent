@@ -83,11 +83,13 @@ describe('独立函数工具 schema', () => {
     const result = await executor.executeBatch([
       call('facts-bad', 'facts_search', {}),
       call('rag-bad', 'rag_search', {}),
+      call('read-bad', 'read_section', {}),
     ])
 
     expect(result.results[0]?.data).toContain('{"queries":["完整词条"]}')
     expect(result.results[0]?.data).not.toContain('{"query":"查询"}')
     expect(result.results[1]?.data).toContain('{"query":"查询"}')
+    expect(result.results[2]?.data).toContain('{"section_id":"检索结果中的小节 ID"}')
   })
 
   it('schema 指纹只由当前实际工具数组决定', () => {
@@ -495,5 +497,48 @@ describe('facts_search 多词分段、去重与原子性', () => {
     expect(item.factsResult).toBeUndefined()
     expect(sharedInjected).toEqual([])
     expect(batch.snapshot).toMatchObject({ successUsed: 0, attemptUsed: 1, executed: 1, denied: 0, remaining: 5 })
+  })
+
+  it('含非法项或重复项的超限数组仍整批拒绝且不查询 store', async () => {
+    const spy = vi.spyOn(getCardStore(), 'factsSearch')
+    const batch = await multiExecutor().executeBatch([call('over', 'facts_search', { queries: [1, '刻俄柏', '刻俄柏', '制造站'] })])
+    const item = batch.results[0]!
+    expect(item).toMatchObject({ status: 'invalid_params', executed: false })
+    expect(item.factsResult).toBeUndefined()
+    expect(spy).not.toHaveBeenCalled()
+  })
+
+  it('恰好等于上限的数组被接受，逐项执行且空查不扣点', async () => {
+    const spy = vi.spyOn(getCardStore(), 'factsSearch')
+    const batch = await multiExecutor().executeBatch([call('exact', 'facts_search', { queries: ['__不存在甲__', '__不存在乙__', '__不存在丙__'] })])
+    const item = batch.results[0]!
+    expect(item).toMatchObject({ status: 'empty', executed: true })
+    expect(item.factsResult?.resolution.items).toHaveLength(3)
+    expect(spy).toHaveBeenCalledTimes(3)
+  })
+
+  it('非法段占位后，后续重复词的引用仍指向首次出现的段号', async () => {
+    const batch = await multiExecutor().executeBatch([call('gap', 'facts_search', { queries: ['刻俄柏', 1, '刻俄柏'] })])
+    const item = batch.results[0]!
+    expect(item.data).toContain('第 2 段｜参数错误：第 2 项必须是非空字符串')
+    expect(item.data).toContain('第 3 段｜刻俄柏')
+    expect(item.data).toContain('刻俄柏（已在第 1 段返回，此处仅列名）')
+  })
+
+  it('v6 输出只携带 resolution.items，不同时携带 v5 的 resolution.paths', async () => {
+    const batch = await multiExecutor().executeBatch([call('shape', 'facts_search', { queries: ['刻俄柏'] })])
+    const envelope = JSON.parse(serializeToolResult(batch.results[0]!)) as { factsResultVersion: number; resolution: Record<string, unknown> }
+    expect(envelope.factsResultVersion).toBe(6)
+    expect(envelope.resolution).toHaveProperty('items')
+    expect(envelope.resolution).not.toHaveProperty('paths')
+  })
+
+  it('历史 v5 结果仍按原版本与 paths 结构读取，不混入 v6 items', () => {
+    const legacy = JSON.parse('{"factsResultVersion":5,"matchedCount":1,"returnedCount":1,"complete":true,"scope":{"query":"刻俄柏"},"resolution":{"paths":[{"kind":"exact","category":"operator","term":"刻俄柏","memberIds":["刻俄柏"]}]}}') as {
+      factsResultVersion: number
+      resolution: { paths: unknown[] }
+    }
+    expect(legacy.factsResultVersion).toBe(5)
+    expect(legacy.resolution.paths).toHaveLength(1)
   })
 })
