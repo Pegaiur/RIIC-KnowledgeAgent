@@ -19,7 +19,7 @@ vi.mock('../src/provider.js', () => ({ callLLM: mockCall }))
 
 describe('agent：独立函数工具 schema', () => {
   it('按模式直接暴露独立函数工具', () => {
-    expect(toolsForRetriever('hybrid').map((tool) => (tool.function as { name: string }).name))
+    expect(toolsForRetriever('hybrid', 3).map((tool) => (tool.function as { name: string }).name))
       .toEqual(['rag_search', 'facts_search', 'read_section'])
   })
 
@@ -28,6 +28,43 @@ describe('agent：独立函数工具 schema', () => {
     expect(buildSystemPrompt('bm25')).toContain('rag_search')
     expect(buildSystemPrompt('hybrid')).toContain('明日方舟基建查询 Agent 决策契约')
     expect(buildSystemPrompt('hybrid')).toContain('5 点成功额度 + 10 次获准尝试上限')
+  })
+
+  it('工具参数契约由 schema 承载，人工指令只引用工具定义', () => {
+    const prompt = buildSystemPrompt('hybrid')
+    expect(prompt).toContain('参数、匹配限制和分页字段以工具 schema 为准')
+    expect(prompt).not.toContain('数组不是复合过滤语法')
+    expect(prompt).not.toContain('next_offset')
+    expect(prompt).not.toContain('complete=')
+    expect(prompt).not.toContain('只接受一个完整词条')
+    expect(prompt).not.toMatch(/最多\s*\d+\s*个/)
+  })
+
+  it('单调用硬约束独立前置，运行时能力块不重复注入', () => {
+    const instructions = loadKnowledgeAgentInstructions()
+    const constraints = instructions.split('## 工具调用硬约束\n')[1]?.split('\n## ')[0]
+    expect(constraints).toContain('每次模型步骤只能提出一个工具调用')
+    expect(constraints).toContain('收到工具结果后，再决定下一步')
+    expect(instructions.indexOf('## 工具调用硬约束')).toBeLessThan(instructions.indexOf('## 取证流程'))
+    const runtime = buildSystemPrompt('hybrid', '唯一规则正文')
+    expect(runtime).not.toMatch(/首个工具调用|同批|禁止并行/)
+  })
+
+  it('取证流程集中说明覆盖核对、继续条件与无工具降级', () => {
+    const flow = loadKnowledgeAgentInstructions().split('## 取证流程\n')[1]?.split('\n## ')[0]
+    expect(flow).toContain('核对覆盖')
+    expect(flow).toContain('没有对应工具')
+    expect(flow).toContain('明确的新线索或能改变覆盖范围的查询')
+    expect(flow).toContain('证据足够、预算用尽或没有有依据的后续路径时')
+  })
+
+  it('决策契约要求具名对象按缺口取证，附带卡须实际送达且不等同全覆盖', () => {
+    const prompt = buildSystemPrompt('hybrid')
+    expect(prompt).toContain('问题涉及具名干员或技能时')
+    expect(prompt).toContain('附带事实卡可直接作为依据')
+    expect(prompt).toContain('一次调用成功也不代表所有对象或关系均已覆盖')
+    expect(prompt).toContain('多个词条仍属同一次调用')
+    expect(prompt).not.toContain('允许同批执行')
   })
 
   it.each([

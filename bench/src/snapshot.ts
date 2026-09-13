@@ -81,7 +81,7 @@ const META_SUMMARY_KEYS = new Set([
 ])
 const META_ALLOWED_KEYS = new Set([
   'schemaVersion', 'traceSchemaVersion', 'ts', 'thinking', 'dry', 'provider', 'model',
-  'temperature', 'maxTokens', 'baseUrl', 'retriever', 'minRagCalls', 'toolBudget', 'toolAttemptLimit', 'sessionTimeoutMs',
+  'temperature', 'maxTokens', 'baseUrl', 'retriever', 'minRagCalls', 'toolBudget', 'toolAttemptLimit', 'factsQueryListLimit', 'sessionTimeoutMs',
   'includeSkillTables', 'expandFulltext', 'attachFacts',
   'feedbackOnNoToolAnswer', 'toolChoice', 'parallelToolCalls', 'agentInstructionsSha256',
   'inputsSchemaVersion',
@@ -600,7 +600,12 @@ function parseAnswers(raw: string | null): Map<string, ParsedAnswer> {
   const headers: Array<{ id: string; category: string; line: number }> = []
   for (let i = 0; i < lines.length; i++) {
     const match = /^## (.+?)（(.+?)）$/.exec(lines[i])
-    if (match) headers.push({ id: match[1], category: match[2], line: i })
+    if (!match) continue
+    // 题头后首个非空行必须是「- 问题：」；回答正文里的含全角括号小标题（如「## 结论（…）」）不算题头。
+    let next = i + 1
+    while (next < lines.length && lines[next].trim() === '') next++
+    if (!(lines[next] ?? '').startsWith('- 问题：')) continue
+    headers.push({ id: match[1], category: match[2], line: i })
   }
   for (let i = 0; i < headers.length; i++) {
     const header = headers[i]
@@ -610,7 +615,7 @@ function parseAnswers(raw: string | null): Map<string, ParsedAnswer> {
     const statusLine = block.find((line) => line.startsWith('- 状态：')) ?? ''
     const statusMatch = /^- 状态：([^｜]+)｜终止：([^\s]+)$/.exec(statusLine)
     const budgetLine = block.find((line) => line.startsWith('- 模型步骤：')) ?? ''
-    const dualMatch = /^- 模型步骤：(\d+)｜工具批次：(\d+)｜成功额度：(\d+)\/(\d+)｜获准尝试：(\d+)\/(\d+)(?:｜工具序列：(.+))?$/.exec(budgetLine)
+    const dualMatch = /^- 模型步骤：(\d+)｜工具批次：(\d+)｜成功额度：(\d+)\/(\d+)｜获准尝试：(\d+)\/(\d+)(?:｜拒绝（预算\/同批超量拒绝）：(\d+))?(?:｜工具序列：(.+))?$/.exec(budgetLine)
     const budgetMatch = /^- 模型步骤：(\d+)｜工具批次：(\d+)｜预算：(\d+)\/(\d+)(?:｜工具序列：(.+))?$/.exec(budgetLine)
     const feedbackLine = block.find((line) => line.startsWith('- 宿主回馈：'))
     const feedbackIndex = block.findIndex((line) => line.startsWith('- 宿主回馈：'))
@@ -622,7 +627,7 @@ function parseAnswers(raw: string | null): Map<string, ParsedAnswer> {
     const body = block.slice(answerStart).join('\n').trim()
     const legacyFailure = /^（查询(?:失败|未完成)：/.test(body)
     const status = statusMatch?.[1] ?? (legacyMatch && body ? (legacyFailure ? 'failed' : 'completed') : undefined)
-    const traceRaw = dualMatch?.[7] ?? budgetMatch?.[5] ?? legacyMatch?.[3]
+    const traceRaw = dualMatch?.[8] ?? budgetMatch?.[5] ?? legacyMatch?.[3]
     out.set(header.id, {
       category: header.category,
       question: redactText(question),

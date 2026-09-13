@@ -89,6 +89,14 @@ describe('report：聚合与渲染', () => {
     expect(renderMarkdown(report)).toContain('获准尝试 不可用｜证据送达（成功） 不可用')
   })
 
+  it('拒绝标签注明预算耗尽与同批超量两类，不拆分分类计数', () => {
+    const report = aggregate([rec({
+      toolBatch: { requested: 3, granted: 1, executed: 1, denied: 2, errors: 0, attempts: 1, successes: 1, budgetBefore: 5, budgetAfter: 4, resultChars: 40 },
+    })])
+    expect(report.toolStats.denied).toBe(2)
+    expect(renderMarkdown(report)).toContain('拒绝（预算/同批超量拒绝） 2')
+  })
+
   it('新批次聚合获准尝试与非空成功数，缺失时保持不可用', () => {
     const withNewStats = aggregate([
       rec({ toolBatch: { requested: 3, granted: 2, executed: 2, denied: 1, errors: 0, attempts: 2, successes: 1, budgetBefore: 5, budgetAfter: 4, resultChars: 90 } }),
@@ -128,6 +136,22 @@ describe('report：聚合与渲染', () => {
     expect(aggregate([rec({ tools: ['rag_search'], ragDelivery: [{ callId: 'a', status: 'empty', fulltextRanges: [], attachedFacts: [omitted] }] })]).ragDeliveryStats).toMatchObject({ internalFactsQueries: 1, attachedCalls: 0, omittedTerms: 1, deliveredCards: 0 })
   })
 
+  it('同批超量拒绝的 rag_search 请求不计入 RAG 台账完整性判据', () => {
+    const fact = { term: '测试', start: 0, end: 2, matched: ['甲'], delivered: ['甲'], omittedReason: null, chars: 20, elapsedMs: 0, paths: [] }
+    // 首项送达一张卡、第二项同批超量拒绝：ragDelivery 仅含已准入的首项，不应判整轮不可用。
+    const mixed = rec({
+      tools: ['rag_search', 'rag_search'],
+      ragDelivery: [{ callId: 'a', status: 'success', fulltextRanges: [], attachedFacts: [fact] }],
+    })
+    expect(aggregate([mixed]).ragDeliveryStats).toEqual({
+      internalFactsQueries: 1, attachedCalls: 1, omittedTerms: 0, deliveredCards: 1, expandedRanges: 0,
+    })
+    // 请求过 rag_search 却缺整套台账（历史/异常）仍判不可用，不伪造成零送达。
+    expect(aggregate([rec({ tools: ['rag_search'] })]).ragDeliveryStats).toEqual({
+      internalFactsQueries: null, attachedCalls: null, omittedTerms: null, deliveredCards: null, expandedRanges: null,
+    })
+  })
+
   it('仅 facts 送达的 rag_search 计入证据送达，但不计入旧 chunk 命中口径', () => {
     // facts-only 成功：hitIds 为空（hitCount 0），但 status=success（successes 1）。
     const report = aggregate([
@@ -138,7 +162,7 @@ describe('report：聚合与渲染', () => {
     expect(markdown).toContain('有命中（旧 chunk 口径，不含 facts-only 送达） 0')
   })
 
-  it('部分 usage 仍汇总已知费用，并把重试未知用量标为不完整', () => {
+  it('部分 usage 仍汇总已知费用，并把重试未知用量标为不完整而非无用量', () => {
     const report = aggregate([rec({
       input: null,
       output: 1000,
@@ -158,10 +182,30 @@ describe('report：聚合与渲染', () => {
     expect(report.totalCost).toBe(0.0008)
     expect(report.byQuery[0]?.costTotal).toBe(0.0008)
     expect(report.incompleteUsageCalls).toBe(1)
-    expect(report.unknownUsageCalls).toBe(1)
+    // 该记录仍保留已知小计，属部分用量，不得计入「完全无用量」。
+    expect(report.unknownUsageCalls).toBe(0)
     expect(report.costComplete).toBe(false)
+    expect(renderMarkdown(report)).toContain('费用状态：不完整｜用量不完整调用：1（其中完全无用量：0）')
     expect(renderCsv(report)).toContain('costComplete')
     expect(renderCsv(report)).toContain('false')
+  })
+
+  it('整次调用无任何可用 usage 时计入完全无用量', () => {
+    const report = aggregate([rec({
+      input: null,
+      output: null,
+      knownInput: null,
+      knownOutput: null,
+      costIn: null,
+      costOut: null,
+      costTotal: null,
+      usageCompleteness: 'unknown',
+    })])
+
+    expect(report.incompleteUsageCalls).toBe(1)
+    expect(report.unknownUsageCalls).toBe(1)
+    expect(report.costComplete).toBe(false)
+    expect(renderMarkdown(report)).toContain('费用状态：不完整｜用量不完整调用：1（其中完全无用量：1）')
   })
 
   it('按 HTTP 尝试聚合完整 usage，避免只统计最终响应', () => {

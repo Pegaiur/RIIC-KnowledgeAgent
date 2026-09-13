@@ -29,9 +29,10 @@ describe('runBenchmark：trace 逐题落盘', () => {
         parallelToolCalls: false,
         toolBudget: 5,
         toolAttemptLimit: 10,
+        factsQueryListLimit: 3,
         sessionTimeoutMs: 300000,
         feedbackOnNoToolAnswer: true,
-        toolSchemaVersion: 10,
+        toolSchemaVersion: 12,
         toolNames: ['rag_search', 'facts_search', 'read_section'],
         modelSteps: 2,
         toolBatches: 0,
@@ -95,6 +96,7 @@ describe('runBenchmark：trace 逐题落盘', () => {
       const answers = readFileSync(output.answersPath, 'utf-8')
       expect(answers).toContain('成功额度：')
       expect(answers).toContain('获准尝试：')
+      expect(answers).toContain('拒绝（预算/同批超量拒绝）：')
       const inputs = JSON.parse(readFileSync(output.inputsPath, 'utf-8')) as Record<string, any>
       expect(inputs.captureStatus).toBe('complete')
       expect(inputs.config).toMatchObject({ toolBudget: 5, toolAttemptLimit: 10, parallelToolCalls: false })
@@ -103,6 +105,50 @@ describe('runBenchmark：trace 逐题落盘', () => {
       expect(meta.includeSkillTables).toBe(false)
       expect(Number(meta.chunks)).toBeLessThan(Number(meta.corpusChunks))
       expect(inputs.rag.chunkCount).toBe(meta.chunks)
+    } finally {
+      rmSync(outDir, { recursive: true, force: true })
+    }
+  })
+
+  it('非默认 factsQueryListLimit 贯通 meta、inputs 捕获与工具 schema', async () => {
+    const outDir = mkdtempSync(join(tmpdir(), 'rag-facts-limit-runner-'))
+    try {
+      const config = loadConfig('qwen')
+      config.retriever = 'hybrid'
+      config.factsQueryListLimit = 2
+      config.feedbackOnNoToolAnswer = false
+      const output = await runBenchmark(
+        [{ id: 'RUN-LIMIT-1', category: 'fact', question: '第一题' }],
+        { thinking: 'off', dry: true, outDir, config },
+      )
+      const meta = JSON.parse(readFileSync(output.metaPath, 'utf-8')) as Record<string, unknown>
+      const inputs = JSON.parse(readFileSync(output.inputsPath, 'utf-8')) as Record<string, any>
+      expect(meta.factsQueryListLimit).toBe(2)
+      expect(inputs.config.factsQueryListLimit).toBe(2)
+      const definitions = inputs.toolSchema.definitions as Array<{
+        function: { name: string; parameters: { properties: { queries: { maxItems: number } } } }
+      }>
+      const facts = definitions.find((tool) => tool.function.name === 'facts_search')!
+      expect(facts.function.parameters.properties.queries.maxItems).toBe(2)
+    } finally {
+      rmSync(outDir, { recursive: true, force: true })
+    }
+  })
+
+  it('answers.md 逐题拒绝数取批次 denied 之和（预算耗尽边界）', async () => {
+    const outDir = mkdtempSync(join(tmpdir(), 'rag-answers-denied-'))
+    try {
+      const config = loadConfig('qwen')
+      config.retriever = 'hybrid'
+      config.feedbackOnNoToolAnswer = false
+      // 成功额度 1：第二步 facts_search 因额度用尽被拒绝，逐题拒绝数应为 1。
+      config.toolBudget = 1
+      const output = await runBenchmark(
+        [{ id: 'RUN-DENIED-1', category: 'fact', question: '第一题' }],
+        { thinking: 'off', dry: true, outDir, config },
+      )
+      const answers = readFileSync(output.answersPath, 'utf-8')
+      expect(answers).toContain('拒绝（预算/同批超量拒绝）：1')
     } finally {
       rmSync(outDir, { recursive: true, force: true })
     }

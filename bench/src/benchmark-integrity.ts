@@ -10,6 +10,7 @@ import { loadCorpus, loadCorpusManifest } from './corpus.js'
 import { checkGold, loadGold, type GoldMap } from './hitrate.js'
 import type { BenchQuery } from './types.js'
 import { readSnapshot } from './snapshot.js'
+import { validateQualityBaseline } from './quality-baseline.js'
 
 const QUESTION_ID_PATTERN = /^[FSG]\d{2}$/
 const EXPECTED_COUNTS = { fact: 10, system: 8, gadget: 2 } as const
@@ -22,6 +23,7 @@ export interface BenchmarkIntegritySummary {
   chunkCount: number
   snapshotCount: number
   snapshotBytes: number
+  baselineResults: number
 }
 
 function readQuestions(root: string): BenchQuery[] {
@@ -129,6 +131,7 @@ export function validateBenchmarkIntegrity(root: string): BenchmarkIntegritySumm
   if (specExtraQuestions.length > 0) errors.push(`spec 多出题号：${specExtraQuestions.join('、')}`)
 
   const snapshots = validateSharedSnapshots(root, errors)
+  const baseline = validateQualityBaseline(root, errors)
 
   if (errors.length > 0) {
     throw new Error(`基准完整性校验失败：\n${errors.map((error) => `- ${error}`).join('\n')}`)
@@ -142,6 +145,7 @@ export function validateBenchmarkIntegrity(root: string): BenchmarkIntegritySumm
     chunkCount: chunks.length,
     snapshotCount: snapshots.count,
     snapshotBytes: snapshots.bytes,
+    baselineResults: baseline?.resultCount ?? 0,
   }
 }
 

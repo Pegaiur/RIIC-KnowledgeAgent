@@ -13,20 +13,20 @@ import { isFactTool, type BenchQuery, type DocChunk, type ToolCall } from './typ
 import {
   getCardStore,
   serializeCard,
-  serializeFactsMatches,
   serializeResolutionPaths,
   type CardStore,
   type FactsEntryDictionary,
   type FactsMatch,
   type FactsMatchCategory,
+  type FactsSearchResult,
   type ResolutionPath,
 } from './facts/store.js'
 
 /** 当前可下发的工具集合；grep_search 等历史名不在其中。 */
 export type CurrentToolId = 'rag_search' | 'facts_search' | 'read_section'
 
-/** 工具 schema 发生协议变化时递增；快照保留该值供对照分组。 */
-export const TOOL_SCHEMA_VERSION = 10 as const
+/** 工具定义（含描述）变化时递增；快照保留该值供对照分组，指纹随描述变化。 */
+export const TOOL_SCHEMA_VERSION = 12 as const
 
 export interface ToolBudgetState {
   /** 非空执行成功额度上限（每题默认 5） */
@@ -51,8 +51,10 @@ export type ToolResultStatus =
   | 'unknown_operation'
   | 'error'
   | 'budget_exhausted'
+  /** 同一步骤中首项之外的超量调用：未执行、不计额度。 */
+  | 'protocol_rejected'
 
-export const FACTS_RESULT_VERSION = 5 as const
+export const FACTS_RESULT_VERSION = 6 as const
 
 /**
  * RAG 内部附带 facts 的独立额度（UTF-16 字符，ADR-013 决策 4 定稿）：
@@ -64,13 +66,28 @@ export const RAG_ATTACH_FACTS_QUOTA_CHARS = 4_000 as const
  * TODO(tech-debt) R5-5：协议层直接内嵌 store 的 ResolutionPath 联合类型，路径种类变更会牵动 wire 契约；
  * 待协议与领域类型分层后把该类型下沉到共享 terms 模块（只沉 wire 契约，不沉内部行形状）。
  */
+/** v6 逐项结构化记录：与原始 queries 数组一一对应，非法项也占位。 */
+export interface FactsResolutionItem {
+  /** 原数组零基索引 */
+  index: number
+  /** 合法词条 trim 后字符串；非法项为 null */
+  query: string | null
+  status: 'success' | 'empty' | 'invalid'
+  /** 该词命中的完整解析路径；invalid 为空 */
+  paths: ResolutionPath[]
+  /** 该词全部命中 canonical（沿 store 顺序去重，保留跨词重复卡）；empty / invalid 为空 */
+  canonicals: string[]
+  /** 非法项的中文原因；合法项为 null */
+  message: string | null
+}
+
 export interface FactsResultMetadata {
   factsResultVersion: typeof FACTS_RESULT_VERSION
   matchedCount: number
   returnedCount: number
   complete: true
   scope: Record<string, unknown>
-  resolution: { paths: ResolutionPath[] }
+  resolution: { items: FactsResolutionItem[] }
 }
 
 export interface ToolExecutionResult {
@@ -114,7 +131,7 @@ export interface KnowledgeToolContext {
 }
 
 export interface KnowledgeToolExecutor {
-  executeBatch(calls: ToolCall[]): Promise<ToolBatchResult>
+  executeStep(calls: ToolCall[]): Promise<ToolBatchResult>
   snapshot(): ToolBudgetState
 }
 
@@ -123,12 +140,13 @@ const ATTEMPT_BUDGET_HINT = '工具获准尝试次数已用尽，请依据已有
 
 type JsonObject = Record<string, unknown>
 
-const TOOL_DEFINITIONS: Record<CurrentToolId, JsonObject> = {
+/** 与配置无关的静态工具定义；facts_search 的 maxItems 由配置上限派生，见 factsSearchDefinition。 */
+const STATIC_TOOL_DEFINITIONS: Record<'rag_search' | 'read_section', JsonObject> = {
   rag_search: {
     type: 'function',
     function: {
       name: 'rag_search',
-      description: '查询机制、组合、排班及培养建议的知识库片段。',
+      description: '检索机制、组合、排班及培养建议，返回知识库片段或原文范围。结果可含供 read_section 使用的小节或范围 ID、分页信息及上级范围入口；hybrid 模式还可能返回附带事实卡或未附带提示，以实际返回内容为准。',
       parameters: {
         type: 'object',
         properties: {
@@ -139,30 +157,15 @@ const TOOL_DEFINITIONS: Record<CurrentToolId, JsonObject> = {
       },
     },
   },
-  facts_search: {
-    type: 'function',
-    function: {
-      name: 'facts_search',
-      description: '用一个完整词条精确查询干员事实卡：干员正式名、技能名、已收录技能组词、设施、阵营或职业；支持已确认别名（干员别名）、已登记子串短名、阵营规范名和搭配规范名。同名命中全部返回并保留命中路径，短名按登记返回全部长名，不做消歧；不支持简写合称，不拆词，不解析句子或多个条件。',
-      parameters: {
-        type: 'object',
-        properties: {
-          query: { type: 'string', minLength: 1, description: '一个完整名称或分类词条；保留名称内部标点。' },
-        },
-        required: ['query'],
-        additionalProperties: false,
-      },
-    },
-  },
   read_section: {
     type: 'function',
     function: {
       name: 'read_section',
-      description: '按小节 ID 读取知识库原文小节，可分段续读；ID 来自检索结果中的小节标识。',
+      description: '按已返回的 ID 读取知识库原文小节或范围，可分段续读；ID 可来自检索结果、续读信息或上级范围入口。返回的 complete=false 表示该范围还有后续页，complete=true 仅表示该范围读完，不表示问题已完整解决。',
       parameters: {
         type: 'object',
         properties: {
-          section_id: { type: 'string', minLength: 1, description: '检索结果返回的小节 ID' },
+          section_id: { type: 'string', minLength: 1, description: '工具结果已给出的小节或范围 ID，原样使用。' },
           offset: { type: 'integer', minimum: 0, description: '可选，正文 UTF-16 索引，默认 0；用返回的 next_offset 续读' },
         },
         required: ['section_id'],
@@ -172,28 +175,61 @@ const TOOL_DEFINITIONS: Record<CurrentToolId, JsonObject> = {
   },
 }
 
+/**
+ * facts_search 定义：queries 为完整词条数组，maxItems 由 factsQueryListLimit 派生，
+ * 使发送给模型的 schema 与运行时校验共用同一配置来源，避免两处上限漂移。
+ */
+function factsSearchDefinition(factsQueryListLimit: number): JsonObject {
+  return {
+    type: 'function',
+    function: {
+      name: 'facts_search',
+      description: '用一个或多个完整词条精确查询干员事实卡：干员正式名、技能名、已收录技能组词、设施、阵营或职业；支持已确认别名（干员别名）、已登记子串短名、阵营规范名和搭配规范名。可一次传入多个完整词条，每项仍须是完整词条，数组不是复合过滤语法，单次词条数受运行配置限制；同名命中全部返回并保留命中路径，短名按登记返回全部长名，不做消歧；不支持简写合称，不拆词，不解析句子或多个条件。',
+      parameters: {
+        type: 'object',
+        properties: {
+          queries: {
+            type: 'array',
+            minItems: 1,
+            maxItems: factsQueryListLimit,
+            items: { type: 'string', minLength: 1, description: '一个完整名称或分类词条；保留名称内部标点。' },
+            description: '待查询词条列表，数量上限见 maxItems。',
+          },
+        },
+        required: ['queries'],
+        additionalProperties: false,
+      },
+    },
+  }
+}
+
+/** 按工具名取定义；facts_search 需要配置上限，其余取静态定义。 */
+function toolDefinitionFor(name: CurrentToolId, factsQueryListLimit: number): JsonObject {
+  return name === 'facts_search' ? factsSearchDefinition(factsQueryListLimit) : STATIC_TOOL_DEFINITIONS[name]
+}
+
 function allowedOperations(retriever: RetrieverId): CurrentToolId[] {
   return retriever === 'hybrid'
     ? ['rag_search', 'facts_search', 'read_section']
     : ['rag_search', 'read_section']
 }
 
-/** 返回当前模式实际发送的独立函数工具数组。 */
-export function toolsForRetriever(retriever: RetrieverId = 'hybrid'): Record<string, unknown>[] {
-  return allowedOperations(retriever).map((name) => cloneJson(TOOL_DEFINITIONS[name]))
+/** 返回当前模式实际发送的独立函数工具数组；facts maxItems 由调用方传入的配置上限派生。 */
+export function toolsForRetriever(retriever: RetrieverId, factsQueryListLimit: number): Record<string, unknown>[] {
+  return allowedOperations(retriever).map((name) => cloneJson(toolDefinitionFor(name, factsQueryListLimit)))
 }
 
 export function toolNamesForRetriever(retriever: RetrieverId = 'hybrid'): CurrentToolId[] {
   return allowedOperations(retriever)
 }
 
-/** 供运行 meta 与离线探针使用的稳定 schema 指纹。 */
-export function toolSchemaMetadata(retriever: RetrieverId = 'hybrid'): {
+/** 供运行 meta 与离线探针使用的稳定 schema 指纹；上限入参保证与发送给模型的 schema 一致。 */
+export function toolSchemaMetadata(retriever: RetrieverId, factsQueryListLimit: number): {
   toolSchemaVersion: number
   toolSchemaSha256: string
   toolNames: CurrentToolId[]
 } {
-  const tools = toolsForRetriever(retriever)
+  const tools = toolsForRetriever(retriever, factsQueryListLimit)
   const serialized = stableJson(tools)
   return {
     toolSchemaVersion: TOOL_SCHEMA_VERSION,
@@ -239,22 +275,23 @@ export function createKnowledgeToolExecutor(
     return undefined
   }
 
-  async function executeBatch(calls: ToolCall[]): Promise<ToolBatchResult> {
+  async function executeStep(calls: ToolCall[]): Promise<ToolBatchResult> {
     const protocolError = validateCallIds(calls)
-    // 缺失或重复 ID 会让宿主无法安全回写；整批不准入、不扣点、不执行。
+    // 缺失或重复 ID 会让宿主无法安全回写；整步不准入、不扣点、不执行。
     if (protocolError) return { results: [], snapshot: snapshot(), protocolError }
 
     const results: ToolExecutionResult[] = []
-    // 同批逐项「检查上限 → 获准 → 执行 → 结算」；后一项使用前一项结算后的状态，不做整批预扣。
-    for (const call of calls) {
-      state.requested++
-      if (state.attemptUsed >= state.attemptLimit || state.successUsed >= state.successLimit) {
-        state.denied++
-        results.push(exhaustedResult(call, state))
-        continue
-      }
+    if (calls.length === 0) return { results, snapshot: snapshot() }
+
+    // requested 含所有提出项；每次模型步骤只准入首项，其余调用不递补也不计额度。
+    state.requested += calls.length
+    const first = calls[0]!
+    if (state.attemptUsed >= state.attemptLimit || state.successUsed >= state.successLimit) {
+      state.denied++
+      results.push(exhaustedResult(first, state))
+    } else {
       state.attemptUsed++
-      const item = await executeOne(call, allowed, context, config, state)
+      const item = await executeOne(first, allowed, context, config, state)
       if (item.executed && item.status === 'success') state.successUsed++
       state.remaining = state.successLimit - state.successUsed
       item.budgetRemaining = state.remaining
@@ -262,10 +299,37 @@ export function createKnowledgeToolExecutor(
       if (hint) item.message = item.message && item.message !== hint ? `${item.message}；${hint}` : hint
       results.push(item)
     }
+
+    // 超量项以本步位置为稳定分类：不解析参数、不执行、不计额度；余额取首项结算后的值。
+    const retryAvailable = state.successUsed < state.successLimit && state.attemptUsed < state.attemptLimit
+    for (const call of calls.slice(1)) {
+      state.denied++
+      results.push(protocolRejectedResult(call, state, retryAvailable))
+    }
     return { results, snapshot: snapshot() }
   }
 
-  return { executeBatch, snapshot }
+  return { executeStep, snapshot }
+}
+
+/**
+ * 同一步骤中首项之外的超量调用：不解析参数、不执行、不占用获准尝试或成功额度。
+ * 仅当成功额度与获准尝试均仍有余额时才提示在下一步重新提出，否则提示依据已有证据作答。
+ */
+function protocolRejectedResult(call: ToolCall, state: ToolBudgetState, retryAvailable: boolean): ToolExecutionResult {
+  const advice = retryAvailable
+    ? '若仍缺这项证据，请在下一步重新提出。'
+    : '请依据已有证据作答，未覆盖部分明确说明。'
+  const message = `本次模型步骤只准入首个工具调用（单调用规则）；该调用未执行（同批超量拒绝）。${advice}`
+  return {
+    callId: call.id,
+    operation: call.name,
+    status: 'protocol_rejected',
+    executed: false,
+    data: message,
+    budgetRemaining: state.successLimit - state.successUsed,
+    message,
+  }
 }
 
 /** 超限拒绝结果：不占用获准尝试数，message 区分成功额度用尽与尝试次数用尽。 */
@@ -309,13 +373,13 @@ async function executeOne(
   if (!allowed.has(call.name as CurrentToolId)) {
     return result(call, call.name, 'unknown_operation', false, `当前检索模式不开放工具：${call.name}`, state)
   }
-  const parsed = parseToolParams(call.name as CurrentToolId, call.arguments)
+  const parsed = parseToolParams(call.name as CurrentToolId, call.arguments, config.factsQueryListLimit)
   if (!parsed.value) {
     return result(call, call.name, 'invalid_params', false, parsed.reason, state)
   }
 
   try {
-    const output = runOperation(call.name as CurrentToolId, parsed.value, context, config)
+    const output = runOperation(call.name as CurrentToolId, parsed, context, config)
     const status: ToolResultStatus = output.status
       ?? (isFactTool(call.name)
         ? output.hitIds.length > 0 ? 'success' : 'empty'
@@ -330,7 +394,7 @@ async function executeOne(
           returnedCount: output.hitIds.length,
           complete: true as const,
           scope: parsed.value,
-          resolution: output.factsResolution ?? { paths: [] },
+          resolution: { items: output.factsItems ?? [] },
         }
       : undefined
     return {
@@ -388,10 +452,28 @@ function result(
   }
 }
 
+/** facts_search 逐项解析记录：与原始 queries 数组一一对应，非法项也占位。 */
+interface FactsParseItem {
+  /** 原数组零基索引 */
+  index: number
+  /** 合法词条 trim 后字符串；非法项为 null */
+  query: string | null
+  /** 非法项的中文原因；合法项为 null */
+  message: string | null
+}
+
+interface ParsedToolParams {
+  value?: Record<string, unknown>
+  reason: string
+  /** facts_search 专用：按原数组顺序的逐项解析记录（含非法占位）。 */
+  factsItems?: FactsParseItem[]
+}
+
 function parseToolParams(
   tool: CurrentToolId,
   args: string,
-): { value?: Record<string, unknown>; reason: string } {
+  factsQueryListLimit: number,
+): ParsedToolParams {
   let raw: unknown
   try {
     raw = JSON.parse(args)
@@ -401,12 +483,47 @@ function parseToolParams(
   if (!isObject(raw)) return { reason: `${tool} 参数必须是对象；参数示例：${exampleFor(tool)}` }
 
   if (tool === 'read_section') return parseReadSectionParams(raw, exampleFor(tool))
+  if (tool === 'facts_search') return parseFactsParams(raw, factsQueryListLimit, exampleFor(tool))
 
   const allowedKeys = ['query']
   const unknownKey = Object.keys(raw).find((key) => !allowedKeys.includes(key))
   if (unknownKey) return { reason: `${tool} 不支持参数字段 ${unknownKey}；参数示例：${exampleFor(tool)}` }
 
   return parseRequiredString(raw, tool, 'query', exampleFor(tool))
+}
+
+/**
+ * facts_search 参数：queries 为非空字符串数组。
+ * 根级非法（缺字段、非数组、空数组、额外字段、超过上限）整批判 invalid_params；
+ * 元素级非法只记为该元素 invalid，合法元素继续执行；上限按原数组长度检查，不先过滤非法项或去重。
+ */
+function parseFactsParams(
+  input: JsonObject,
+  factsQueryListLimit: number,
+  example: string,
+): ParsedToolParams {
+  const allowedKeys = ['queries']
+  const unknownKey = Object.keys(input).find((key) => !allowedKeys.includes(key))
+  if (unknownKey) return { reason: `facts_search 不支持参数字段 ${unknownKey}；参数示例：${example}` }
+
+  const raw = input.queries
+  if (raw === undefined) return { reason: `facts_search 缺少数组 queries；参数示例：${example}` }
+  if (!Array.isArray(raw)) return { reason: `facts_search 的 queries 必须是字符串数组；参数示例：${example}` }
+  if (raw.length === 0) return { reason: `facts_search 的 queries 不能为空数组；参数示例：${example}` }
+  if (raw.length > factsQueryListLimit) {
+    return { reason: `facts_search 的 queries 最多 ${factsQueryListLimit} 个词条，实际 ${raw.length} 个；参数示例：${example}` }
+  }
+
+  const factsItems: FactsParseItem[] = raw.map((value, index) => typeof value === 'string' && value.trim() !== ''
+    ? { index, query: value.trim(), message: null }
+    : { index, query: null, message: `第 ${index + 1} 项必须是非空字符串` })
+
+  const legalQueries = factsItems.flatMap((item) => (item.query === null ? [] : [item.query]))
+  if (legalQueries.length === 0) {
+    const detail = factsItems.map((item) => item.message).join('；')
+    return { reason: `facts_search 没有可用词条：${detail}；参数示例：${example}` }
+  }
+  return { value: { queries: legalQueries }, factsItems, reason: '' }
 }
 
 /** read_section 参数：section_id 必填非空字符串，offset 可选非负整数，额外字段拒绝。 */
@@ -444,35 +561,101 @@ function parseRequiredString(
 }
 
 function exampleFor(tool: CurrentToolId): string {
-  return tool === 'read_section' ? '{"section_id":"检索结果中的小节 ID"}' : '{"query":"查询"}'
+  if (tool === 'read_section') return '{"section_id":"检索结果中的小节 ID"}'
+  if (tool === 'facts_search') return '{"queries":["完整词条"]}'
+  return '{"query":"查询"}'
 }
 
 function runOperation(
   operation: CurrentToolId,
-  params: Record<string, unknown>,
+  parsed: ParsedToolParams,
   context: KnowledgeToolContext,
   config: BenchConfig,
 ): {
   data: string
   hitIds: string[]
   injectedIds: string[]
-  factsResolution?: { paths: ResolutionPath[] }
+  factsItems?: FactsResolutionItem[]
   fulltextRanges?: FulltextRange[]
   attachedFacts?: AttachedFactsObservation[]
   status?: ToolResultStatus
 } {
-  if (operation === 'rag_search') return ragSearchOperation(params, context, config)
-  if (operation === 'read_section') return readSectionOperation(params, context, config)
+  if (operation === 'rag_search') return ragSearchOperation(parsed.value!, context, config)
+  if (operation === 'read_section') return readSectionOperation(parsed.value!, context, config)
+  return factsSearchOperation(parsed, context)
+}
+
+/**
+ * facts_search：按原数组顺序逐项查询并分段返回；非法项占错误提示段。
+ * 逐词在本次调用内复用查询结果（重复词不重复查询底层）；跨词命中同一 canonical 时首现段返回完整卡，
+ * 后续段只列名称并引用首次段号（去重范围仅限本次调用）。hitIds / injectedIds 取跨词并集、按首次出现顺序排列。
+ * 全部结果先在局部组装，任一步 store 抛错整次失败，不留下部分注入记录。
+ * 逐项记录（原索引、规范化词条、状态、路径、canonical）经 resolution.items 进入元数据，items 取并集计数。
+ * TODO(tech-debt) R5-7：首版按词完整返回，无分页/截断，maxItems 只约束词数、不代表输出容量上限，
+ * 宽查单词输出可超过 maxContextChars；重启条件：引入分页或截断时须同时重定义 complete 与 matchedCount/returnedCount 的送达口径。
+ */
+function factsSearchOperation(
+  parsed: ParsedToolParams,
+  context: KnowledgeToolContext,
+): {
+  data: string
+  hitIds: string[]
+  injectedIds: string[]
+  factsItems: FactsResolutionItem[]
+} {
   const store = loadFactsStore(context)
-  const query = params.query as string
-  const searchResult = store.factsSearch(query)
-  const hits = searchResult.matches.map((match) => match.card)
-  return {
-    data: serializeFactsMatches(searchResult),
-    hitIds: hits.map((card) => card.canonical),
-    injectedIds: hits.map((card) => card.canonical),
-    factsResolution: { paths: searchResult.paths },
+  const entries = parsed.factsItems ?? []
+  const cache = new Map<string, FactsSearchResult>()
+  // canonical → 首次送达它的段号（1 基），仅本次调用内有效。
+  const deliveredAt = new Map<string, number>()
+  const items: FactsResolutionItem[] = []
+  const segments: string[] = []
+  const hitIds: string[] = []
+  const seen = new Set<string>()
+  for (const entry of entries) {
+    if (entry.query === null) {
+      const message = entry.message ?? '参数错误'
+      items.push({ index: entry.index, query: null, status: 'invalid', paths: [], canonicals: [], message })
+      segments.push(`第 ${entry.index + 1} 段｜参数错误：${message}`)
+      continue
+    }
+    const term = entry.query
+    const segmentNumber = entry.index + 1
+    let result = cache.get(term)
+    if (!result) {
+      result = store.factsSearch(term)
+      cache.set(term, result)
+    }
+    const canonicals = dedupeCanonicals(result.matches.map((match) => match.card.canonical))
+    items.push({
+      index: entry.index,
+      query: term,
+      status: canonicals.length > 0 ? 'success' : 'empty',
+      paths: [...result.paths],
+      canonicals: [...canonicals],
+      message: null,
+    })
+    const header = `第 ${segmentNumber} 段｜${term}｜命中 ${canonicals.length} 张`
+    const body = canonicals.length === 0
+      ? result.paths.length === 0
+        ? `未收录精确词条：${term}`
+        : '匹配说明：本次路径没有可返回的记录卡。'
+      : result.matches.map((match) => {
+          const canonical = match.card.canonical
+          const firstSegment = deliveredAt.get(canonical)
+          if (firstSegment !== undefined) return `${canonical}（已在第 ${firstSegment} 段返回，此处仅列名）`
+          deliveredAt.set(canonical, segmentNumber)
+          return serializeCard(match.card, {}, match.categories)
+        }).join('\n\n')
+    const pathText = result.paths.length > 0 ? `\n${serializeResolutionPaths(result.paths)}` : ''
+    segments.push(`${header}${pathText}\n${body}`)
+    for (const canonical of canonicals) {
+      if (seen.has(canonical)) continue
+      seen.add(canonical)
+      hitIds.push(canonical)
+    }
   }
+  return { data: segments.join('\n\n'), hitIds, injectedIds: [...hitIds], factsItems: items }
 }
 
 /**

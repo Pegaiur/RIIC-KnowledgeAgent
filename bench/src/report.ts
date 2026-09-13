@@ -53,8 +53,9 @@ export interface BenchReport {
   totalCostOut: number
   totalCost: number
   truncatedCalls: number
-  /** usage 不完整的模型调用数；totalCost 仅为已知费用小计。 */
+  /** usage 不完整（含部分尝试缺 usage、但保留已知小计）的模型调用数；totalCost 仅为已知费用小计。 */
   incompleteUsageCalls: number
+  /** 整次模型步骤完全未取得任何可用 usage 的调用数；有部分用量的调用不计入。 */
   unknownUsageCalls: number
   costComplete: boolean
   totalHttpAttempts: number
@@ -203,10 +204,11 @@ const attemptIncomplete = (record: CostRecord): boolean =>
   (record.httpAttempts ?? []).some((attempt) => !attempt.usage || attempt.usage.completeness !== 'complete')
 const recordIncomplete = (record: CostRecord): boolean =>
   record.usageCompleteness !== 'complete' || attemptIncomplete(record)
+// 「完全无用量」只按记录级判定：整次模型步骤没有任何可用 usage。
+// 部分尝试缺 usage、但记录仍保留已知小计的属部分用量（usageCompleteness='partial'），
+// 只计入 incompleteUsageCalls，不混入此处，避免把有部分用量的调用读成「未取得用量」。
 const recordUnknown = (record: CostRecord): boolean =>
-  !record.usageCompleteness
-  || record.usageCompleteness === 'unknown'
-  || (record.httpAttempts ?? []).some((attempt) => !attempt.usage || !attempt.usage.completeness || attempt.usage.completeness === 'unknown')
+  !record.usageCompleteness || record.usageCompleteness === 'unknown'
 const mean = (vals: number[]) => (vals.length ? sum(vals) / vals.length : 0)
 const p95 = (vals: number[]) => {
   if (!vals.length) return 0
@@ -379,7 +381,9 @@ function aggregateToolUsage(records: CostRecord[]): ToolUsageAgg[] {
 
 function aggregateRagDelivery(records: CostRecord[]): RagDeliveryStats {
   const unavailable = { internalFactsQueries: null, attachedCalls: null, omittedTerms: null, deliveredCards: null, expandedRanges: null }
-  if (records.some((record) => (record.tools ?? []).filter((tool) => tool === 'rag_search').length !== (record.ragDelivery?.length ?? 0))) return unavailable
+  // agent.ts 的 ragDelivery 已排除同批超量拒绝（protocol_rejected，ADR-016），故不能按请求数比对台账长度；
+  // 只在「请求过 rag_search 却缺整套送达台账」时判不可用，保留真正缺失数据的判定，不伪造成零送达。
+  if (records.some((record) => (record.tools ?? []).includes('rag_search') && record.ragDelivery === undefined)) return unavailable
   const calls = records.flatMap((record) => record.ragDelivery ?? [])
   const factsKnown = calls.every((call) => call.attachedFacts !== undefined)
   const facts = calls.flatMap((call) => call.attachedFacts ?? [])
@@ -445,10 +449,10 @@ export function renderMarkdown(report: BenchReport): string {
     `- 查询数：${report.totalQueries}｜LLM 调用数：${report.totalCalls}｜截断调用：${report.truncatedCalls}`,
     `- 总输入 tokens：${report.totalInput.toLocaleString()}（已知小计；精确总量：${exact(report.totalInputExact)}）｜总输出 tokens：${report.totalOutput.toLocaleString()}（已知小计；精确总量：${exact(report.totalOutputExact)}）`,
     `- 总成本（已知）：¥${f4(report.totalCost)}（输入 ¥${f4(report.totalCostIn)} + 输出 ¥${f4(report.totalCostOut)}）`,
-    `- 费用状态：${report.costComplete ? '完整' : '不完整'}｜不完整 usage 调用：${report.incompleteUsageCalls}｜用量未知调用：${report.unknownUsageCalls}`,
+    `- 费用状态：${report.costComplete ? '完整' : '不完整'}｜用量不完整调用：${report.incompleteUsageCalls}（其中完全无用量：${report.unknownUsageCalls}）`,
     `- HTTP 尝试：${report.totalHttpAttempts}｜重试：${report.retryAttempts}`,
     `- 每查询输出 tokens：均值 ${avgOut}｜P95 ${p95Out.toLocaleString()}`,
-    `- 工具批次：${report.toolStats.batches}｜提出 ${report.toolStats.requested}｜准入 ${report.toolStats.granted}｜执行 ${report.toolStats.executed}｜拒绝 ${report.toolStats.denied}｜错误 ${report.toolStats.errors}｜获准尝试 ${nullable(report.toolStats.attempts)}｜证据送达（成功） ${nullable(report.toolStats.successes)}｜有命中（旧 chunk 口径，不含 facts-only 送达） ${report.toolStats.hitCount}｜命中未知 ${report.toolStats.hitUnknown}`,
+    `- 工具批次：${report.toolStats.batches}｜提出 ${report.toolStats.requested}｜准入 ${report.toolStats.granted}｜执行 ${report.toolStats.executed}｜拒绝（预算/同批超量拒绝） ${report.toolStats.denied}｜错误 ${report.toolStats.errors}｜获准尝试 ${nullable(report.toolStats.attempts)}｜证据送达（成功） ${nullable(report.toolStats.successes)}｜有命中（旧 chunk 口径，不含 facts-only 送达） ${report.toolStats.hitCount}｜命中未知 ${report.toolStats.hitUnknown}`,
     `- RAG 送达：原文范围 ${nullable(report.ragDeliveryStats.expandedRanges)}｜显式 facts_search ${report.toolUsage.find((item) => item.tool === 'facts_search')?.calls ?? 0}｜内部 facts 查询 ${nullable(report.ragDeliveryStats.internalFactsQueries)}｜实际附带调用 ${nullable(report.ragDeliveryStats.attachedCalls)}｜未附带词条 ${nullable(report.ragDeliveryStats.omittedTerms)}｜送达卡次 ${nullable(report.ragDeliveryStats.deliveredCards)}`,
     ...(report.toolUsage.length > 0
       ? [`- 工具调用：${report.toolUsage.map((u) => `${u.tool} ${u.calls} 次`).join('｜')}`]

@@ -76,6 +76,8 @@ export interface RunInputs {
     maxContextChars: number
     toolBudget: number
     toolAttemptLimit: number
+    /** 每次 facts_search 可传入的最大词条数；schema maxItems 由此派生。 */
+    factsQueryListLimit: number
     sessionTimeoutMs: number
     feedbackOnNoToolAnswer: boolean
     toolChoice: 'auto'
@@ -180,10 +182,11 @@ export function createRunInputs(options: RunInputsOptions): RunInputs {
       maxContextChars: options.config.maxContextChars,
       toolBudget: options.config.toolBudget,
       toolAttemptLimit: options.config.toolAttemptLimit,
+      factsQueryListLimit: options.config.factsQueryListLimit,
       sessionTimeoutMs: options.config.sessionTimeoutMs,
       feedbackOnNoToolAnswer: options.config.feedbackOnNoToolAnswer,
       toolChoice: 'auto',
-      // 宿主不再开启并行工具调用：同批按返回顺序逐项串行执行与结算。
+      // 宿主不开启并行工具调用：每次模型步骤只准入首个工具调用，同批其余调用被拒绝。
       parallelToolCalls: false,
       stringCaptures: configStrings,
       prices: {

@@ -70,7 +70,7 @@ describe('运行输入记录', () => {
       expect(inputs.captureStatus).toBe('complete')
       expect(inputs.systemPrompt.text).toBe((mockCall.mock.calls[0]?.[0] as Array<{ role: string; content: string }>)[0]?.content)
       expect(inputs.toolSchema.definitions).toEqual(mockCall.mock.calls[0]?.[1])
-      expect(inputs.config).toMatchObject({ maxTokens: 4096, temperature: null, retriever: 'hybrid', toolAttemptLimit: 10, parallelToolCalls: false, includeSkillTables: false, expandFulltext: true, attachFacts: true })
+      expect(inputs.config).toMatchObject({ maxTokens: 4096, temperature: null, retriever: 'hybrid', toolAttemptLimit: 10, factsQueryListLimit: 3, parallelToolCalls: false, includeSkillTables: false, expandFulltext: true, attachFacts: true })
       expect(inputs.facts).toEqual({ status: 'not_used' })
       const meta = JSON.parse(readFileSync(output.metaPath, 'utf-8')) as Record<string, unknown>
       expect(meta).toMatchObject({ maxTokens: 4096, inputsSchemaVersion: 1, includeSkillTables: false, expandFulltext: true, attachFacts: true })
@@ -250,7 +250,7 @@ describe('运行输入记录', () => {
         onFactsStoreUsed: (store) => used.push(store),
         onFactsStoreLoadFailed: (error) => failures.push(error),
       }, 1)
-      const ragResult = await rag.executeBatch([{ id: 'rag', name: 'rag_search', arguments: JSON.stringify({ query: '检索' }) }])
+      const ragResult = await rag.executeStep([{ id: 'rag', name: 'rag_search', arguments: JSON.stringify({ query: '检索' }) }])
       expect(ragResult.results[0]).toMatchObject({ status: 'success', executed: true })
       expect(used).toHaveLength(0)
       expect(failures).toHaveLength(0)
@@ -263,8 +263,8 @@ describe('运行输入记录', () => {
         onFactsStoreUsed: () => { throw new Error('成功观测不应触发') },
         onFactsStoreLoadFailed: (error) => { failures.push(error); throw new Error('失败观测异常') },
       }, 1)
-      const factsResult = await facts.executeBatch([{ id: 'facts', name: 'facts_search', arguments: JSON.stringify({ query: '刻俄柏' }) }])
-      expect(factsResult.results[0]).toMatchObject({ status: 'error', executed: true, message: loadError.message, actualParams: { query: '刻俄柏' } })
+      const factsResult = await facts.executeStep([{ id: 'facts', name: 'facts_search', arguments: JSON.stringify({ queries: ['刻俄柏'] }) }])
+      expect(factsResult.results[0]).toMatchObject({ status: 'error', executed: true, message: loadError.message, actualParams: { queries: ['刻俄柏'] } })
       expect(failures).toHaveLength(1)
       expect(failures[0]).toBe(loadError)
     } finally {
@@ -288,7 +288,7 @@ describe('运行输入记录', () => {
       config.feedbackOnNoToolAnswer = false
       config.apiKey = 'opaque-runner-secret'
       mockCall
-        .mockResolvedValueOnce(providerResult({ content: null, toolCalls: [{ id: 'facts-1', name: 'facts_search', arguments: JSON.stringify({ query: '刻俄柏' }) }] }))
+        .mockResolvedValueOnce(providerResult({ content: null, toolCalls: [{ id: 'facts-1', name: 'facts_search', arguments: JSON.stringify({ queries: ['刻俄柏'] }) }] }))
         .mockResolvedValueOnce(providerResult({ content: '结束' }))
       const output = await isolatedRunBenchmark(
         [{ id: 'INPUT-FAILURE', category: 'fact', question: '事实' }],

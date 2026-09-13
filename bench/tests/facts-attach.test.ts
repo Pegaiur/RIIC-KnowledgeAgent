@@ -193,7 +193,7 @@ describe('facts 原子附带：整组装配与容量（ADR-013 决策 4）', () 
 
 describe('rag_search 内部 facts 附带集成（hybrid 真实 store）', () => {
   it('仅 facts 非空也计一次成功，并记录触发/送达观测', async () => {
-    const batch = await hybridExecutor('刻俄柏').executeBatch([call('a', 'rag_search', { query: '刻俄柏' })])
+    const batch = await hybridExecutor('刻俄柏').executeStep([call('a', 'rag_search', { query: '刻俄柏' })])
     const item = batch.results[0]!
 
     expect(item.status).toBe('success')
@@ -212,14 +212,14 @@ describe('rag_search 内部 facts 附带集成（hybrid 真实 store）', () => 
       query: { id: 'BM25', category: 'fact', question: '刻俄柏' },
       chunks: [],
       index: buildIndex([]),
-    }, 5).executeBatch([call('a', 'rag_search', { query: '刻俄柏' })])
+    }, 5).executeStep([call('a', 'rag_search', { query: '刻俄柏' })])
 
     expect(bm25.results[0]).toMatchObject({ status: 'empty' })
     expect(bm25.results[0]!.attachedFacts).toBeUndefined()
     expect(bm25.results[0]!.data).not.toContain(HEADER)
     expect(bm25.snapshot).toMatchObject({ successUsed: 0, attemptUsed: 1 })
 
-    const off = await hybridExecutor('刻俄柏', { attachFacts: false }).executeBatch([call('a', 'rag_search', { query: '刻俄柏' })])
+    const off = await hybridExecutor('刻俄柏', { attachFacts: false }).executeStep([call('a', 'rag_search', { query: '刻俄柏' })])
 
     expect(off.results[0]).toMatchObject({ status: 'empty' })
     expect(off.results[0]!.attachedFacts).toBeUndefined()
@@ -227,7 +227,7 @@ describe('rag_search 内部 facts 附带集成（hybrid 真实 store）', () => 
   })
 
   it('设施大集合整组超出额度时不附带并给原因，仍判空', async () => {
-    const batch = await hybridExecutor('制造站').executeBatch([call('a', 'rag_search', { query: '制造站' })])
+    const batch = await hybridExecutor('制造站').executeStep([call('a', 'rag_search', { query: '制造站' })])
     const item = batch.results[0]!
 
     expect(item.status).toBe('empty')
@@ -248,7 +248,7 @@ describe('rag_search 内部 facts 附带集成（hybrid 真实 store）', () => 
       query: { id: 'BOTH', category: 'fact', question: '刻俄柏' },
       chunks,
       index: buildIndex(chunks),
-    }, 5).executeBatch([call('a', 'rag_search', { query: '刻俄柏' })])
+    }, 5).executeStep([call('a', 'rag_search', { query: '刻俄柏' })])
     const item = batch.results[0]!
 
     expect(item.status).toBe('success')
@@ -360,7 +360,7 @@ describe('rag_search 内部 facts 异常原子性与预算拒绝（ADR-013 步�
     const getStore = vi.spyOn(stores, 'getCardStore').mockImplementation(() => { throw new Error('测试 store 加载失败') })
     const injectedIds: string[] = []
 
-    const batch = await atomicExecutor('温蒂', injectedIds).executeBatch([call('a', 'rag_search', { query: '温蒂' })])
+    const batch = await atomicExecutor('温蒂', injectedIds).executeStep([call('a', 'rag_search', { query: '温蒂' })])
     const item = batch.results[0]!
 
     expect(item).toMatchObject({ status: 'error', executed: true, fatal: true })
@@ -379,7 +379,7 @@ describe('rag_search 内部 facts 异常原子性与预算拒绝（ADR-013 步�
     const searchSpy = vi.spyOn(STORE, 'factsSearch').mockImplementation(() => { throw new Error('测试 facts 查询失败') })
     const injectedIds: string[] = []
 
-    const batch = await atomicExecutor('温蒂', injectedIds).executeBatch([call('a', 'rag_search', { query: '温蒂' })])
+    const batch = await atomicExecutor('温蒂', injectedIds).executeStep([call('a', 'rag_search', { query: '温蒂' })])
     const item = batch.results[0]!
 
     expect(item).toMatchObject({ status: 'error', executed: true, fatal: true })
@@ -395,12 +395,11 @@ describe('rag_search 内部 facts 异常原子性与预算拒绝（ADR-013 步�
     const injectedIds: string[] = []
     const executor = atomicExecutor('温蒂', injectedIds, { toolAttemptLimit: 1 })
 
-    const batch = await executor.executeBatch([
-      call('a', 'rag_search', { query: '温蒂' }),
-      call('b', 'rag_search', { query: '温蒂' }),
-    ])
+    const first = await executor.executeStep([call('a', 'rag_search', { query: '温蒂' })])
+    const second = await executor.executeStep([call('b', 'rag_search', { query: '温蒂' })])
 
-    expect(batch.results[1]).toMatchObject({ status: 'budget_exhausted', executed: false })
+    expect(first.results[0]).toMatchObject({ status: 'success', executed: true })
+    expect(second.results[0]).toMatchObject({ status: 'budget_exhausted', executed: false })
     // 只有获准执行的第一次调用加载 store 并查询。
     expect(getStore).toHaveBeenCalledTimes(1)
     expect(injectedIds).toEqual(['base/甲.md#温蒂'])

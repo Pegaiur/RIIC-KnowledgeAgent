@@ -86,6 +86,7 @@ describe('共享基准快照', () => {
           unknownExtra: 'drop-me',
           maxTokens: 4096,
           inputsSchemaVersion: 1,
+          factsQueryListLimit: 3,
           toolSchemaVersion: 2,
           toolSchemaSha256: 'a'.repeat(64),
           toolNames: ['rag_search'],
@@ -125,6 +126,7 @@ describe('共享基准快照', () => {
       expect(readSnapshot(path).meta).toMatchObject({
         maxTokens: 4096,
         inputsSchemaVersion: 1,
+        factsQueryListLimit: 3,
         toolSchemaVersion: 2,
         toolSchemaSha256: 'a'.repeat(64),
         toolNames: ['rag_search'],
@@ -259,6 +261,35 @@ describe('共享基准快照', () => {
     }
   })
 
+  it('拒绝标签段不破坏双预算行解析与工具序列', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'rag-denied-label-'))
+    try {
+      writeFileSync(join(dir, 'meta.json'), JSON.stringify({ topic: 'rag-hybrid', questionIds: ['Q1'] }))
+      writeFileSync(join(dir, 'records.jsonl'), '')
+      writeFileSync(join(dir, 'answers.md'), [
+        '# 查询回答记录', '',
+        '## Q1（fact）', '',
+        '- 问题：带拒绝标签',
+        '- 状态：completed｜终止：answer',
+        '- 模型步骤：2｜工具批次：1｜成功额度：1/5｜获准尝试：2/10｜拒绝（预算/同批超量拒绝）：2｜工具序列：rag_search',
+        '- 宿主回馈：否', '',
+        '答案一',
+      ].join('\n'))
+
+      const snapshot = snapshotFromRunDir(dir, { root: dir })
+      expect(snapshot.queries[0]).toMatchObject({
+        id: 'Q1',
+        budgetUsed: 1,
+        budgetRemaining: 4,
+        attemptUsed: 2,
+        attemptLimit: 10,
+        toolTrace: ['rag_search'],
+      })
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
   it('保留自定义题集定义，并兼容旧版回答格式', () => {
     const dir = mkdtempSync(join(tmpdir(), 'rag-legacy-export-'))
     try {
@@ -355,6 +386,41 @@ describe('共享基准快照', () => {
       expect(snapshot.queries.map((query) => query.id)).not.toContain('NEW')
       expect(snapshot.queries[0]).toMatchObject({ id: 'B', category: 'fact', question: '' })
       expect(snapshot.queries[1]).toMatchObject({ id: 'A', question: '历史版本 A', answer: '历史答案 A' })
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('回答正文里的含全角括号小标题不被误判为题头', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'rag-body-heading-'))
+    try {
+      writeFileSync(join(dir, 'meta.json'), JSON.stringify({ topic: 'rag-hybrid', questionIds: ['F01', 'F02'] }))
+      writeFileSync(join(dir, 'records.jsonl'), '')
+      writeFileSync(join(dir, 'answers.md'), [
+        '# 查询回答记录', '',
+        '## F01（fact）', '',
+        '- 问题：问题甲',
+        '- 状态：completed｜终止：answer',
+        '- 模型步骤：1｜工具批次：0｜预算：0/5｜工具序列：无',
+        '- 宿主回馈：否', '',
+        '## 结论（知识库可确认范围）', '',
+        '正文甲', '',
+        '## F02（fact）', '',
+        '- 问题：问题乙',
+        '- 状态：completed｜终止：answer',
+        '- 模型步骤：1｜工具批次：0｜预算：0/5｜工具序列：无',
+        '- 宿主回馈：否', '',
+        '正文乙',
+      ].join('\n'))
+
+      const snapshot = snapshotFromRunDir(dir, { root: dir })
+      expect(snapshot.queries.map((query) => query.id)).toEqual(['F01', 'F02'])
+      expect(snapshot.queries[0]).toMatchObject({
+        id: 'F01',
+        question: '问题甲',
+        answer: '## 结论（知识库可确认范围）\n\n正文甲',
+      })
+      expect(snapshot.queries[1]).toMatchObject({ id: 'F02', question: '问题乙', answer: '正文乙' })
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }

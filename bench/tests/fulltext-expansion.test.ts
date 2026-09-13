@@ -49,7 +49,7 @@ function executorFor(corpus: Corpus, overrides: Partial<BenchConfig> = {}) {
 }
 
 async function run(exec: ReturnType<typeof executorFor>, name: string, params: unknown): Promise<ToolExecutionResult> {
-  const batch = await exec.executeBatch([call('t', name, params)])
+  const batch = await exec.executeStep([call('t', name, params)])
   return batch.results[0]!
 }
 
