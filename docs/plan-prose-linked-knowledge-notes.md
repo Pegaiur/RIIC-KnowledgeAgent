@@ -63,6 +63,16 @@
 - **补充**：`TOOL_SCHEMA_VERSION` 保持 14（第 3 步已合并递增），`FACTS_RESULT_VERSION` 保持 7。
 - **口径说明**：linked 展开的 `hitIds`/`injectedIds` 取实际送达 canonical（与 facts_search 一致），成功展开会计入 toolBatch.hitCount，跨版本比对命中数时须注意；read_section 不回写共享注入列表，injected.json 不受影响。ADR-020 状态在步骤 1–4 完成后改为「已实施」，步骤 5 的独立验证与合并检查另行收束。
 
+### 2026-09-13 — 第 5 步：独立验证证据与交接
+
+- **plan 原文**：「用现有正文和旁挂标注验证提示可见、主动选择有效、事实解析正确；比较开启前后的正文分词/检索输入及既有阅读行为，确保元数据没有暗改召回。给语料计划提供标注格式和操作说明」。
+- **验证证据**：
+  - 现有小节与标注：`prose-links.test.ts` 断言真实语料 `issues` 为空、`guides/高效率散件.md` 的「办公室联络散件」「源石碎片制造（搓玉）」两小节可解析、对象非空且含技能 grant 细化；`prose-links-hint.test.ts`（6 例）验证提示可见、按文件逐小节、容量不足整行省略、提示不计送达、元数据不入检索输入；`prose-links-read.test.ts`（8 例）验证默认原文阅读不变、`linked` 只展开登记对象、skill 卡保留设施/替换、同卡去重、取不到卡显式报告、参数互斥与校验。
+  - 运行时送达（`pnpm run bench:dry`，2 题、不发真实请求）：运行目录 inputs.json 记录 `links:{version:1,linkCount:2,objectCount:9,issues:[]}`、`toolSchema.version=14`、`rag.chunkCount=145`、`sections.sectionCount=764`；meta.json 记 `toolSchemaVersion=14`、`ragDeliveryStats.linkedHints=0`；报告渲染含「关联入口」项。该次两题未命中已标注小节，故 linkedHints 为 0，可据实说明未观察到提示送达。
+  - 召回未变：本计划 4 次提交未改动 corpus.ts / retriever.ts / terms.ts / corpus-manifest.json（`git diff --name-only 4ee4478..HEAD` 无这些文件），`knowledge/prose-links.json` 非 `.md`，不进入白名单、分词、切块与排序。
+- **交接**：标注格式与操作说明见本笔记第 1 步「引用契约、旁挂位置与展开协议」；后续语料只维护 `knowledge/prose-links.json`（新增/迁移小节改定位，事实更新由 `buildProseLinkIndex` 重新解析），非空标注的无效引用由 issue/测试显式报告并修正。
+- **后果**：plan 第 9 项「最终文档/合并检查」留待发版收束（活动 plan 未勾选会使 doc-check D1 与合并门禁保持红灯，属预期），本计划维持施工中。
+
 ## 债务记录
 
 ### 2026-09-13 — PLK-1 关联载荷体积
