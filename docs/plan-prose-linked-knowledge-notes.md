@@ -73,11 +73,16 @@
 - **交接**：标注格式与操作说明见本笔记第 1 步「引用契约、旁挂位置与展开协议」；后续语料只维护 `knowledge/prose-links.json`（新增/迁移小节改定位，事实更新由 `buildProseLinkIndex` 重新解析），非空标注的无效引用由 issue/测试显式报告并修正。
 - **后果**：plan 第 9 项「最终文档/合并检查」留待发版收束（活动 plan 未勾选会使 doc-check D1 与合并门禁保持红灯，属预期），本计划维持施工中。
 
-### 2026-09-13 — 第 9 项验收勾选与最终验证
+### 2026-09-13 — 复核发现的两处边界缺陷与修复（P2 失效引用、P3 去重身份）
 
-- **plan 原文**：「按 docs/rules/testing.md 先观察行为测试失败再实现，通过 pnpm run typecheck、全套 pnpm run test 及最终文档/合并检查」。
-- **验证证据**：`pnpm run typecheck` 通过；全套 `pnpm run test` 48 文件 610 例通过（含 prose-links.test.ts 12 例、prose-links-hint.test.ts 6 例、prose-links-read.test.ts 8 例）；`node scripts/doc-check.mjs` 不再报本计划条目。
-- **边界**：合并门禁 `node scripts/verify.mjs merge` 仍被同分支 docs/plan-index-and-tags.md、docs/plan-corpus-supplement.md 的未勾选条目阻塞；本次收尾只勾选完成，不归档、不合并，发版归档与合并门禁待三份计划收齐后统一执行。
+- **P2：解析失败引用被丢弃**。原实现在 `resolveObject` 解析失败时仅记 issue 并返回 undefined，调用方 `continue` 丢弃，展开结果因此只统计解析成功者、`omitted` 为空，Agent 与该次 trace 看不到缺失（实测「普罗旺斯 + 一个失效技能」展开仅报 1 个对象）。修复：新增 `UnresolvedProseObject` 与 `ResolvedProseLink.unresolved`（按登记顺序保留可读回显与原因）；`readLinkedFactsOperation` 把 unresolved 计入 `requested`，并在 `omitted` 及响应「未返回」行报告原因，合法对象照常返回；仅有失效引用的小节不再误报「没有登记可展开的关联事实」。
+- **P3：同一技能不同写法绕过去重**。原实现以回显文字（`ref`）为去重键，省略/填写可选 unlock 会解析到同一 grant 却计为两个对象且 issues 为空。修复：新增 `objectIdentity`，按解析后身份去重（技能细化到 `grantId`，干员定位到 `canonical`），保留首个可读引用用于展示，重复时记 issue。
+- **验证**：先写失败测试（prose-links.test.ts 3 例新增/加强、prose-links-read.test.ts 2 例新增）并观察 5 例失败，再实现；`pnpm run typecheck` 通过，全套 `pnpm run test` 48 文件 613 例通过。既有夹具（prose-links-hint、inputs）补 `unresolved: []`，`LinkedFactsObservation.requested` 注释同步为「解析成功者在前、失败者随后」。
+
+### 2026-09-13 — 第 9 项验收回退为待完成
+
+- **原因**：复核确认「最终文档/合并检查通过」尚未成立——`node scripts/doc-check.mjs` 仍有 9 条 D1（均来自同分支 docs/plan-corpus-supplement.md、docs/plan-index-and-tags.md 的活动 plan），合并门禁 `node scripts/verify.mjs merge` 被阻塞；且本计划全勾选未冻结亦触发 release/check P1，故不提前勾选。
+- **现状**：plan 第 79 项保持 `[ ]`；本计划实现与定向验证通过，收尾（归档）与合并门禁待三份计划收齐后统一执行。
 
 ## 债务记录
 
