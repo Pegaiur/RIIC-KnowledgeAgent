@@ -8,6 +8,8 @@
 | 完成日期 | 版本 | 文件 | 摘要 |
 |----------|------|------|------|
 
+| 2026-09-13 | 0.1.0 | [plan-facts-multi-term-query.md](plan-facts-multi-term-query.md) | facts_search 入参改为 queries 数组：逐词分段、跨词去重与 v6 逐项记录，maxItems 动态取自配置（ADR-015） |
+| 2026-09-13 | 0.1.0 | [plan-single-tool-call-and-facts-evidence.md](plan-single-tool-call-and-facts-evidence.md) | 每步仅准入首个工具调用、超量以 protocol_rejected 回写，并同步计量/trace/报告/answers.md 与具名事实取证提示、离线送达统计（ADR-016） |
 | 2026-09-12 | — | [plan-rag-delivery-and-entry.md](plan-rag-delivery-and-entry.md) | 技能表退出检索、base/guides 原文扩展与精确词条自动附带 facts 契约落地（ADR-013） |
 | 2026-09-12 | — | [plan-testing-architecture.md](plan-testing-architecture.md) | 测试约定规则文本先行：新增 testing.md 六组约定与 ADR-014，并加 TDD 核心约束，不引入机械门禁与覆盖率阈值 |
 | 2026-09-11 | — | [plan-facts-crossref-navigation.md](plan-facts-crossref-navigation.md) | plan-facts-crossref-navigation |

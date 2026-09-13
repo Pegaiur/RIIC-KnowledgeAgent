@@ -27,22 +27,9 @@
 
 ## 待办区
 
-- [x] **正式质量基线记录移出 spec，改由 AGENTS.md 承载并入门禁校验** — 2026-09-12 决定：spec 只管理自身版本、不记录基线；基线由根 AGENTS.md「质量基线」表承载（列：结果文件名 / SHA-256 / 简短说明，至少一行标注基线）；机械校验从简，只查「`bench/results/` 内每份结果都已在该表登记」（单向，不校验 spec 版本、哈希是否匹配、verdict 字段、反向存在性），由 bench validate 承担，并以 build + bench-validate 两步纳入合并门禁（PROFILE_VERSION 1.2.0→1.3.0）。已实现：新增 bench/src/quality-baseline.ts、接入 benchmark-integrity、写 AGENTS.md 质量基线段、spec 与 document-lifecycle 同步指向、登记 ADR-017；既有「允许空快照集合」口径随之撤销（须至少登记一条结果）。当前基线为本轮 glm-low 轮1（`2026-09-12T15-38-28-892Z-glm-low-default`），另有 `2026-09-13T01-14-52-980Z-qwen-off-t0` 登记为 qwen 侧对照基线，最早的 qwen 执行对照快照已退役。附带修复：snapshot.ts 的题头识别会把回答正文中含全角括号的小标题当作题头，导致本轮结果导出失败，已按「题头后首个非空行须为『- 问题：』」修复并补测试（先红后绿）。 — 2026-09-12 — 已完成，见 ADR-017
-
-- [x] **查询 Agent 指令结构与工具契约归位** — 2026-09-12 用户授权重写 knowledge/AGENTS.md 及工具 schema，已独立强调串行硬约束、集中取证流程、归位接口说明并移除运行时重复单调用文案；作为 docs/plan-single-tool-call-and-facts-evidence.md 的提示层补充实施，结构偏离与验证见同名 notes。工具描述变更使 TOOL_SCHEMA_VERSION 升至 12，ADR-015 与相关 plan 同步修订。typecheck、全套 533 项测试及文档校验通过；未进行真实模型质量验证。
-
-- [x] **以 glm-low 设立正式质量基线并评估本轮三项交付** — 2026-09-12 已在当前分支（gitHead 99d7a6d，schema v12、facts 结果 v6）用 glm-low 连续跑 3 轮 20 题（hybrid、预算 5），逐轮按 spec v4 从严核查并审计送达。3 轮必答 S/M/C/U 为 63/9/0/0、64/7/1/0、63/9/0/0，「完整且有据」9/10/7，工具全部成功、0 拒绝/0 错误/0 重试/0 截断，费用合计约 ¥0.447。错题共性：遗漏 25 项中 11 项为 references 技能分片未送达（办公室 5、贸易站 5、控制中枢 1）、14 项为已送达未覆盖（约 12 项属否定/边界/互斥/范围限定型）；额外断言问题集中在等价组等 references 文本的跨组数值错配与解锁档误写。三项交付观察：3 轮均无同批多调用、协议拒绝 0（单调用准入未被触发）；facts_search 均出现多词条数组且无参数错误；read_section 由旧运行 10 次降为 0。完整过程、局限与结论见 docs/exp/exp-agent-quality-baseline.md（已结束，未经人工独立复核）。是否据此在 spec 中指定正式质量基线由用户决定。
-
-
 - [ ] **LLM provider 重试时不得丢失用量数据** — 现状：provider.ts 的 fetchWithRetry 对可重试状态码（含 500/502/503/504）最多尝试 3 次，ledger 与 agent 侧按 httpAttempts 聚合各次尝试用量；但 callLLM 返回的 ProviderResult.usage 取自最后一次成功响应（parseUsage(data.usage)），跨尝试的聚合值只体现在 ledger.usage，ProviderResult.usage 仅取末次响应，两处口径不一致（现有 provider.test.ts、agent-provider-ledger.test.ts 已断言该行为）。历史上曾出现重试期间用量数据丢失、导致基准被迫重跑的情况。拟核查并明确：重试各次尝试（含失败与可重试响应）的用量必须完整计入计量，ProviderResult.usage 与 httpAttempts/ledger 聚合口径统一，失败与取消路径不得静默归零；核查失败与取消路径的现有覆盖后再决定是否补回归测试与改实现。 — 2026-09-12 — 待评估，需先定位历史重跑证据再决定是否修实现
 
 - [ ] **新增简易 WebUI（查询排障、API Key 与策略/模型设置）** — 现状：本机运行，无任何可视化界面，查询依赖 CLI 与 bench 脚本，排障需读 JSONL/快照；provider 与模型/检索策略均由 config 与 secret.yaml 决定。拟提供一个轻量 WebUI，支持：(1) 快速发起查询并查看工具调用轨迹与送达证据，便于排障；(2) 设置 API Key；(3) 设置检索策略与模型。需明确：密钥存储与脱敏边界（不得回显明文）、与既有 config/secret.yaml 的优先级关系、是否引入 Web 框架依赖（如引入需按 ADR 判据评估）、以及该界面与基准测量的关系（用于排障而非评测口径）。 — 2026-09-12 — 工程草案讨论中，见 docs/draft-webui-agent-framework.md。建议首版复用现有 Agent/trace，按需引入 AI SDK UI，Provider 层验证后再替换；Mastra / LangGraph 按现成调试台或状态恢复需求后续评估。首版依赖、事件、取消、设置与结果保存范围尚待定稿，未启动实施或兼容性 PoC；方案确认后转 plan，并按架构变更判据建立 ADR。
-
-- [ ] **具名干员或技能的事实取证提示** — 原「具名干员必须显式调用一次 facts」收口为按相关对象与事实缺口查证：RAG 附带卡已实际送达且覆盖时可直接使用，其余用 facts_search 补查，多对象可用既有 queries 数组；不将一次成功视为全部对象覆盖，无对应工具或无预算时说明缺口。仅提示层约束，不新增宿主实体识别与强制回馈；配套离线正式名命中对象的事实卡送达统计，不称完整服从率。 — 2026-09-12 — 已定稿转 docs/plan-single-tool-call-and-facts-evidence.md，尚未实施；依赖 ADR-015 多词通道，仍与 facts 数组协议计划独立交付。
-
-- [ ] **facts 工具支持数组单词查询** — 现状：`facts_search` 参数 schema 只接受单个字符串 `query`（tool-executor.ts 的 parseToolParams 仅允许 `query` 键，多余字段直接判 invalid_params），底层 store.factsSearch 也只接受单字符串。拟支持一次传入多个单词/词条（数组），并明确多词的返回组织、预算计量与去重口径，以及是否作为一次调用扣 1 点成功额度。 — 2026-09-12 — 已转实施计划，见 docs/plan-facts-multi-term-query.md（含逐项结构化状态、根级状态与 complete 语义、运行时异常原子性、去重范围与重复词引用、scope 外壳、动态上限贯通、输出容量边界）与 ADR-015；已在 feature/facts-multi-term-query 分支施工。「具名干员或技能的事实取证提示」已收口并另行立项，见 docs/plan-single-tool-call-and-facts-evidence.md，不并入本计划。
-
-- [ ] **单工具调用准入** — knowledge/AGENTS.md 已先行声明单调用，宿主仍按整批逐项执行。定稿为每步最多准入首项，首项无效不递补，其余 protocol_rejected 并按 call ID 回写，不计获准尝试或成功额度；拒绝提示结合余额，统计并入 denied，保留其他既有观测语义。 — 2026-09-12 — 已定稿转 docs/plan-single-tool-call-and-facts-evidence.md，宿主尚未实施；实施前新 ADR 局部替代 ADR-012 的整批执行策略。既有 GLM 探针迁入 docs/exp/exp-single-tool-call-probe.md，未新增付费运行。
 
 - [ ] **RAG 送达范围与入口优化（技能表退出、机制全文扩展、精确词条自动附带 facts、实体标记验证）** — 见 plan-rag-delivery-and-entry.md。2026-09-11 需求复核：六个单小节目标中五个所属文件已入 top5，F08.3 复合要求单列；精确入口可触发七条历史 RAG query，阵营命中不等于组合成员齐全，实际送达受容量约束，不承诺稳定答对。计划补齐原文范围/续读、统一配置、计量与历史兼容；采用 13/7 遗漏归因并记录 S08 原始轨迹依据。实体标记区分工具定义 v9 与 facts 结果 v5，旧设计取消归档于 docs/exp/exp-entity-marking-probe.md；新探针和付费对照另行 exp，不阻塞主工程验收。当前仅修订需求，容量分配与 ADR 须在施工前收口。 — 2026-09-11 — 工程已实施；2026-09-11 验收修复：多文件正文覆盖、送达观测消费者缺口及重复标题 nDCG 计量，见实施笔记；付费试验尚未执行
 
