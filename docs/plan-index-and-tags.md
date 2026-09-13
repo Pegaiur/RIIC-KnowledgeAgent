@@ -22,6 +22,10 @@
 
 ## 实施方案
 
+### 外部参考输入
+
+共用上游 [lejciy/arknights-base-vault](https://github.com/lejciy/arknights-base-vault) 的本地工作副本 dev-temp/work/corpus-supplement/arknights-base-vault（本次取得 main 分支提交 `54e92d9`；取得与保留约定见 docs/plan-corpus-supplement.md「外部输入与本地工作副本」）。重点查阅副本中的 docs/3-组合库/标签速查.md 与 docs/2-干员技能/技能等价组.md，借鉴标签组织与分组表达；关键词及标签实际覆盖以本库 knowledge/references 和现有登记为准，不用外部名单替换本地事实或据此认定完整技能等价。
+
 ### 1. 先确定共同语义
 
 基于下方关键词盘点及现有事实，明确设施、产物/功能、机制条件、资源/类别/技能组和组合的目录层级。干员和全量技能名继续由精确索引承担；常驻目录覆盖全部已登记主题与类别，条目包含检索词、用途、当前入口及必要范围。

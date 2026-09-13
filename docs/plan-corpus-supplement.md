@@ -22,6 +22,14 @@
 
 ## 实施方案
 
+### 外部输入与本地工作副本
+
+上游为 [lejciy/arknights-base-vault](https://github.com/lejciy/arknights-base-vault)，已于 2026-09-13 完整克隆到 dev-temp/work/corpus-supplement/arknights-base-vault；本次取得 main 分支提交 `54e92d9`。下文外部对象路径均相对该工作副本根目录，实施时直接在此查阅、比较和整理，不重复下载或恢复 knowledge/raw。工作副本被本库 Git 忽略，不进入检索 manifest。
+
+写作参考为该副本的 meta/协作与引用规范.md、meta/templates/组合库写作规范.md、meta/templates/tpl-特殊技能释义.md；素材范围仍以下方三批清单为准。外部规范仅作内容组织参考，本库规则与 references 事实真源继续生效。若后续更新工作副本，在实施笔记中记录所用提交及与采用内容相关的变化。
+
+该副本同时供 docs/plan-index-and-tags.md 与 docs/plan-prose-linked-knowledge.md 查阅外部组织方式，保留至三项工作不再需要来源比对；届时按 scripts/INDEX.md 的显式清单流程清理。正式正文的来源记录保留上游地址、所用版本与具体篇目，不以临时路径作为唯一来源。
+
 ### 1. 启动顺序与依赖
 
 先完成 docs/plan-index-and-tags.md 的共同语义，再用 docs/plan-prose-linked-knowledge.md 的现有小节样本打通展开，随后按下列批次正式补充并标注语料。标签检索和展开能力可独立推进；不依赖新增能力的资料核对和正文整理可先做，正式删除重复事实段落须等替代证据能够送达。
@@ -44,9 +52,9 @@
 
 完成依据：采用内容有具体来源，公式可复算，重复主题和冲突版本已处理，检索入口指向实际正文。采用对象见下节；落位按表执行，篇幅过长时按设施或独立主题拆分并更新 manifest。
 
-#### 外部语料对象清单（2026-09-13 核对）
+#### 外部语料对象清单（2026-09-13 核对，工作副本 main@54e92d9）
 
-用户退役已吸收及无关原始语料后，重新读取 arknights-base-vault 当前 main 正文目录并对照本地 base/guides、references 与 manifest。以下为采用素材与用途清单，当前尚未导入；直接修改正式正文，不恢复已退役 raw，不新增原始语料中转层。来源路径均相对外部仓库根目录。
+用户退役已吸收及无关原始语料后，重新读取工作副本 lejciy/arknights-base-vault 当前 main 正文目录并对照本地 base/guides、references 与 manifest。以下为采用素材与用途清单，当前尚未导入；直接修改正式正文，不恢复已退役 raw，不新增原始语料中转层。来源路径均相对该工作副本根目录。
 
 **第一批：补缺失机制。**
 

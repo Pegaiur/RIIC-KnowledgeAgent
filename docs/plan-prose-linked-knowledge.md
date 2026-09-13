@@ -26,6 +26,10 @@
 
 ## 实施方案
 
+### 外部参考输入
+
+共用上游 [lejciy/arknights-base-vault](https://github.com/lejciy/arknights-base-vault) 的本地工作副本 dev-temp/work/corpus-supplement/arknights-base-vault（本次取得 main 分支提交 `54e92d9`；取得与保留约定见 docs/plan-corpus-supplement.md「外部输入与本地工作副本」）。查阅副本中的 meta/协作与引用规范.md、meta/templates/组合库写作规范.md、meta/templates/tpl-特殊技能释义.md 及对应正文示例，参考正文与事实引用的职责划分，不直接照搬上游图谱字段或将上游标识作为本库对象 ID。首批能力验证仍使用本库现有小节，引用契约由本计划按共同语义确定。
+
 ### 1. 依共同语义确定引用契约
 
 输入为 docs/plan-index-and-tags.md 第 1 步明确的事实对象含义与明确引用/搜索词边界，不依赖完整标签检索或全部语料迁移。
