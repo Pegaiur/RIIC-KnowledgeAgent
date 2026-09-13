@@ -600,7 +600,12 @@ function parseAnswers(raw: string | null): Map<string, ParsedAnswer> {
   const headers: Array<{ id: string; category: string; line: number }> = []
   for (let i = 0; i < lines.length; i++) {
     const match = /^## (.+?)（(.+?)）$/.exec(lines[i])
-    if (match) headers.push({ id: match[1], category: match[2], line: i })
+    if (!match) continue
+    // 题头后首个非空行必须是「- 问题：」；回答正文里的含全角括号小标题（如「## 结论（…）」）不算题头。
+    let next = i + 1
+    while (next < lines.length && lines[next].trim() === '') next++
+    if (!(lines[next] ?? '').startsWith('- 问题：')) continue
+    headers.push({ id: match[1], category: match[2], line: i })
   }
   for (let i = 0; i < headers.length; i++) {
     const header = headers[i]
