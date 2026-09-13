@@ -50,22 +50,49 @@
 
 ## 输出要求
 
-只输出一个合法 JSON 对象，不加 Markdown 代码围栏或 JSON 之外的结束语。字段如下：
+只输出一个合法 JSON 对象；可用 Markdown 代码围栏包裹，围栏之外不得有字段说明、结语或其它文字。结构如下（示例值仅示意类型与取值，实际以审查结论替换）：
+
+```json
+{
+  "verdict": "PASS | FAIL | BLOCKED",
+  "summary": "不超过 200 个汉字的客观结论",
+  "technicalScore": 0,
+  "riskScore": 0,
+  "projectScore": 0,
+  "confidence": "Low | Medium | High",
+  "reviewedScope": "实际审查的基线、文件和 diff 范围，供主代理核对是否覆盖最终提交",
+  "keyFindings": [
+    {
+      "severity": "blocking | non-blocking",
+      "location": "文件与行号或来源位置",
+      "issue": "问题",
+      "evidence": "证据",
+      "impact": "影响",
+      "suggestion": "建议"
+    }
+  ],
+  "projectConcerns": ["项目架构与规范影响"],
+  "riskDimensions": [
+    { "name": "风险维度", "score": 1, "reason": "评分理由" }
+  ],
+  "recommendedMitigations": ["优先缓解建议"],
+  "verification": "实际检查、引用的验证记录及未验证部分",
+  "assumptions": ["假设、证据缺口和待澄清问题"],
+  "sources": ["实际引用的外部 URL"],
+  "selfCheck": "一行中文自检，含实际日期时间"
+}
+```
+
+字段约定：
 
 - `verdict`：`PASS`（必要核查完成且无阻塞问题）、`FAIL`（存在已确认阻塞问题）或 `BLOCKED`（必要核查无法完成）。
-- `summary`：不超过 200 个汉字的客观结论。
-- `technicalScore`：0–100，越高技术质量越好；无法评估时为 `null`。
-- `riskScore`：0–100，越高风险越大；无法评估时为 `null`。分数不代替放行结论。
-- `projectScore`：0–100，越高越符合项目约定；仅发现或收到项目约束时输出，无法评估时为 `null`。
-- `confidence`：`Low`、`Medium` 或 `High`，结合证据充分程度判断。
-- `reviewedScope`：实际审查的基线、文件和 diff 范围，供主代理核对是否覆盖最终提交。
-- `keyFindings`：发现数组，每项含 `severity`（`blocking` / `non-blocking`）、`location`（文件与行号或来源位置）、`issue`、`evidence`、`impact`、`suggestion`。优先保留最重要的 5 项，但不得因数量限制省略阻塞问题。
-- `projectConcerns`：项目架构与规范影响数组，仅有项目约束时输出。
-- `riskDimensions`：适用风险数组，每项含 `name`、`score`（1–5）及 `reason`；不适用时为空数组。
-- `recommendedMitigations`：最多 3 项优先缓解建议。
-- `verification`：实际检查、引用的验证记录及未验证部分。
-- `assumptions`：假设、证据缺口和待澄清问题数组，没有则为空数组。
-- `sources`：实际引用的外部 URL 数组；未使用外部资料时为空数组，代码证据写在发现和验证字段中。
-- `selfCheck`：一行中文自检，包含实际日期时间，确认事实有证据、推断和未核查项已标明；不得声称完成未执行的检查。
+- `technicalScore` / `riskScore` / `projectScore`：0–100 整数，越高分别代表技术质量越好、风险越大、越符合项目约定；无法评估时为 `null`。分数不代替放行结论。
+- `confidence`：结合证据充分程度在 `Low`、`Medium`、`High` 中取值。
+- `projectScore` 与 `projectConcerns`：仅发现或收到项目约束时输出，否则省略该字段。
+- `keyFindings`：优先保留最重要的 5 项，但不得因数量限制省略阻塞问题。
+- `riskDimensions`：`score` 取 1–5；不适用时为空数组。
+- `recommendedMitigations`：最多 3 项。
+- `assumptions` 与 `sources`：没有时为空数组；代码证据写在发现和验证字段中，不放入 `sources`。
+- `selfCheck`：确认事实有证据、推断和未核查项已标明；不得声称完成未执行的检查。
 
 输出前复核：结论与证据一致；适用检查项已覆盖；量化推导已复算；`PASS` 不含阻塞问题或影响放行的证据缺口。
