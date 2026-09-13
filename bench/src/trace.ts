@@ -3,7 +3,7 @@
  * 不记录 hidden reasoning、请求 headers 或完整运行配置。
  */
 import type { BenchQuery, HttpAttempt, LlmUsage, TerminationReason, ToolCall, ToolBatchStats } from './types.js'
-import type { AttachedFactsObservation, ToolBudgetState, ToolResultStatus, FulltextRange, LinkedEntryObservation } from './tool-executor.js'
+import type { AttachedFactsObservation, ToolBudgetState, ToolResultStatus, FulltextRange, LinkedEntryObservation, LinkedFactsObservation } from './tool-executor.js'
 
 export interface TraceLlmEvent {
   type: 'llm_call'
@@ -37,6 +37,8 @@ export interface TraceToolEvent {
   attachedFacts?: AttachedFactsObservation[]
   /** rag_search 关联事实入口提示观测（ADR-020）；无提示时省略。 */
   linkedEntries?: LinkedEntryObservation[]
+  /** read_section 显式展开关联事实的实际送达观测（ADR-020）；未展开时省略。 */
+  linkedFacts?: LinkedFactsObservation
   elapsedMs: number
   status: ToolResultStatus
   executed: boolean

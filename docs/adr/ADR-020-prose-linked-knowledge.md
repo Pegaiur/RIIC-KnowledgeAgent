@@ -1,7 +1,7 @@
 # ADR-020：散文小节关联事实的引用、提示与显式展开契约
 
 - 日期：2026-09-13
-- 状态：已决策
+- 状态：已实施
 
 ## 背景
 
@@ -44,9 +44,10 @@
 
 ### 5. 观测与计量
 
-- RAG 提示记入 rag_search 送达台账（提示与实际送达可区分）；read_section 显式展开另记实际返回对象台账。
+- RAG 提示走 rag_search 送达台账（trace、records.jsonl、snapshot 与 meta 汇总同步新增字段），提示与实际送达可区分：written 表示提示行是否实际写入正文。
+- read_section 显式展开记入 trace 的 tool_call 事件（read_section 无 records/snapshot 台账口径，本次不新增该层）。
 - 成功/空结果与工具预算沿用现有口径：提示不算送达；显式展开实际送达非空卡片计成功，空关联按空结果处理。
-- 相关兼容消费者（trace、records.jsonl、snapshot、meta 汇总）同步新增字段，历史记录缺字段表示不可用，不补零。
+- 历史记录缺字段表示不可用，不补零。
 
 ### 6. 版本
 
@@ -75,7 +76,7 @@
 
 ## 关联
 
-- 规划文档：docs/plan-prose-linked-knowledge.md（步骤 1–3）
+- 规划文档：docs/plan-prose-linked-knowledge.md（步骤 1–4）
 - 前置决策：ADR-008（原文小节阅读）、ADR-010（明确引用与自然语言搜索边界）、ADR-013（检索范围、原文扩展与 RAG 内部 facts 附带）
 - 共同语义：docs/plan-index-and-tags.md 第 1 步（最小事实对象与明确引用边界）
 - 内容维护：docs/plan-corpus-supplement.md 第 3 步

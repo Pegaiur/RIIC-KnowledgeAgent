@@ -50,6 +50,17 @@ export interface LinkedEntryObservation {
   written: boolean
 }
 
+/** read_section 显式展开关联事实的实际送达观测（ADR-020 决策 4）：登记范围与返回对象分开记录。 */
+export interface LinkedFactsObservation {
+  sectionId: string
+  /** 人工登记的可读对象引用（按登记顺序） */
+  requested: string[]
+  /** 实际送达的记录卡 canonical（按登记顺序去重） */
+  delivered: string[]
+  /** 已登记但本次未返回的对象及原因 */
+  omitted: Array<{ ref: string; reason: string }>
+}
+
 /** 单次外部 RAG 的送达台账；数组缺失表示异常时不可用，空数组表示已观察为零。 */
 export interface RagDeliveryRecord {
   callId: string

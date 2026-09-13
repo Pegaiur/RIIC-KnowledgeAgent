@@ -344,6 +344,7 @@ export async function runQuery(
             toolEvent.fulltextRanges = item.fulltextRanges
             toolEvent.attachedFacts = item.attachedFacts
             toolEvent.linkedEntries = item.linkedEntries
+            toolEvent.linkedFacts = item.linkedFacts
             toolEvent.writtenContent = writtenContent
             toolEvent.reason = item.message
             if (isToolErrorStatus(item.status)) toolEvent.error = item.message

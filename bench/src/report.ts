@@ -115,7 +115,8 @@ export interface ToolStatsAgg {
    *  按 ADR-013 决策 5，success 即「RAG/facts 任一部分实际送达非空证据」，故本字段就是实际证据送达计数。 */
   successes: number | null
   /** 已执行且 hitIds 非空的结果数。旧 chunk 命中口径：只统计 RAG 分块/facts 卡命中，
-   *  不含仅由内部附带 facts 送达（hitIds 为空）的 rag_search，故不能等同于证据送达；仅作兼容与诊断保留。 */
+   *  不含仅由内部附带 facts 送达（hitIds 为空）的 rag_search；read_section 的 linked 展开成功时 hitIds 取实际送达 canonical，也计入本项（ADR-020）。
+   *  故不能等同于证据送达；仅作兼容与诊断保留。 */
   hitCount: number
   /** 已执行但旧记录或异常缺少 hitIds 的结果数。 */
   hitUnknown: number

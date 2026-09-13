@@ -2,8 +2,8 @@
  * 独立函数工具 schema 与按批次预算执行器。
  * 工具函数名直接完成路由；执行器仍共用一套预算、校验和底层检索门面。
  */
-import type { AttachedFactsObservation, FulltextRange, LinkedEntryObservation } from './delivery.js'
-export type { AttachedFactsObservation, FulltextRange, LinkedEntryObservation } from './delivery.js'
+import type { AttachedFactsObservation, FulltextRange, LinkedEntryObservation, LinkedFactsObservation } from './delivery.js'
+export type { AttachedFactsObservation, FulltextRange, LinkedEntryObservation, LinkedFactsObservation } from './delivery.js'
 import { createHash } from 'node:crypto'
 import { effectiveAttachFacts, loadConfig, type BenchConfig, type RetrieverId } from './config.js'
 import { isFulltextFile } from './corpus.js'
@@ -11,6 +11,7 @@ import { search, type IndexEntry } from './retriever.js'
 import type { ProseLinkIndex, ResolvedProseLink } from './prose-links.js'
 import type { SectionDirectory, SectionEntry } from './sections.js'
 import { isFactTool, type BenchQuery, type DocChunk, type ToolCall } from './types.js'
+import type { RecordCard } from './facts/card.js'
 import {
   getCardStore,
   serializeCard,
@@ -135,6 +136,8 @@ export interface ToolExecutionResult {
   attachedFacts?: AttachedFactsObservation[]
   /** rag_search 关联事实入口提示观测（ADR-020）；无提示时省略。 */
   linkedEntries?: LinkedEntryObservation[]
+  /** read_section 显式展开关联事实的实际送达观测（ADR-020）；未展开时省略。 */
+  linkedFacts?: LinkedFactsObservation
   message?: string
   fatal?: boolean
 }
@@ -193,12 +196,13 @@ const STATIC_TOOL_DEFINITIONS: Record<'rag_search' | 'read_section', JsonObject>
     type: 'function',
     function: {
       name: 'read_section',
-      description: '按已返回的 ID 读取知识库原文小节或范围，可分段续读；ID 可来自检索结果、续读信息或上级范围入口。返回的 complete=false 表示该范围还有后续页，complete=true 仅表示该范围读完，不表示问题已完整解决。',
+      description: '按已返回的 ID 读取知识库原文小节或范围，可分段续读；ID 可来自检索结果、续读信息或上级范围入口。返回的 complete=false 表示该范围还有后续页，complete=true 仅表示该范围读完，不表示问题已完整解决。可选 linked=true 时改为展开该小节登记关联的事实卡（直接读取登记对象，不走别名/子串/同名集合扩展），不返回原文正文，且与 offset 互斥。',
       parameters: {
         type: 'object',
         properties: {
           section_id: { type: 'string', minLength: 1, description: '工具结果已给出的小节或范围 ID，原样使用。' },
           offset: { type: 'integer', minimum: 0, description: '可选，正文 UTF-16 索引，默认 0；用返回的 next_offset 续读' },
+          linked: { type: 'boolean', description: '可选；设为 true 时只展开该小节登记关联的事实卡，不返回原文正文，且不能与 offset 同时使用。' },
         },
         required: ['section_id'],
         additionalProperties: false,
@@ -456,6 +460,7 @@ async function executeOne(
       fulltextRanges: output.fulltextRanges,
       attachedFacts: output.attachedFacts,
       linkedEntries: output.linkedEntries,
+      linkedFacts: output.linkedFacts,
       factsResult,
       // 操作直接返回的 error（如原文扩展容量不足）需带上文本，供 trace.error 与复盘定位；
       // 与 catch 分支的错误口径一致，非 fatal，不扣成功额度。
@@ -611,17 +616,24 @@ function parseFactsTags(raw: unknown, rawOffset: unknown, limit: number, example
   return { value: { tags: legalTags, offset }, factsItems, factsMode: 'tags', reason: '' }
 }
 
-/** read_section 参数：section_id 必填非空字符串，offset 可选非负整数，额外字段拒绝。 */
+/** read_section 参数：section_id 必填非空字符串，offset 可选非负整数，linked 可选布尔（与 offset 互斥），额外字段拒绝。 */
 function parseReadSectionParams(
   input: JsonObject,
   example: string,
 ): { value?: Record<string, unknown>; reason: string } {
-  const allowedKeys = ['section_id', 'offset']
+  const allowedKeys = ['section_id', 'offset', 'linked']
   const unknownKey = Object.keys(input).find((key) => !allowedKeys.includes(key))
   if (unknownKey) return { reason: `read_section 不支持参数字段 ${unknownKey}；参数示例：${example}` }
 
   if (typeof input.section_id !== 'string' || input.section_id.trim() === '') {
     return { reason: `read_section 缺少非空字符串 section_id；参数示例：${example}` }
+  }
+  if (input.linked !== undefined && typeof input.linked !== 'boolean') {
+    return { reason: `read_section 的 linked 必须是布尔值；参数示例：${example}` }
+  }
+  const linked = input.linked === true
+  if (linked && input.offset !== undefined) {
+    return { reason: `read_section 的 linked 与 offset 互斥；参数示例：${example}` }
   }
   let offset = 0
   if (input.offset !== undefined) {
@@ -630,7 +642,7 @@ function parseReadSectionParams(
     }
     offset = input.offset
   }
-  return { value: { section_id: input.section_id.trim(), offset }, reason: '' }
+  return { value: { section_id: input.section_id.trim(), offset, ...(linked ? { linked: true } : {}) }, reason: '' }
 }
 
 function parseRequiredString(
@@ -666,6 +678,7 @@ function runOperation(
   fulltextRanges?: FulltextRange[]
   attachedFacts?: AttachedFactsObservation[]
   linkedEntries?: LinkedEntryObservation[]
+  linkedFacts?: LinkedFactsObservation
   status?: ToolResultStatus
 } {
   if (operation === 'rag_search') return ragSearchOperation(parsed.value!, context, config)
@@ -1459,7 +1472,7 @@ function readSectionOperation(
   params: Record<string, unknown>,
   context: KnowledgeToolContext,
   config: BenchConfig,
-): { data: string; hitIds: string[]; injectedIds: string[]; status: ToolResultStatus } {
+): { data: string; hitIds: string[]; injectedIds: string[]; status: ToolResultStatus; linkedFacts?: LinkedFactsObservation } {
   const sectionId = params.section_id as string
   const offset = params.offset as number
   const directory = context.sections
@@ -1470,6 +1483,7 @@ function readSectionOperation(
   if (!section) {
     return { data: `本运行目录中没有该小节：${sectionId}。不会改为模糊搜索。`, hitIds: [], injectedIds: [], status: 'empty' }
   }
+  if (params.linked === true) return readLinkedFactsOperation(section, context)
   if (offset > section.body.length) {
     return {
       data: `read_section 的 offset 超出小节正文长度（${section.body.length}）：${offset}`,
@@ -1495,6 +1509,71 @@ function readSectionOperation(
     hitIds: [],
     injectedIds: [],
     status: remaining > 0 ? 'success' : 'empty',
+  }
+}
+
+/**
+ * read_section 的 linked 展开（ADR-020 决策 4）：直接按人工登记引用读取记录卡，
+ * 不经过别名、子串或同名全部返回入口，也不递归扩大对象集合；返回范围即登记对象。
+ * 校验不扩展到散文数值抽取、阈值与练度断言。
+ * TODO(tech-debt) PLK-1：关联载荷首版不设分页或截断（plan 非目标），结果体积可能超过 maxContextChars；
+ * 重启条件：引入分页或体积优化时须同时重定义 complete 与命中/送达口径。
+ */
+function readLinkedFactsOperation(
+  section: SectionEntry,
+  context: KnowledgeToolContext,
+): { data: string; hitIds: string[]; injectedIds: string[]; status: ToolResultStatus; linkedFacts: LinkedFactsObservation } {
+  const link = context.links?.bySection.get(section.sectionId)
+  if (!link || link.objects.length === 0) {
+    return {
+      data: `该小节没有登记可展开的关联事实：${section.sectionId}。不会改为模糊搜索或别名展开。`,
+      hitIds: [],
+      injectedIds: [],
+      status: 'empty',
+      linkedFacts: { sectionId: section.sectionId, requested: [], delivered: [], omitted: [] },
+    }
+  }
+
+  const store = loadFactsStore(context)
+  const requested: string[] = []
+  const delivered: string[] = []
+  const omitted: Array<{ ref: string; reason: string }> = []
+  const cards: RecordCard[] = []
+  const seen = new Set<string>()
+  const refLines: string[] = []
+  for (const object of link.objects) {
+    requested.push(object.ref)
+    if (seen.has(object.canonical)) {
+      refLines.push(`- ${object.ref}（与已返回卡同卡，去重）`)
+      continue
+    }
+    const card = store.byCanonical.get(object.canonical)
+    if (!card) {
+      omitted.push({ ref: object.ref, reason: '记录卡未找到' })
+      continue
+    }
+    seen.add(object.canonical)
+    delivered.push(object.canonical)
+    cards.push(card)
+    refLines.push(`- ${object.ref} → ${object.canonical}`)
+  }
+
+  const path = section.level === 0 ? '（文档根节点）' : [...section.ancestors, section.heading].join(' > ')
+  const lines = [
+    `【read_section｜关联事实】${section.sectionId}`,
+    `标题路径：${path}`,
+    `关联对象：${requested.length} 个｜已返回记录卡：${delivered.length} 张`,
+    '说明：直接按人工登记引用读取，不经过别名、子串或同名集合扩展；范围即登记对象。',
+    ...refLines,
+  ]
+  if (omitted.length > 0) lines.push(`未返回：${omitted.map((item) => `${item.ref}（${item.reason}）`).join('；')}`)
+  const body = cards.map((card) => serializeCard(card, {})).join('\n\n')
+  return {
+    data: body ? `${lines.join('\n')}\n\n${body}` : lines.join('\n'),
+    hitIds: delivered,
+    injectedIds: [...delivered],
+    status: delivered.length > 0 ? 'success' : 'empty',
+    linkedFacts: { sectionId: section.sectionId, requested, delivered, omitted },
   }
 }
 

@@ -55,9 +55,20 @@
 - **后果**：跨该变更做质量/成本对照须注意工具 schema 版本与提示词/返回差异；既有两份基线早于本变更，不含 linkedEntries 观测。
 - **复核调整**：按独立审查把关联事实入口块移到既有小节上下文（父级引导、小节导航）之后，确保只用剩余预算；agent 侧 `linkedEntries` 未执行也记空数组，避免一次参数错误使整轮 `linkedHints` 不可用（历史缺字段仍为 null）；`buildProseLinkIndex` 在无标注时短路，不装配小节目录与 references 事实。提示文案中的 read_section `linked` 参数在紧随其后的第 4 步落地，其间不单独跑测或发版。
 
+### 2026-09-13 — 第 4 步：read_section 显式展开的落地与观测
+
+- **plan 原文**：「保留默认读原文行为；增加显式选择关联事实的能力」「展开直接解析登记引用，复用 facts 对象读取及卡片展示，不经过别名、子串或同名全部返回入口」「响应区分原文与关联事实，标明关联小节和实际返回对象」。
+- **实际做法**：`read_section` 增可选布尔参数 `linked`（默认 false 保持原文与分页契约；与 offset 互斥，非布尔或未知字段拒绝）；`linked=true` 走 `readLinkedFactsOperation`，按 `ProseLinkIndex.bySection` 的登记对象经 `store.byCanonical` 直接取卡并复用 `serializeCard`，不递归；响应以「【read_section｜关联事实】」区分原文，列出登记引用→返回对象、未返回原因，`hitIds`/`injectedIds` 取实际送达 canonical；新增 `LinkedFactsObservation` 经 trace 的 tool_call 记录。ADR-020 状态由「已决策」改为「已实施」并同步 INDEX。
+- **原因**：直接按 canonical 取卡可保证「明确引用」与「自然语言搜索」边界（ADR-010），替换关系随整卡展示；默认分支零改动避免影响既有阅读行为。
+- **补充**：`TOOL_SCHEMA_VERSION` 保持 14（第 3 步已合并递增），`FACTS_RESULT_VERSION` 保持 7。
+- **口径说明**：linked 展开的 `hitIds`/`injectedIds` 取实际送达 canonical（与 facts_search 一致），成功展开会计入 toolBatch.hitCount，跨版本比对命中数时须注意；read_section 不回写共享注入列表，injected.json 不受影响。ADR-020 状态在步骤 1–4 完成后改为「已实施」，步骤 5 的独立验证与合并检查另行收束。
+
 ## 债务记录
 
-（待后续步骤记录）
+### 2026-09-13 — PLK-1 关联载荷体积
+
+- **债务**：read_section 的 linked 展开首版不设分页或截断，一次展开全部登记对象，结果体积可能超过 maxContextChars；plan 将体积/分页列为非目标。代码锚点：bench/src/tool-executor.ts 的 `readLinkedFactsOperation` 顶部 `TODO(tech-debt) PLK-1`。
+- **未来偿还**：需要控制关联载荷体积时，引入分页或截断，并同步重定义 complete 与命中/送达口径。
 
 ## 意外发现
 
