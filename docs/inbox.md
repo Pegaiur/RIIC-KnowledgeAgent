@@ -27,6 +27,12 @@
 
 ## 待办区
 
+- [ ] **索引与标签框架** — 先基于现有 facts 明确标签反查、最小事实关联、等价组语义与现有工具消费方式，见 docs/draft-index-and-tags.md。框架独立定稿和验证，不预建完整专题/图谱，不绑定语料迁移；不新增工具或查询分类。后续添加语料时及时反馈并调整框架。 — 2026-09-13 — 已路由 draft，未实施
+
+- [ ] **语料补充与整理** — 按机制、技能释义、组合与散件逐批补充，见 docs/draft-corpus-supplement.md；不依赖标签与关联能力的正文可先推进，依赖部分待框架首版明确后再整理。保留已核对的外部对象与段落问题，不恢复退役 raw，不全量刷新真源；整理过程中区分数据缺口与框架问题，及时在对应工作中调整，两项分别定稿和验收。 — 2026-09-13 — 已路由 draft，未实施
+
+- [ ] **查询侧分类、去歧义与黑话词典（暂缓）** — 后续统一讨论自然语言问题分类、玩家问法到功能范围的映射、查询意图路由，以及同名词去歧义、黑话/俗称/简称词典与现有精确入口的衔接。2026-09-13 用户明确本轮不做查询分类，避免与语料补充及标签索引耦合；本项不作为 docs/draft-index-and-tags.md 或 docs/draft-corpus-supplement.md 的依赖，不提前实现。重启时先明确查询侧职责与词典维护方式。 — 2026-09-13 — 保留 inbox
+
 - [ ] **LLM provider 重试时不得丢失用量数据** — 现状：provider.ts 的 fetchWithRetry 对可重试状态码（含 500/502/503/504）最多尝试 3 次，ledger 与 agent 侧按 httpAttempts 聚合各次尝试用量；但 callLLM 返回的 ProviderResult.usage 取自最后一次成功响应（parseUsage(data.usage)），跨尝试的聚合值只体现在 ledger.usage，ProviderResult.usage 仅取末次响应，两处口径不一致（现有 provider.test.ts、agent-provider-ledger.test.ts 已断言该行为）。历史上曾出现重试期间用量数据丢失、导致基准被迫重跑的情况。拟核查并明确：重试各次尝试（含失败与可重试响应）的用量必须完整计入计量，ProviderResult.usage 与 httpAttempts/ledger 聚合口径统一，失败与取消路径不得静默归零；核查失败与取消路径的现有覆盖后再决定是否补回归测试与改实现。 — 2026-09-12 — 待评估，需先定位历史重跑证据再决定是否修实现
 
 - [ ] **新增简易 WebUI（查询排障、API Key 与策略/模型设置）** — 现状：本机运行，无任何可视化界面，查询依赖 CLI 与 bench 脚本，排障需读 JSONL/快照；provider 与模型/检索策略均由 config 与 secret.yaml 决定。拟提供一个轻量 WebUI，支持：(1) 快速发起查询并查看工具调用轨迹与送达证据，便于排障；(2) 设置 API Key；(3) 设置检索策略与模型。需明确：密钥存储与脱敏边界（不得回显明文）、与既有 config/secret.yaml 的优先级关系、是否引入 Web 框架依赖（如引入需按 ADR 判据评估）、以及该界面与基准测量的关系（用于排障而非评测口径）。 — 2026-09-12 — 工程草案讨论中，见 docs/draft-webui-agent-framework.md。建议首版复用现有 Agent/trace，按需引入 AI SDK UI，Provider 层验证后再替换；Mastra / LangGraph 按现成调试台或状态恢复需求后续评估。首版依赖、事件、取消、设置与结果保存范围尚待定稿，未启动实施或兼容性 PoC；方案确认后转 plan，并按架构变更判据建立 ADR。
