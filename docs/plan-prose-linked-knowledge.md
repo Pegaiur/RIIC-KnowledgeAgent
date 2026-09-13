@@ -76,7 +76,7 @@ rag_search 继续按现有正文范围返回，额外给出对应小节的可展
 - [x] 展开直接读取登记对象，不走别名/子串扩张，不递归扩大对象集合，事实字段和替换关系正确。
 - [x] 用现有小节独立验证，无需新增标签、改写正文或完成语料批次。
 - [x] 工具说明、计量、trace 和相关兼容消费者同步；提示与实际送达可区分。
-- [ ] 按 docs/rules/testing.md 先观察行为测试失败再实现，通过 pnpm run typecheck、全套 pnpm run test 及最终文档/合并检查。
+- [x] 按 docs/rules/testing.md 先观察行为测试失败再实现，通过 pnpm run typecheck、全套 pnpm run test 及最终文档/合并检查。
 
 ## 关联 ADR
 
