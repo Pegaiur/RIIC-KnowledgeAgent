@@ -80,6 +80,10 @@
 > 遗留的技术债、被牺牲的改进与延期偿还事项（纯权衡取舍、无遗留债务的决策记入「决策偏离」）
 > 可定位到代码的债务须在代码处写 `TODO(tech-debt) <编号>：` 注释（AGENTS.md 编码核心约束 #5），此处只记编号、结论与未来偿还条件
 
+### 2026-09-13 — 本轮技术债治理（R5-10）
+- **R5-10（有代码锚点）**：离线脚本 facts-evidence-observation.mjs 按运行目录文件契约只读取数，与 bench/src 的 JSONL、题集、名册解析存在同构样板，RAG 台账不可用判定口径与 report.ts 已有意分叉；因 scripts 不 import bench/src（分层与构建约定）暂不共享。偿还条件：出现可共享的纯协议包方案，或运行目录文件契约变更需两侧同步时再评估。锚点：scripts/tasks/bench/facts-evidence-observation.mjs 头部注释。
+- 本轮治理的其余债项（R5-7 至 R5-9、R5-11 至 R5-16）登记于 docs/plan-facts-multi-term-query-notes.md「债务记录」。
+
 ### 2026-09-12 — 新 ADR 未建（计划前置阻塞项）
 - **债务**：局部替代 ADR-012「同次响应按顺序执行整批」及其备选方案条目的新 ADR 尚未建立，也未登记 docs/adr/INDEX.md。
 - **未来偿还**：无。2026-09-12 已建立 ADR-016 并登记 docs/adr/INDEX.md；步骤 5 已将 ADR-016 状态置「已实施」。

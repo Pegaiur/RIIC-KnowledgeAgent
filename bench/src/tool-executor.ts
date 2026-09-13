@@ -591,6 +591,8 @@ function runOperation(
  * 后续段只列名称并引用首次段号（去重范围仅限本次调用）。hitIds / injectedIds 取跨词并集、按首次出现顺序排列。
  * 全部结果先在局部组装，任一步 store 抛错整次失败，不留下部分注入记录。
  * 逐项记录（原索引、规范化词条、状态、路径、canonical）经 resolution.items 进入元数据，items 取并集计数。
+ * TODO(tech-debt) R5-7：首版按词完整返回，无分页/截断，maxItems 只约束词数、不代表输出容量上限，
+ * 宽查单词输出可超过 maxContextChars；重启条件：引入分页或截断时须同时重定义 complete 与 matchedCount/returnedCount 的送达口径。
  */
 function factsSearchOperation(
   parsed: ParsedToolParams,

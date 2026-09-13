@@ -76,6 +76,21 @@
 > 遗留的技术债、被牺牲的改进与延期偿还事项（纯权衡取舍、无遗留债务的决策记入「决策偏离」）
 > 可定位到代码的债务须在代码处写 `TODO(tech-debt) <编号>：` 注释（AGENTS.md 编码核心约束 #5），此处只记编号、结论与未来偿还条件
 
+### 2026-09-13 — 本轮技术债治理（分支 feature/facts-multi-term-query）
+> 三维度扫描 + 双代理交叉审查：无「合并前立即修」项。以下为登记债项，按「编号：结论。偿还条件：…」批量简写，对应模板的「债务/未来偿还」两要素；R5-10 登记于 docs/plan-single-tool-call-and-facts-evidence-notes.md。
+
+- **R5-7（有代码锚点）**：facts_search 首版完整返回、无分页/截断，maxItems 只约束词数。偿还条件：引入分页或截断时须同步重定义 `complete` 与送达计数。锚点：bench/src/tool-executor.ts factsSearchOperation。
+- **R5-8（有代码锚点）**：`serializeFactsMatches` 生产无引用、结论文案已被新渲染逐字复刻，属漂移副本。偿还条件：清理 facts 旧渲染契约时删除该函数并同步移除测试引用，或让新渲染复用它建立单一真源。锚点：bench/src/facts/store.ts。
+- **R5-9（有代码锚点）**：新增配置字段需在 runner meta 投影、snapshot 的 META_ALLOWED_KEYS、inputs config 捕获三处手动登记，漏登静默丢字段。偿还条件：再次发生漏登，或决定引入统一字段登记表时收敛。锚点：bench/src/runner.ts meta 投影处。
+- **R5-11**：`runBenchmark` 内联 meta 字面量与逐题流程混杂。偿还条件：需要降低该函数复杂度或再次改动 meta 字段装配时抽取 buildMeta。
+- **R5-12**：`snapshotFromRunDir` 的 queryMap 构造三处近重复，且三处兜底语义不同。偿还条件：再次调整该函数或需要统一兜底语义时收敛。
+- **R5-13**：trace schema 版本 3 硬编码于 bench/src/trace.ts 与 runner.ts meta 投影。偿还条件：trace 协议版本再次变更时下沉单源常量（需先确认跨模块常量归属）。
+- **R5-14**：终止原因枚举在 bench/src/types.ts 与 snapshot.ts 各一份。偿还条件：该枚举再次增删时同步类型与运行时集合或引入单一真源。
+- **R5-15**：类别枚举 `fact|system|gadget` 在 types.ts、snapshot.ts、benchmark-integrity.ts 多处消费。偿还条件：再次增删或出现新消费方时评估统一；当前用途不同，强行统一属抽象泄漏。
+- **R5-16**：`getCardStore` 模块级单例不可注入（bench/src/facts/store.ts）。偿还条件：需要替换 facts store 数据源或做测试替身时引入注入点。
+- 锚点口径：仅「由本分支引入或直接暴露」且可定位的债项落代码锚点（R5-7~R5-10）；R5-11~R5-16 为存量债，仅在本段登记、不落代码锚点，引用以文件与符号为准（不写易随注释增删漂移的行号）。
+- 本轮判定「不值得修」不留债项：自然大函数（A1/A3/A5/A6）、展示契约不同的重复（B1/C5）、有意的独立兼容契约（B4b/B5）、语义不同的二次计数（C3）、谓词分类（C6）、不触发的限流单例（C7）。
+
 ## 意外发现
 > 实施中发现的 plan 未覆盖的依赖/边界/风险
 

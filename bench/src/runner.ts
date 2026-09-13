@@ -247,6 +247,8 @@ export async function runBenchmark(
   // 全部题目结束后再落盘最终 inputs.json，保持先于 meta.json 写入的时序。
   completeRunInputs(runInputs)
   writeRunInputs(inputsPath, runInputs)
+  // TODO(tech-debt) R5-9：新增配置字段需在此 meta 投影、snapshot.ts 的 META_ALLOWED_KEYS 与 inputs.ts 的 config 捕获
+  // 三处各自手动登记，漏登会静默丢失该字段；重启条件：再次发生漏登，或决定引入统一字段登记表时收敛。
   writeFileSync(
     metaPath,
     JSON.stringify(

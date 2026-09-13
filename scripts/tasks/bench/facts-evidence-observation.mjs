@@ -13,6 +13,9 @@
  *   - 名册版本对应：仅当运行记录与当前 HEAD 一致、运行当时非脏树且当前名册文件在工作区无未提交修改，或调用方用 --assume-roster-matches/显式 --roster 确认时，才用当前名册解释该运行；否则标不可判定，不拿当前名册无条件解释旧运行。
  *   - 无正式名命中的题记不适用，不计为合规。本输出只统计字面命中与事实卡送达，不代表真实意图识别，也不判断卡片是否足以支撑结论。
  * 只读边界：仅读取运行目录与名册，结果只输出终端表格，不写任何持久化字段。
+ * TODO(tech-debt) R5-10：本脚本按运行目录文件契约只读取数，与 bench/src（snapshot.ts/cli.ts/benchmark-integrity.ts）
+ * 的 JSONL、题集与名册解析存在同构样板，且 RAG 台账不可用判定口径与 report.ts 已有意分叉；因 scripts 不 import
+ * bench/src（分层与构建约定）暂不共享。重启条件：出现可共享的纯协议包方案，或运行目录文件契约变更需两侧同步时再评估。
  */
 
 import { existsSync, readFileSync } from 'node:fs'

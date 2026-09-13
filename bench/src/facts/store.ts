@@ -337,7 +337,12 @@ export function serializeCards(cards: RecordCard[], filters: CardSerializationFi
   return filters.queryOperators ? `${operatorScopeNotice()}\n${content}` : content
 }
 
-/** 渲染当前 facts_search 的查询级结果，并保留路径与完整卡片。 */
+/**
+ * 渲染当前 facts_search 的查询级结果，并保留路径与完整卡片。
+ * TODO(tech-debt) R5-8：多词条分段渲染已改由 tool-executor.ts 的 factsSearchOperation 承担，本函数生产无引用
+ * （仅 3 个测试文件使用），其结论文案（「未收录精确词条」「本次路径没有可返回的记录卡」）已被新渲染逐字复刻，属漂移副本；
+ * 重启条件：清理 facts 旧渲染契约时删除本函数并同步移除测试引用，或让新渲染复用本函数建立单一真源。
+ */
 export function serializeFactsMatches(result: FactsSearchResult): string {
   const term = result.query.trim()
   if (result.paths.length === 0) return `未收录精确词条：${term}`
