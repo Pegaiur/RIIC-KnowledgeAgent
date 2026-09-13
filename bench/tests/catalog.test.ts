@@ -7,10 +7,12 @@ import {
   buildKeywordCatalog,
   catalogDifference,
   generateKeywordCatalogMarkdown,
+  loadKeywordCatalogInputs,
   parseCategorySections,
   renderKeywordCatalog,
   type CatalogInputs,
 } from '../src/catalog.js'
+import { getCardStore } from '../src/facts/store.js'
 import { loadKnowledgeAgentInstructions } from '../src/agent.js'
 
 /** 注入夹具：只保留少量设施/标签/类别/组合 + 人工说明，用于验证顺序与覆盖校验。 */
@@ -62,7 +64,7 @@ describe('catalog：机械汇总与人工说明合并', () => {
     // 设施固定顺序：先设施行，再按设施分组的来源标签（发电站无标签不出现）。
     expect(entries.slice(0, 3).map((entry) => entry.term)).toEqual(['会客室', '发电站', '制造站'])
     expect(entries.filter((entry) => entry.group === '来源标签 · 会客室').map((entry) => entry.term))
-      .toEqual(['线索1（线索倾向）', '未拥有加成'])
+      .toEqual(['线索1（线索倾向）（来源标签：线索1）', '未拥有加成'])
     expect(entries.filter((entry) => entry.group === '来源标签 · 制造站').map((entry) => entry.term))
       .toEqual(['通用制造（来源标签：通用生产）'])
     expect(entries.filter((entry) => entry.section === 'categories').map((entry) => entry.term))
@@ -159,6 +161,17 @@ describe('catalog：真源机械核对', () => {
     const onDisk = readFileSync(join(root, ...CATALOG_RELATIVE_PATH.split('/')), 'utf-8')
 
     expect(catalogDifference(generated, onDisk.replace(/\r\n/g, '\n'))).toEqual([])
+  })
+
+  it('类别区段的 F 入口与实际 facts 登记一致：无命中只标 R，不引导空查询', () => {
+    const store = getCardStore()
+    const entries = buildKeywordCatalog(loadKeywordCatalogInputs(process.cwd()))
+    const categoryEntries = entries.filter((entry) => entry.section === 'categories')
+    expect(categoryEntries.length).toBeGreaterThan(0)
+    for (const entry of categoryEntries) {
+      const resolves = store.factsSearch(entry.term).paths.length > 0
+      expect(entry.entry.includes('F：'), `${entry.term} 的入口标注与登记不一致：${entry.entry}`).toBe(resolves)
+    }
   })
 
   it('差异摘要能定位不一致行', () => {

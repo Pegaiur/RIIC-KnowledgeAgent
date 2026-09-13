@@ -231,6 +231,36 @@ describe('facts_search tags 执行与分页', () => {
     expect(data).toContain('标签「前置标签」｜设施：制造站｜技能「命中技能」｜解锁：初始解锁，替换「非命中技能」')
   })
 
+  it('命中设施的全部技能前置到其他设施之前，同设施其他技能与替换关系不被拆开', async () => {
+    const store = getCardStore()
+    const target = card('跨设施卡', {
+      rooms: ['加工站', '宿舍'],
+      skills: [
+        skill({ grantId: 'y1', room: '加工站', name: '其他设施技能' }),
+        skill({ grantId: 'y2', room: '宿舍', name: '同设施未命中' }),
+        skill({ grantId: 'y3', room: '宿舍', name: '命中甲', tags: ['宿舍标签'] }),
+        skill({ grantId: 'y4', room: '宿舍', name: '命中乙', tags: ['宿舍标签'], replacesGrantId: 'y2' }),
+      ],
+    })
+    vi.spyOn(store, 'factsSearchByTags').mockReturnValue({
+      matchedTags: ['宿舍标签'],
+      missingTags: [],
+      cards: [tagMatch(target, [
+        { tag: '宿舍标签', canonical: '跨设施卡', room: '宿舍', skillName: '命中甲', grantId: 'y3', unlockType: '初始解锁' },
+        { tag: '宿舍标签', canonical: '跨设施卡', room: '宿舍', skillName: '命中乙', grantId: 'y4', unlockType: '初始解锁', replacesGrantId: 'y2' },
+      ])],
+    })
+    const item = (await factsExecutor().executeStep([call('facility-order', { tags: ['宿舍标签'] })])).results[0]!
+    const data = item.data
+    // 用技能行标记（名后紧跟「：」）定位，排除替换文案中的同名引用。
+    const line = (name: string): number => data.indexOf(`「${name}」：`)
+    // 命中设施（宿舍）的技能整体前置：命中技能 → 同设施未命中技能 → 其他设施技能。
+    expect(line('命中甲')).toBeLessThan(line('命中乙'))
+    expect(line('命中乙')).toBeLessThan(line('同设施未命中'))
+    expect(line('同设施未命中')).toBeLessThan(line('其他设施技能'))
+    expect(data).toContain('替换「同设施未命中」')
+  })
+
   it('按页上限分页并给出续读 offset，offset 越界返回空页且 complete=true', async () => {
     const wide = Array.from({ length: 25 }, (_, index) => card(`宽卡${String(index + 1).padStart(2, '0')}`, {
       rooms: ['制造站'],

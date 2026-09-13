@@ -89,10 +89,13 @@ function entryFromText(section: CatalogSectionId, term: string, text: CatalogTex
   }
 }
 
-/** 展示检索词：规范词与来源标签不同且不可互相包含时，附注来源标签便于对照。 */
+/**
+ * 展示检索词：规范词与来源标签不同时附注原始来源标签。
+ * tags 入口按来源标签精确匹配，不能用规范词代替；只要规范词不等于标签，就显式给出可直接传入的标签值。
+ */
 function tagTerm(tag: string, text: CatalogText): string {
   const term = text.term ?? tag
-  return term.includes(tag) || tag.includes(term) ? term : `${term}（来源标签：${tag}）`
+  return term === tag ? term : `${term}（来源标签：${tag}）`
 }
 
 function assertCoverage(items: readonly string[], descriptions: Readonly<Record<string, unknown>>, missingLabel: string, extraLabel: string): void {

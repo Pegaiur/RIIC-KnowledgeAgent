@@ -371,11 +371,45 @@ const CATEGORY_SECTIONS: Readonly<Record<string, CatalogText>> = {
   },
 }
 
-/** 个别类别名的入口覆盖：该名本身是 facts 精确技能词条时改标 F，不是技能名时明确 F 不适用。 */
+/** 无对应 facts 登记词条的类别名入口说明：只保留 R，明确 F 不适用，避免引导 Agent 发起空查询。 */
+const CATEGORY_R_ONLY_ENTRY = 'R：类别定义；F 无对应登记词条'
+
+/**
+ * 无对应 facts 词条的类别名（已按现有登记逐项核对，facts_search 返回空）。
+ * 注释按来源区段分组，说明为何没有可用的 F 入口。
+ */
+const CATEGORY_R_ONLY_NAMES = [
+  // 全局资源：外势/实地/工程机器人/魔物料理只有定义，无同名 facts 词条。
+  '外势',
+  '实地',
+  '工程机器人',
+  '魔物料理',
+  // 规则说明：变量与规则定义，无同名 facts 词条；特殊加成、特殊叠加规则各含两条同名定义。
+  '人间烟火',
+  '可露希尔特别订单',
+  '小节',
+  '异格',
+  '心情落差',
+  '思维链环',
+  '感知信息',
+  '木天蓼',
+  '梦境',
+  '武道',
+  '热情值',
+  '特别独占订单',
+  '特殊加成',
+  '特殊叠加规则',
+  '特殊比较规则',
+  '记忆碎片',
+  '赤金生产线',
+] as const
+
+/** 个别类别名的入口覆盖：该名本身是 facts 精确词条时改标 F（技能/技能组/干员组/登记入口），无对应词条时明确 F 不适用。 */
 const CATEGORY_OVERRIDES: Readonly<Record<string, Partial<CatalogText>>> = {
+  ...Object.fromEntries(CATEGORY_R_ONLY_NAMES.map((name) => [name, { entry: CATEGORY_R_ONLY_ENTRY }] as const)),
   乌萨斯特饮: { entry: 'F：技能（命中仅表示相关卡）；R：类别定义' },
   情报储备: { entry: 'F：技能（命中仅表示相关卡）；R：类别定义' },
-  巫术结晶: { entry: 'R：类别定义；F 无对应技能名，不提供术语定义查询' },
+  巫术结晶: { entry: CATEGORY_R_ONLY_ENTRY },
   业报: { entry: 'F：技能（命中仅表示相关卡）；R：类别定义' },
   仿生海龙: { entry: 'F：技能（命中仅表示相关卡）；R：类别定义' },
   因果: { entry: 'F：技能（命中仅表示相关卡）；R：类别定义' },

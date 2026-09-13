@@ -829,14 +829,23 @@ function factsSearchTagsOperation(
   }
 }
 
-/** 命中设施技能前置，其余技能保持原卡顺序；整卡完整返回，不裁剪。 */
+/**
+ * 命中设施技能前置：命中技能 → 同设施其他技能（含替换关系）→ 其他设施技能；
+ * 各组内保持原卡顺序；同卡命中多个设施时这些设施都算命中设施。整卡完整返回，不裁剪。
+ */
 function serializeTagCard(match: TagCardMatch): string {
   const hitGrantIds = new Set(match.matchedGrantIds)
   const hitSkillKeys = new Set(match.hits.filter((hit) => hit.grantId === undefined).map((hit) => `${hit.room}\u0000${hit.skillName}`))
   const isHit = (skill: { grantId?: string; room?: string; name: string }): boolean => skill.grantId !== undefined
     ? hitGrantIds.has(skill.grantId)
     : hitSkillKeys.has(`${skill.room ?? ''}\u0000${skill.name}`)
-  const skills = [...match.card.skills.filter(isHit), ...match.card.skills.filter((skill) => !isHit(skill))]
+  const hitRooms = new Set(match.hits.map((hit) => hit.room))
+  const inHitRoom = (skill: { room?: string }): boolean => hitRooms.has(skill.room ?? '')
+  const skills = [
+    ...match.card.skills.filter(isHit),
+    ...match.card.skills.filter((skill) => !isHit(skill) && inHitRoom(skill)),
+    ...match.card.skills.filter((skill) => !isHit(skill) && !inHitRoom(skill)),
+  ]
   return serializeCard({ ...match.card, skills }, {})
 }
 
