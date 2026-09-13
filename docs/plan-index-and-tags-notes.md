@@ -83,6 +83,12 @@
 - **原因**：见 ADR-019；接口说明归工具 schema，不在 knowledge/AGENTS.md 重复定义。
 - **后果**：RAG 内部 facts 附带仍只走 `factsSearch`，未改 ADR-013 语义；技能—持有者—解锁—替换逐项保留，标签不参与 RAG 自动附带。
 
+### 2026-09-13 — 第 3 步运行时送达证据与验收清单勾选
+- **plan 原文**：plan 要求「验证目录覆盖、生成一致性以及运行时实际送达，不以文件存在代替已注入」；施工进度以验收清单 checkbox 为唯一机械信号。
+- **实际做法**：以 `pnpm run bench:dry`（2 题、不发真实请求）做运行时送达核对：运行目录 inputs.json 的 `agentInstructions` 含「查询关键词目录」正文，`systemPrompt` 含 `F：tags` 且不含 provenance 注释，meta.json 记录 `agentInstructionsSha256=cc462b16…`、`toolSchemaVersion=13`。据此勾选 plan 验收清单前 8 项。
+- **原因**：plan 要求「验证目录随查询 Agent 指令实际送达」，不以文件存在代替已注入；dry 运行的真实快照是送达证据。
+- **后果**：最后一项「文档及最终合并/发版检查通过；质量试验按 exp 流程」留待发版收束，本计划维持施工中。第 4 步「接收语料反馈并收束」按 plan 为依赖 docs/plan-corpus-supplement.md 的持续通道，不在本次批量交付。
+
 ## 债务记录
 
 ### 2026-09-13 — IDX-1 常驻目录体积
