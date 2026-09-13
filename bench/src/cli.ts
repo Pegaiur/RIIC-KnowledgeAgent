@@ -7,19 +7,21 @@
  *   node dist/cli.js report <runDir|snapshot> [--out <path>]
  *   node dist/cli.js compare <runDir|snapshot> <runDir|snapshot> [--out <path>]
  *   node dist/cli.js hitrate [--topk 3,5,10] [--gold <path>] [--check-gold] [--out <path>]
+ *   node dist/cli.js catalog [--check]
  *   node dist/cli.js validate
  */
-import { existsSync, readFileSync, statSync } from 'node:fs'
+import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { effectiveAttachFacts, loadConfig, validateBenchConfig } from './config.js'
 import { corpusStats, loadCorpus, selectRetrievalChunks } from './corpus.js'
 import { checkGold, loadGold, renderHitrate, runHitrate } from './hitrate.js'
+import { CATALOG_RELATIVE_PATH, catalogDifference, generateKeywordCatalogMarkdown } from './catalog.js'
 import { buildIndex } from './retriever.js'
 import { runBenchmark } from './runner.js'
 import { aggregate, aggregateSnapshot, renderCrossProvider, renderCsv, renderMarkdown, type BenchReport } from './report.js'
 import type { BenchQuery, CostRecord } from './types.js'
 import { validateBenchmarkIntegrity } from './benchmark-integrity.js'
-import { ignoredHitrateFlags, parseArgs } from './cli-args.js'
+import { ignoredHitrateFlags, parseArgs, unsupportedCatalogFlags } from './cli-args.js'
 import { readSnapshot, snapshotFromRunDir, writeSnapshot } from './snapshot.js'
 
 /** 散文 RAG 与 hitrate 均直接使用 knowledge/白名单语料，共用 questions 的题号和问题定义。 */
@@ -36,6 +38,7 @@ function printUsage(): void {
       '  node dist/cli.js report <runDir|snapshot> [--out <path>]',
       '  node dist/cli.js compare <runDir|snapshot> <runDir|snapshot> [--out <path>]',
       '  node dist/cli.js hitrate [--topk 3,5,10] [--gold <path>] [--check-gold] [--include-skill-tables 0|1] [--out <path>]',
+      '  node dist/cli.js catalog [--check]',
       '  node dist/cli.js validate',
       '',
       '示例：',
@@ -48,6 +51,8 @@ function printUsage(): void {
       '  node dist/cli.js compare bench/results/<glm>.json bench/results/<qwen>.json   # 跨模型对比',
       '  node dist/cli.js hitrate --check-gold         # 仅校验 gold ↔ 语料对应关系',
       '  node dist/cli.js validate                     # 校验 questions / gold / spec / manifest / anchors',
+      '  node dist/cli.js catalog                      # 重算并写入 knowledge/关键词目录.md',
+      '  node dist/cli.js catalog --check              # 重算并与入库关键词目录比对（不写文件）',
       '  node dist/cli.js hitrate                      # bigram 检索 recall@3/5/10 基线',
       '',
     ].join('\n'),
@@ -217,6 +222,32 @@ async function main(): Promise<void> {
     process.stdout.write(
       `基准完整性校验通过：${summary.questionCount} 题 / ${summary.goldCount} 个 gold 题号 / ${summary.specCount} 个 spec 题号 / ${summary.corpusFileCount} 个白名单文档 / ${summary.chunkCount} 个切块 / ${summary.snapshotCount} 个共享快照 / ${summary.snapshotBytes} 字节\n`,
     )
+    return
+  }
+
+  if (args.command === 'catalog') {
+    const unsupported = unsupportedCatalogFlags(args)
+    if (unsupported.length > 0) throw new Error(`catalog 不支持参数：${unsupported.join('、')}；仅支持 --check`)
+    const root = process.cwd()
+    const target = join(root, ...CATALOG_RELATIVE_PATH.split('/'))
+    const expected = generateKeywordCatalogMarkdown(root)
+    if (args.check) {
+      if (!existsSync(target)) {
+        process.stderr.write(`关键词目录缺失：${CATALOG_RELATIVE_PATH}\n`)
+        process.exitCode = 1
+        return
+      }
+      const diff = catalogDifference(expected, readFileSync(target, 'utf-8').replace(/\r\n/g, '\n'))
+      if (diff.length > 0) {
+        for (const line of diff) process.stderr.write(`${line}\n`)
+        process.exitCode = 1
+        return
+      }
+      process.stdout.write(`关键词目录一致：${CATALOG_RELATIVE_PATH}\n`)
+      return
+    }
+    writeFileSync(target, expected, 'utf-8')
+    process.stdout.write(`已写入：${CATALOG_RELATIVE_PATH}\n`)
     return
   }
 

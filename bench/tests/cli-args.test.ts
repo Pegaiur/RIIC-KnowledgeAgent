@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ignoredHitrateFlags, parseArgs } from '../src/cli-args.js'
+import { ignoredHitrateFlags, parseArgs, unsupportedCatalogFlags } from '../src/cli-args.js'
 
 describe('CLI 参数：工具预算与回馈兼容入口', () => {
   it('保留 --min-rag 0，不把零吞掉，并解析新参数', () => {
@@ -83,5 +83,23 @@ describe('CLI 参数：hitrate 忽略开关提示', () => {
     expect(ignoredHitrateFlags(parseArgs(['hitrate', '--include-skill-tables', '1']))).toEqual([])
     expect(ignoredHitrateFlags(parseArgs(['hitrate', '--expand-fulltext', '0', '--attach-facts', '1'])))
       .toEqual(['--expand-fulltext', '--attach-facts'])
+  })
+})
+
+describe('CLI 参数：catalog 校验开关', () => {
+  it('解析 --check，且不与 --check-gold 混用', () => {
+    expect(parseArgs(['catalog']).check).toBe(false)
+    expect(parseArgs(['catalog', '--check']).check).toBe(true)
+    expect(parseArgs(['hitrate', '--check-gold']).check).toBe(false)
+    expect(parseArgs(['hitrate', '--check-gold']).checkGold).toBe(true)
+  })
+
+  it('catalog 只接受 --check，误传其他已知开关会被列为不支持', () => {
+    expect(unsupportedCatalogFlags(parseArgs(['catalog']))).toEqual([])
+    expect(unsupportedCatalogFlags(parseArgs(['catalog', '--check']))).toEqual([])
+    expect(unsupportedCatalogFlags(parseArgs(['catalog', '--check-gold']))).toEqual(['--check-gold'])
+    expect(unsupportedCatalogFlags(parseArgs(['catalog', '--dry', '--topk', '3']))).toEqual(['--dry', '--topk'])
+    expect(unsupportedCatalogFlags(parseArgs(['catalog', '--thinking', 'high']))).toEqual(['--thinking'])
+    expect(unsupportedCatalogFlags(parseArgs(['catalog', '--limit', '3']))).toEqual(['--limit'])
   })
 })

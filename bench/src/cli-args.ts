@@ -37,6 +37,8 @@ export interface ParsedArgs {
   gold: string | null
   /** hitrate：仅校验 gold ↔ 语料对应关系 */
   checkGold: boolean
+  /** catalog：仅重算并与入库关键词目录比对，不写文件 */
+  check: boolean
   /** 位置参数（compare 收集多个 runDir） */
   positional: string[]
   /** export：快照主题名 */
@@ -74,6 +76,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
     topk: null,
     gold: null,
     checkGold: false,
+    check: false,
     positional: [],
     topic: null,
     help: false,
@@ -83,6 +86,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
     if (arg === '--help' || arg === '-h') parsed.help = true
     else if (arg === '--dry') parsed.dry = true
     else if (arg === '--check-gold') parsed.checkGold = true
+    else if (arg === '--check') parsed.check = true
     else if (arg === '--topk') parsed.topk = argv[++i] ?? null
     else if (arg === '--gold') parsed.gold = argv[++i] ?? null
     else if (arg === '--provider') parsed.provider = argv[++i] as ProviderId | undefined
@@ -137,4 +141,33 @@ export function ignoredHitrateFlags(args: Pick<ParsedArgs, 'expandFulltext' | 'a
   if (args.expandFulltext !== null) ignored.push('--expand-fulltext')
   if (args.attachFacts !== null) ignored.push('--attach-facts')
   return ignored
+}
+
+/**
+ * catalog 子命令只接受 --check；其余已知开关被误传时返回其名称，由 CLI 报中文错误，
+ * 避免误敲（如 --check-gold）静默落入写入分支覆写受版本控制的生成物。
+ */
+export function unsupportedCatalogFlags(args: ParsedArgs): string[] {
+  const flags: string[] = []
+  if (args.thinking !== 'low') flags.push('--thinking')
+  if (args.limit !== null) flags.push('--limit')
+  if (args.dry) flags.push('--dry')
+  if (args.questions !== null) flags.push('--questions')
+  if (args.out !== null) flags.push('--out')
+  if (args.runDir !== null || args.positional.length > 0) flags.push('位置参数')
+  if (args.retriever !== null || args.retrieverMissingValue) flags.push('--retriever')
+  if (args.includeSkillTables !== null) flags.push('--include-skill-tables')
+  if (args.expandFulltext !== null) flags.push('--expand-fulltext')
+  if (args.attachFacts !== null) flags.push('--attach-facts')
+  if (args.minRag !== null) flags.push('--min-rag')
+  if (args.toolBudget !== null) flags.push('--tool-budget')
+  if (args.toolAttemptLimit !== null) flags.push('--tool-attempt-limit')
+  if (args.sessionTimeoutMs !== null) flags.push('--session-timeout-ms')
+  if (args.temperature !== null) flags.push('--temperature')
+  if (args.topk !== null) flags.push('--topk')
+  if (args.gold !== null) flags.push('--gold')
+  if (args.checkGold) flags.push('--check-gold')
+  if (args.topic !== null) flags.push('--topic')
+  if (args.provider !== undefined) flags.push('--provider')
+  return flags
 }

@@ -72,7 +72,10 @@ class AgentExecutionError extends Error {
   }
 }
 
-/** 读取查询 Agent 的决策契约；只在构建提示时读取，不产生模块顶层副作用。 */
+/**
+ * 读取查询 Agent 的决策契约；只在构建提示时读取，不产生模块顶层副作用。
+ * 单一人工指令源仍是 knowledge/AGENTS.md，其后追加同通道送达的机器汇总关键词目录。
+ */
 export function loadKnowledgeAgentInstructions(root = process.cwd()): string {
   let content: string
   try {
@@ -83,7 +86,19 @@ export function loadKnowledgeAgentInstructions(root = process.cwd()): string {
   }
   const instructions = content.trim()
   if (!instructions) throw new Error('查询 Agent 决策契约为空：knowledge/AGENTS.md')
-  return instructions
+
+  let catalog: string
+  try {
+    catalog = readFileSync(join(root, 'knowledge', '关键词目录.md'), 'utf-8')
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error)
+    throw new Error(`读取查询 Agent 关键词目录失败（knowledge/关键词目录.md）：${detail}`)
+  }
+  // 生成物首行的 provenance HTML 注释（勿手改/重算入口）属维护信息，不作为模型指令注入。
+  const catalogText = catalog.replace(/^<!--[^\n]*-->\s*\n+/u, '').trim()
+  if (!catalogText) throw new Error('查询 Agent 关键词目录为空：knowledge/关键词目录.md')
+
+  return `${instructions}\n\n${catalogText}`
 }
 
 /** 构建系统提示；人工规则只来自 AGENTS.md，模式差异由实际工具 schema 描述。 */

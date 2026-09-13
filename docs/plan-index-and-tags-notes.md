@@ -71,11 +71,17 @@
 
 ## 实现调整
 
-（暂无）
+### 2026-09-13 — 关键词目录生成与交付的落地方式
+- **plan 原文**：「从现有事实登记、标签、类别和正文主题取得词条，人工维护规范词与范围说明，生成可随 knowledge/AGENTS.md 一起送达的目录」。
+- **实际做法**：生成器落 bench/src/catalog.ts，人工说明落 bench/src/facts/curation/catalog.ts；生成物为 knowledge/关键词目录.md（178 条数据行、约 1.75 万 UTF-16 字符）；重算入口 `node dist/cli.js catalog`、比对入口 `--check`；`loadKnowledgeAgentInstructions` 在 AGENTS.md 之后追加目录正文；生成一致性由 bench/tests/catalog.test.ts 按真源重算比对保证，未在门禁命令清单新增步骤（符合 ADR-018 决策 5）。
+- **原因**：组合等真源在 bench/src，scripts 按分层约定不共享，避免反推造成真源漂移。
+- **后果**：system prompt 增加约 1.75 万字符，agentInstructionsSha256 随内容变化；目录只列真实可用入口，标签独立入口仍标 R/当前路径，待步骤 3 接通后同步。既有两份质量基线（bench/results）生成于目录引入前，其 agentInstructionsSha256 与后续运行不同，跨该变更做质量或成本对照时须注意提示词差异。
 
 ## 债务记录
 
-（暂无）
+### 2026-09-13 — IDX-1 常驻目录体积
+- **债务**：关键词目录约 1.75 万字符随每次查询注入 system prompt，显著增加输入长度；当前只验证覆盖与生成一致性，未测量其对成本与时延的影响，也未压缩同类重复说明。代码锚点：bench/src/catalog.ts 顶部 `TODO(tech-debt) IDX-1`。
+- **未来偿还**：成本或质量试验表明不划算时，评估压缩呈现（合并同类说明、按需展开），须保持覆盖与入口如实，不以压缩为由漏标能力。
 
 ## 意外发现
 
