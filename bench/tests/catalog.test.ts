@@ -32,9 +32,9 @@ const fixture: CatalogInputs = {
       制造站: { provides: '制造站机制与用法、该设施技能干员卡', entry: 'F：设施；R：制造站相关正文', scope: '配方类别与容量分开' },
     },
     tags: {
-      线索1: { term: '线索1（线索倾向）', provides: '更容易获得线索1', entry: 'R：会客室相关正文；标签独立入口尚未接通', scope: '不等于线索搜集速度' },
-      未拥有加成: { term: '未拥有加成', provides: '更容易获得尚未拥有的线索', entry: 'R：会客室相关正文；标签独立入口尚未接通', scope: '须结合技能释义' },
-      通用生产: { term: '通用制造', provides: '通用制造能力', entry: 'R：制造站机制；标签独立入口尚未接通', scope: '不等于某一类配方加成' },
+      线索1: { term: '线索1（线索倾向）', provides: '更容易获得线索1', entry: 'F：tags（按标签反查持有者）；R：会客室相关正文', scope: '不等于线索搜集速度' },
+      未拥有加成: { term: '未拥有加成', provides: '更容易获得尚未拥有的线索', entry: 'F：tags（按标签反查持有者）；R：会客室相关正文', scope: '须结合技能释义' },
+      通用生产: { term: '通用制造', provides: '通用制造能力', entry: 'F：tags（按来源标签反查持有者）；R：制造站机制', scope: '不等于某一类配方加成' },
     },
     products: [
       { term: '赤金', provides: '贵金属类配方', entry: 'R：制造站机制、基建物流链', scope: '贵金属是来源标签用词' },
@@ -82,8 +82,9 @@ describe('catalog：机械汇总与人工说明合并', () => {
     expect(rendered).toContain('| 检索词 | 能查什么 | 工具入口 | 必要范围 |')
     expect(rendered).toContain('F：设施')
     expect(rendered).toContain('R：类别定义')
-    // 标签独立入口尚未接通，不得写成已支持标签查询。
-    expect(rendered).toContain('标签独立入口尚未接通')
+    // 标签入口已接通：来源标签行标注 F：tags 反查，不再声称未接通。
+    expect(rendered).toContain('F：tags')
+    expect(rendered).not.toContain('标签独立入口尚未接通')
   })
 
   it('缺少来源标签人工说明或引用了不存在的标签时报中文错误', () => {

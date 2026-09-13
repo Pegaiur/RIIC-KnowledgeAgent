@@ -21,6 +21,8 @@ export interface RecordSkill {
   target: string
   /** 效果原文（references 原句，不做 minEff 数值化） */
   effectText: string
+  /** 来源标签（`〔标签：…〕` 结构化值，供 tags 反查；兼容旧 fixture 时可缺省） */
+  tags?: string[]
   /** 技能级人工备注；raw 模式缺省 */
   notes?: string
   /** 被替换的具体 grant；仅升级技能存在 */

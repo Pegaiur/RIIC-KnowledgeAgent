@@ -65,7 +65,7 @@ describe('独立函数工具 schema', () => {
     }
   })
 
-  it('facts_search schema 以 queries 数组为唯一必填字段，maxItems 由配置上限派生', () => {
+  it('facts_search schema 声明 queries、tags、offset，maxItems 由配置上限派生', () => {
     const facts = toolsForRetriever('hybrid', FACTS_LIMIT).find((tool) => (tool.function as { name: string }).name === 'facts_search')!
     const fn = facts.function as { name: string; description: string; parameters: { properties: Record<string, Record<string, unknown>>; required: string[]; additionalProperties: boolean; anyOf?: unknown[] } }
     expect(fn.name).toBe('facts_search')
@@ -77,9 +77,9 @@ describe('独立函数工具 schema', () => {
     expect(fn.description).toContain('可一次传入多个完整词条')
     expect(fn.description).toContain('数组不是复合过滤语法')
     expect(fn.description).not.toMatch(/最多\s*\d+\s*个/)
-    expect(Object.keys(fn.parameters.properties)).toEqual(['queries'])
+    expect(Object.keys(fn.parameters.properties)).toEqual(['queries', 'tags', 'offset'])
     expect(fn.parameters.properties.queries).toMatchObject({ type: 'array', minItems: 1, maxItems: FACTS_LIMIT, items: { type: 'string' } })
-    expect(fn.parameters.required).toEqual(['queries'])
+    expect(fn.parameters.required).toEqual([])
     expect(fn.parameters.additionalProperties).toBe(false)
     expect(fn.parameters.anyOf).toBeUndefined()
   })
@@ -132,7 +132,7 @@ describe('独立函数工具 schema', () => {
   })
 
   it('schema 指纹只由当前实际工具数组决定', () => {
-    expect(toolSchemaMetadata('bm25', FACTS_LIMIT)).toMatchObject({ toolSchemaVersion: 12, toolNames: ['rag_search', 'read_section'] })
+    expect(toolSchemaMetadata('bm25', FACTS_LIMIT)).toMatchObject({ toolSchemaVersion: 13, toolNames: ['rag_search', 'read_section'] })
     expect(toolSchemaMetadata('bm25', FACTS_LIMIT).toolSchemaSha256).toMatch(/^[a-f0-9]{64}$/)
     expect(toolSchemaMetadata('bm25', FACTS_LIMIT).toolSchemaSha256).not.toBe(toolSchemaMetadata('hybrid', FACTS_LIMIT).toolSchemaSha256)
   })
@@ -415,7 +415,7 @@ describe('独立函数 executor：逐步单调用结算双上限预算', () => {
     expect(item).toMatchObject({
       status: 'success',
       factsResult: {
-        factsResultVersion: 6,
+        factsResultVersion: 7,
         matchedCount: 1,
         returnedCount: 1,
         complete: true,
@@ -423,7 +423,7 @@ describe('独立函数 executor：逐步单调用结算双上限预算', () => {
       },
     })
     const envelope = JSON.parse(serializeToolResult(item)) as Record<string, any>
-    expect(envelope).toMatchObject({ factsResultVersion: 6, resolution: { items: [{ index: 0, status: 'success', paths: [{ kind: 'alias', term: '维娜' }] }] } })
+    expect(envelope).toMatchObject({ factsResultVersion: 7, resolution: { items: [{ index: 0, status: 'success', paths: [{ kind: 'alias', term: '维娜' }] }] } })
     expect(envelope.data).toContain('别名：维娜 → 维娜·维多利亚')
   })
 
@@ -549,7 +549,7 @@ describe('facts_search 多词分段、去重与原子性', () => {
     const item = batch.results[0]!
     expect(item.status).toBe('success')
     expect(item.factsResult?.scope).toEqual({ queries: ['刻俄柏', '刻俄柏'] })
-    expect(item.factsResult).toMatchObject({ factsResultVersion: 6, matchedCount: 1, returnedCount: 1, complete: true })
+    expect(item.factsResult).toMatchObject({ factsResultVersion: 7, matchedCount: 1, returnedCount: 1, complete: true })
     expect(item.factsResult?.resolution.items).toEqual([
       { index: 0, query: '刻俄柏', status: 'success', paths: expect.any(Array), canonicals: ['刻俄柏'], message: null },
       { index: 1, query: '刻俄柏', status: 'success', paths: expect.any(Array), canonicals: ['刻俄柏'], message: null },
@@ -647,10 +647,10 @@ describe('facts_search 多词分段、去重与原子性', () => {
     expect(item.data).toContain('刻俄柏（已在第 1 段返回，此处仅列名）')
   })
 
-  it('v6 输出只携带 resolution.items，不同时携带 v5 的 resolution.paths', async () => {
+  it('v7 输出只携带 resolution.items，不同时携带 v5 的 resolution.paths', async () => {
     const batch = await multiExecutor().executeStep([call('shape', 'facts_search', { queries: ['刻俄柏'] })])
     const envelope = JSON.parse(serializeToolResult(batch.results[0]!)) as { factsResultVersion: number; resolution: Record<string, unknown> }
-    expect(envelope.factsResultVersion).toBe(6)
+    expect(envelope.factsResultVersion).toBe(7)
     expect(envelope.resolution).toHaveProperty('items')
     expect(envelope.resolution).not.toHaveProperty('paths')
   })

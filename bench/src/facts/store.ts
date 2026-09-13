@@ -2,12 +2,15 @@
  * 运行时记录卡内存 store + 检索索引（plan 步骤 5）。
  *
  * 运行时以最终门禁通过的全量 RecordCard 为源；fixture 只保留为回归基线。
- * factsSearch 返回六类规范词条与人工登记入口的查询级结果；lookup/queryOperators 仅供旧数据调用者和历史回归使用。
+ * factsSearch 返回六类规范词条与人工登记入口的查询级结果；factsSearchByTags 走「标签 → 设施 → 技能 → grant → 干员」派生，
+ * 只做来源标签 trim 后精确匹配，不自动合并同名职业/设施/技能组。
+ * lookup/queryOperators 仅供旧数据调用者和历史回归使用。
  * 不做落盘、不做自然语言解析、不做模糊兜底；子串仅按人工登记的短名做确定性展开，不做任意子串扫描。
  */
 import type { RecordCard } from './card.js'
 import { TERM_CURATIONS } from './curation/terms.js'
 import { loadValidatedRecordCards } from './final.js'
+import { REFERENCE_ROOMS } from './references.js'
 import {
   EMPTY_TERM_CURATIONS,
   validateTermCurations,
@@ -57,6 +60,36 @@ export interface FactsSearchResult {
   matches: FactsMatch[]
 }
 
+/** 单条标签命中依据：来源标签 → 设施 → 技能 → grant（解锁与替换随 grant）。 */
+export interface TagHit {
+  tag: string
+  canonical: string
+  room: string
+  skillName: string
+  /** grant 稳定 ID；兼容旧 fixture 时可缺省 */
+  grantId?: string
+  unlockType: string
+  /** 被替换的具体 grant；仅升级技能存在 */
+  replacesGrantId?: string
+}
+
+/** 单张记录卡的标签命中聚合：卡级去重，同卡多命中保留全部依据。 */
+export interface TagCardMatch {
+  card: RecordCard
+  /** 本次命中涉及的 grant ID（去重、按命中顺序）；无 grant 的旧 fixture 为空数组 */
+  matchedGrantIds: string[]
+  hits: TagHit[]
+}
+
+/** 标签反查结果：命中/未收录标签与按设施序稳定排序的卡级聚合。 */
+export interface TagSearchResult {
+  /** trim 后精确命中的来源标签（按输入顺序去重） */
+  matchedTags: string[]
+  /** 未收录的来源标签（按输入顺序去重） */
+  missingTags: string[]
+  cards: TagCardMatch[]
+}
+
 /** query_operators 过滤条件（正向条件由派发层校验；不含数值 minEff / 效率排序） */
 export interface OperatorFilters {
   room?: string
@@ -98,6 +131,8 @@ export interface CardStore {
   entryDictionary: FactsEntryDictionary
   /** 当前 facts 对外入口：六类词条与人工登记入口全部命中，按卡稳定去重。 */
   factsSearch: (query: string) => FactsSearchResult
+  /** 标签反查入口：按来源标签精确匹配，派生设施/技能/grant/干员并按卡去重。 */
+  factsSearchByTags: (tags: readonly string[]) => TagSearchResult
   lookup: (term: string) => RecordCard[]
   queryOperators: (filters: OperatorFilters) => RecordCard[]
 }
@@ -147,6 +182,8 @@ interface TermIndexes {
   aliasesByTerm: Map<string, AliasEntry[]>
   substringsByTerm: Map<string, SubstringEntry>
   combosByTerm: Map<string, ComboEntry>
+  /** 来源标签 → 命中项（标签 → 设施 → 技能 → grant）。 */
+  tagIndex: Map<string, TagHit[]>
 }
 
 /** 构建检索索引并执行人工登记校验。 */
@@ -157,6 +194,7 @@ function buildTermIndexes(cards: RecordCard[], terms: TermCurations): TermIndexe
   const aliasesByTerm = new Map<string, AliasEntry[]>()
   const substringsByTerm = new Map<string, SubstringEntry>()
   const combosByTerm = new Map<string, ComboEntry>()
+  const tagIndex = new Map<string, TagHit[]>()
 
   for (const card of cards) {
     if (!card.canonical) throw new Error('记录卡 canonical 不能为空')
@@ -171,6 +209,21 @@ function buildTermIndexes(cards: RecordCard[], terms: TermCurations): TermIndexe
       for (const equivalenceName of skill.equivalenceSkillNames ?? []) {
         addTerm(byTerm, equivalenceName, card.canonical)
         addFactTerm(byFactTerm, equivalenceName, 'skill', card.canonical)
+      }
+      for (const rawTag of skill.tags ?? []) {
+        const tag = rawTag.trim()
+        if (!tag) continue
+        const hits = tagIndex.get(tag) ?? []
+        hits.push({
+          tag,
+          canonical: card.canonical,
+          room: skill.room ?? '',
+          skillName: skill.name,
+          ...(skill.grantId === undefined ? {} : { grantId: skill.grantId }),
+          unlockType: skill.unlockType,
+          ...(skill.replacesGrantId === undefined ? {} : { replacesGrantId: skill.replacesGrantId }),
+        })
+        tagIndex.set(tag, hits)
       }
     }
     for (const group of card.skillGroups) {
@@ -187,12 +240,32 @@ function buildTermIndexes(cards: RecordCard[], terms: TermCurations): TermIndexe
   for (const substring of validatedTerms.substrings) substringsByTerm.set(substring.text, substring)
   for (const combo of validatedTerms.combos) combosByTerm.set(combo.name, combo)
 
-  return { byCanonical, byTerm, byFactTerm, aliasesByTerm, substringsByTerm, combosByTerm }
+  return { byCanonical, byTerm, byFactTerm, aliasesByTerm, substringsByTerm, combosByTerm, tagIndex }
+}
+
+/** 按输入顺序去重的字符串列表（保留首次出现顺序）。 */
+function dedupeValues(values: readonly string[]): string[] {
+  const seen = new Set<string>()
+  const result: string[] = []
+  for (const value of values) {
+    if (seen.has(value)) continue
+    seen.add(value)
+    result.push(value)
+  }
+  return result
+}
+
+/** canonical 名称升序（UTF-16 码元顺序，跨环境确定）。 */
+function compareStrings(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0
 }
 
 /** 从记录卡数组构建检索 store（索引 + 查询函数） */
 export function buildCardStore(cards: RecordCard[], terms: TermCurations = EMPTY_TERM_CURATIONS): CardStore {
-  const { byCanonical, byTerm, byFactTerm, aliasesByTerm, substringsByTerm, combosByTerm } = buildTermIndexes(cards, terms)
+  const { byCanonical, byTerm, byFactTerm, aliasesByTerm, substringsByTerm, combosByTerm, tagIndex } = buildTermIndexes(cards, terms)
+  const roomOrder = new Map<string, number>(REFERENCE_ROOMS.map((room, index) => [room, index]))
+  /** 命中的最小设施序；未在 REFERENCE_ROOMS 登记的设施排在已登记项之后。 */
+  const roomRank = (room: string): number => roomOrder.get(room) ?? Number.MAX_SAFE_INTEGER
 
   /** facts_search：精确、别名、子串和搭配路径全部收集；同卡只返回一次。 */
   const factsSearch = (query: string): FactsSearchResult => {
@@ -262,6 +335,48 @@ export function buildCardStore(cards: RecordCard[], terms: TermCurations = EMPTY
     return { query: term, paths, matches }
   }
 
+  /**
+   * facts_search 的 tags 路径：只做来源标签 trim 后精确匹配，不做别名/子串/模糊扩展。
+   * 卡级按 canonical 去重；同卡多命中保留全部依据；按命中的最小设施序、再按 canonical 升序稳定排序。
+   * 未收录标签进入 missingTags；不自动合并同名职业/设施/技能组。
+   */
+  const factsSearchByTags = (tags: readonly string[]): TagSearchResult => {
+    const matchedTags: string[] = []
+    const missingTags: string[] = []
+    const requested = new Set<string>()
+    for (const raw of tags) {
+      const tag = (raw ?? '').trim()
+      if (!tag || requested.has(tag)) continue
+      requested.add(tag)
+      if (tagIndex.has(tag)) matchedTags.push(tag)
+      else missingTags.push(tag)
+    }
+
+    const hitsByCanonical = new Map<string, TagHit[]>()
+    for (const tag of matchedTags) {
+      for (const hit of tagIndex.get(tag)!) {
+        const hits = hitsByCanonical.get(hit.canonical) ?? []
+        hits.push(hit)
+        hitsByCanonical.set(hit.canonical, hits)
+      }
+    }
+
+    const ranked = [...hitsByCanonical].flatMap(([canonical, hits]) => {
+      const card = byCanonical.get(canonical)
+      if (!card) return []
+      const match: TagCardMatch = {
+        card,
+        matchedGrantIds: dedupeValues(hits.flatMap((hit) => (hit.grantId === undefined ? [] : [hit.grantId]))),
+        hits,
+      }
+      return [{ match, rank: Math.min(...hits.map((hit) => roomRank(hit.room))) }]
+    })
+    ranked.sort((left, right) => left.rank - right.rank
+      || compareStrings(left.match.card.canonical, right.match.card.canonical))
+
+    return { matchedTags, missingTags, cards: ranked.map((item) => item.match) }
+  }
+
   /** 只读入口词典：六类词条与人工登记入口的并集；识别候选词时不执行 factsSearch。 */
   const entryDictionary: FactsEntryDictionary = {
     terms: new Set<string>([
@@ -300,7 +415,7 @@ export function buildCardStore(cards: RecordCard[], terms: TermCurations = EMPTY
     })
   }
 
-  return { cards, byCanonical, byTerm, byFactTerm, entryDictionary, factsSearch, lookup, queryOperators }
+  return { cards, byCanonical, byTerm, byFactTerm, entryDictionary, factsSearch, factsSearchByTags, lookup, queryOperators }
 }
 
 function skillsInRoom(card: RecordCard, room?: string): RecordCard['skills'] {

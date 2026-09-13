@@ -25,7 +25,7 @@ export const CATALOG_GENERATED_HEADER =
   '<!-- 本文件由 bench/src/catalog.ts 从事实真源与人工说明生成，请勿手改；重算入口：node dist/cli.js catalog -->'
 
 const CATALOG_LEGEND =
-  '> 入口标记：F = facts_search（facts 登记类别已核对）；R = rag_search（有语料，未验证召回排名）。标签独立入口尚未接通，来源标签行只标注当前可用路径；干员名与技能名继续走既有精确索引，不在本目录逐项铺开。'
+  '> 入口标记：F = facts_search（facts 登记类别已核对；来源标签用 F：tags 按标签反查持有者）；R = rag_search（有语料，未验证召回排名）。干员名与技能名继续走既有精确索引，不在本目录逐项铺开。'
 
 const TABLE_HEADER = '| 检索词 | 能查什么 | 工具入口 | 必要范围 |'
 const TABLE_SEPARATOR = '| --- | --- | --- | --- |'

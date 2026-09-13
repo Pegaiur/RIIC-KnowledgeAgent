@@ -34,6 +34,17 @@ describe('projection：规范化事实投影 RecordCard', () => {
     expect(beta.effectText).toContain('每个发电站')
   })
 
+  it('raw 与 curated 模式都把来源标签投影进 RecordSkill.tags', () => {
+    const inputs = loadInputs()
+    const fact = inputs.facts.skillFacts.find((item) => item.name === '自动化·β' && item.room === '制造站')!
+    expect(fact.tags.length).toBeGreaterThan(0)
+    for (const mode of ['raw', 'curated'] as const) {
+      const cards = projectRecordCards({ ...inputs, mode })
+      const beta = cards.find((cardItem) => cardItem.canonical === '森蚺')!.skills.find((item) => item.name === '自动化·β')!
+      expect(beta.tags).toEqual(fact.tags)
+    }
+  })
+
   it('同名升级和等价组均按 SkillFact/grant 精确分开', () => {
     const inputs = loadInputs()
     const cards = projectRecordCards({ ...inputs, mode: 'raw' })

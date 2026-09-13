@@ -20,13 +20,14 @@ import {
   type FactsMatchCategory,
   type FactsSearchResult,
   type ResolutionPath,
+  type TagCardMatch,
 } from './facts/store.js'
 
 /** 当前可下发的工具集合；grep_search 等历史名不在其中。 */
 export type CurrentToolId = 'rag_search' | 'facts_search' | 'read_section'
 
 /** 工具定义（含描述）变化时递增；快照保留该值供对照分组，指纹随描述变化。 */
-export const TOOL_SCHEMA_VERSION = 12 as const
+export const TOOL_SCHEMA_VERSION = 13 as const
 
 export interface ToolBudgetState {
   /** 非空执行成功额度上限（每题默认 5） */
@@ -54,7 +55,14 @@ export type ToolResultStatus =
   /** 同一步骤中首项之外的超量调用：未执行、不计额度。 */
   | 'protocol_rejected'
 
-export const FACTS_RESULT_VERSION = 6 as const
+export const FACTS_RESULT_VERSION = 7 as const
+
+/**
+ * 单次 tags 反查的固定页上限（记录卡张数）。
+ * 宽标签不静默 Top-N 或截断卡片，改用显式分页：每卡仍完整返回，超出部分用 offset 续读。
+ * 首版取值 20：覆盖常见来源标签的完整命中集合，同时限制单次工具结果体积。
+ */
+export const FACTS_TAG_PAGE_CARDS = 20 as const
 
 /**
  * RAG 内部附带 facts 的独立额度（UTF-16 字符，ADR-013 决策 4 定稿）：
@@ -81,13 +89,32 @@ export interface FactsResolutionItem {
   message: string | null
 }
 
+/** tags 路径的分页元数据；queries 路径不携带。 */
+export interface FactsTagPage {
+  /** 本次请求的起始偏移 */
+  offset: number
+  /** 固定页上限（记录卡张数） */
+  limit: number
+  /** 本次标签命中的卡总数（跨标签去重） */
+  matchedCount: number
+  /** 本页实际返回的卡数 */
+  returnedCount: number
+  /** 本次匹配的卡是否已在本页读完（不代表标签能力或来源范围穷尽） */
+  complete: boolean
+  /** 续读偏移；complete=true 时为 null */
+  nextOffset: number | null
+}
+
 export interface FactsResultMetadata {
   factsResultVersion: typeof FACTS_RESULT_VERSION
   matchedCount: number
   returnedCount: number
-  complete: true
+  /** tags 路径取 tagPage.complete；queries 路径恒为 true */
+  complete: boolean
   scope: Record<string, unknown>
   resolution: { items: FactsResolutionItem[] }
+  /** 仅 tags 路径携带的分页信息 */
+  tagPage?: FactsTagPage
 }
 
 export interface ToolExecutionResult {
@@ -184,7 +211,7 @@ function factsSearchDefinition(factsQueryListLimit: number): JsonObject {
     type: 'function',
     function: {
       name: 'facts_search',
-      description: '用一个或多个完整词条精确查询干员事实卡：干员正式名、技能名、已收录技能组词、设施、阵营或职业；支持已确认别名（干员别名）、已登记子串短名、阵营规范名和搭配规范名。可一次传入多个完整词条，每项仍须是完整词条，数组不是复合过滤语法，单次词条数受运行配置限制；同名命中全部返回并保留命中路径，短名按登记返回全部长名，不做消歧；不支持简写合称，不拆词，不解析句子或多个条件。',
+      description: '用一个或多个完整词条精确查询干员事实卡：干员正式名、技能名、已收录技能组词、设施、阵营或职业；支持已确认别名（干员别名）、已登记子串短名、阵营规范名和搭配规范名。可一次传入多个完整词条，每项仍须是完整词条，数组不是复合过滤语法，单次词条数受运行配置限制；同名命中全部返回并保留命中路径，短名按登记返回全部长名，不做消歧；不支持简写合称，不拆词，不解析句子或多个条件。也可用 tags 按来源标签反查持有者，派生标签 → 设施 → 技能 → grant → 干员，只做 trim 后精确匹配，不做别名、子串或模糊扩展，且不与同名职业/设施/技能组自动合并。queries 与 tags 互斥，至少提供其一；offset 仅在 tags 路径出现（非负整数，默认 0），命中卡按固定页上限分页，每卡完整返回，用结果里的 next_offset 续读。',
       parameters: {
         type: 'object',
         properties: {
@@ -193,10 +220,22 @@ function factsSearchDefinition(factsQueryListLimit: number): JsonObject {
             minItems: 1,
             maxItems: factsQueryListLimit,
             items: { type: 'string', minLength: 1, description: '一个完整名称或分类词条；保留名称内部标点。' },
-            description: '待查询词条列表，数量上限见 maxItems。',
+            description: '待查询词条列表，数量上限见 maxItems；与 tags 互斥，至少提供其一。',
+          },
+          tags: {
+            type: 'array',
+            minItems: 1,
+            maxItems: factsQueryListLimit,
+            items: { type: 'string', minLength: 1, description: '一个完整来源标签名；只做 trim 后精确匹配，不做别名、子串或模糊扩展。' },
+            description: '待反查的来源标签列表，数量上限见 maxItems；与 queries 互斥，至少提供其一。',
+          },
+          offset: {
+            type: 'integer',
+            minimum: 0,
+            description: '仅 tags 路径可用：命中卡的分页偏移，默认 0；用结果里的 next_offset 续读。',
           },
         },
-        required: ['queries'],
+        required: [],
         additionalProperties: false,
       },
     },
@@ -387,14 +426,16 @@ async function executeOne(
     // 上下文相关的参数错误（如 read_section 越界 offset）不计入已执行，但仍占用一次获准尝试。
     const executed = status !== 'invalid_params'
     if (executed) state.executed++
-    const factsResult = isFactTool(call.name)
+    const factsPage = isFactTool(call.name) ? output.factsPage : undefined
+    const factsResult: FactsResultMetadata | undefined = isFactTool(call.name)
       ? {
           factsResultVersion: FACTS_RESULT_VERSION,
-          matchedCount: output.hitIds.length,
-          returnedCount: output.hitIds.length,
-          complete: true as const,
+          matchedCount: factsPage?.matchedCount ?? output.hitIds.length,
+          returnedCount: factsPage?.returnedCount ?? output.hitIds.length,
+          complete: factsPage?.complete ?? true,
           scope: parsed.value,
           resolution: { items: output.factsItems ?? [] },
+          ...(factsPage?.tagPage === undefined ? {} : { tagPage: factsPage.tagPage }),
         }
       : undefined
     return {
@@ -467,6 +508,8 @@ interface ParsedToolParams {
   reason: string
   /** facts_search 专用：按原数组顺序的逐项解析记录（含非法占位）。 */
   factsItems?: FactsParseItem[]
+  /** facts_search 专用：本次走 queries 还是 tags 分支。 */
+  factsMode?: 'queries' | 'tags'
 }
 
 function parseToolParams(
@@ -493,8 +536,8 @@ function parseToolParams(
 }
 
 /**
- * facts_search 参数：queries 为非空字符串数组。
- * 根级非法（缺字段、非数组、空数组、额外字段、超过上限）整批判 invalid_params；
+ * facts_search 参数：queries 或 tags 二者其一（互斥），offset 仅随 tags。
+ * 根级非法（缺两者、两者并存、offset 与 queries 并存、非数组、空数组、额外字段、超过上限）整批判 invalid_params；
  * 元素级非法只记为该元素 invalid，合法元素继续执行；上限按原数组长度检查，不先过滤非法项或去重。
  */
 function parseFactsParams(
@@ -502,17 +545,27 @@ function parseFactsParams(
   factsQueryListLimit: number,
   example: string,
 ): ParsedToolParams {
-  const allowedKeys = ['queries']
+  const allowedKeys = ['queries', 'tags', 'offset']
   const unknownKey = Object.keys(input).find((key) => !allowedKeys.includes(key))
   if (unknownKey) return { reason: `facts_search 不支持参数字段 ${unknownKey}；参数示例：${example}` }
 
-  const raw = input.queries
-  if (raw === undefined) return { reason: `facts_search 缺少数组 queries；参数示例：${example}` }
+  const hasQueries = input.queries !== undefined
+  const hasTags = input.tags !== undefined
+  if (!hasQueries && !hasTags) return { reason: `facts_search 需要提供 queries 或 tags 之一；参数示例：${example}` }
+  if (hasQueries && hasTags) return { reason: `facts_search 的 queries 与 tags 互斥，只能提供其一；参数示例：${example}` }
+
+  if (hasQueries) {
+    if (input.offset !== undefined) return { reason: `facts_search 的 offset 只能与 tags 一起使用；参数示例：${example}` }
+    return parseFactsQueries(input.queries, factsQueryListLimit, example)
+  }
+  return parseFactsTags(input.tags, input.offset, factsQueryListLimit, example)
+}
+
+/** queries 分支：非空字符串数组，元素级非法占位。 */
+function parseFactsQueries(raw: unknown, limit: number, example: string): ParsedToolParams {
   if (!Array.isArray(raw)) return { reason: `facts_search 的 queries 必须是字符串数组；参数示例：${example}` }
   if (raw.length === 0) return { reason: `facts_search 的 queries 不能为空数组；参数示例：${example}` }
-  if (raw.length > factsQueryListLimit) {
-    return { reason: `facts_search 的 queries 最多 ${factsQueryListLimit} 个词条，实际 ${raw.length} 个；参数示例：${example}` }
-  }
+  if (raw.length > limit) return { reason: `facts_search 的 queries 最多 ${limit} 个词条，实际 ${raw.length} 个；参数示例：${example}` }
 
   const factsItems: FactsParseItem[] = raw.map((value, index) => typeof value === 'string' && value.trim() !== ''
     ? { index, query: value.trim(), message: null }
@@ -523,7 +576,33 @@ function parseFactsParams(
     const detail = factsItems.map((item) => item.message).join('；')
     return { reason: `facts_search 没有可用词条：${detail}；参数示例：${example}` }
   }
-  return { value: { queries: legalQueries }, factsItems, reason: '' }
+  return { value: { queries: legalQueries }, factsItems, factsMode: 'queries', reason: '' }
+}
+
+/** tags 分支：非空字符串数组（上限同词条上限）与可选非负整数 offset，元素级非法占位。 */
+function parseFactsTags(raw: unknown, rawOffset: unknown, limit: number, example: string): ParsedToolParams {
+  if (!Array.isArray(raw)) return { reason: `facts_search 的 tags 必须是字符串数组；参数示例：${example}` }
+  if (raw.length === 0) return { reason: `facts_search 的 tags 不能为空数组；参数示例：${example}` }
+  if (raw.length > limit) return { reason: `facts_search 的 tags 最多 ${limit} 个标签，实际 ${raw.length} 个；参数示例：${example}` }
+
+  let offset = 0
+  if (rawOffset !== undefined) {
+    if (typeof rawOffset !== 'number' || !Number.isInteger(rawOffset) || rawOffset < 0) {
+      return { reason: `facts_search 的 offset 必须是非负整数；参数示例：${example}` }
+    }
+    offset = rawOffset
+  }
+
+  const factsItems: FactsParseItem[] = raw.map((value, index) => typeof value === 'string' && value.trim() !== ''
+    ? { index, query: value.trim(), message: null }
+    : { index, query: null, message: `第 ${index + 1} 项必须是非空字符串` })
+
+  const legalTags = factsItems.flatMap((item) => (item.query === null ? [] : [item.query]))
+  if (legalTags.length === 0) {
+    const detail = factsItems.map((item) => item.message).join('；')
+    return { reason: `facts_search 没有可用标签：${detail}；参数示例：${example}` }
+  }
+  return { value: { tags: legalTags, offset }, factsItems, factsMode: 'tags', reason: '' }
 }
 
 /** read_section 参数：section_id 必填非空字符串，offset 可选非负整数，额外字段拒绝。 */
@@ -576,6 +655,8 @@ function runOperation(
   hitIds: string[]
   injectedIds: string[]
   factsItems?: FactsResolutionItem[]
+  /** tags 路径的分页计数；queries 路径缺省（按 hitIds 完整返回） */
+  factsPage?: { matchedCount: number; returnedCount: number; complete: boolean; tagPage?: FactsTagPage }
   fulltextRanges?: FulltextRange[]
   attachedFacts?: AttachedFactsObservation[]
   status?: ToolResultStatus
@@ -583,6 +664,22 @@ function runOperation(
   if (operation === 'rag_search') return ragSearchOperation(parsed.value!, context, config)
   if (operation === 'read_section') return readSectionOperation(parsed.value!, context, config)
   return factsSearchOperation(parsed, context)
+}
+
+/** facts_search 入口：按解析出的分支走 queries 或 tags。 */
+function factsSearchOperation(
+  parsed: ParsedToolParams,
+  context: KnowledgeToolContext,
+): {
+  data: string
+  hitIds: string[]
+  injectedIds: string[]
+  factsItems: FactsResolutionItem[]
+  factsPage?: { matchedCount: number; returnedCount: number; complete: boolean; tagPage?: FactsTagPage }
+} {
+  return parsed.factsMode === 'tags'
+    ? factsSearchTagsOperation(parsed, context)
+    : factsSearchQueriesOperation(parsed, context)
 }
 
 /**
@@ -594,7 +691,7 @@ function runOperation(
  * TODO(tech-debt) R5-7：首版按词完整返回，无分页/截断，maxItems 只约束词数、不代表输出容量上限，
  * 宽查单词输出可超过 maxContextChars；重启条件：引入分页或截断时须同时重定义 complete 与 matchedCount/returnedCount 的送达口径。
  */
-function factsSearchOperation(
+function factsSearchQueriesOperation(
   parsed: ParsedToolParams,
   context: KnowledgeToolContext,
 ): {
@@ -656,6 +753,102 @@ function factsSearchOperation(
     }
   }
   return { data: segments.join('\n\n'), hitIds, injectedIds: [...hitIds], factsItems: items }
+}
+
+/** tags 路径的反查说明；描述与完整效果等价的区别（ADR-019）。 */
+const FACTS_TAG_NOTICE = '说明：同标签不等于完整效果等价；已逐条保留持有者、解锁与替换，不计算综合收益。'
+
+/**
+ * facts_search 的 tags 路径：标签 → 设施 → 技能 → grant → 干员，卡级去重后按最小设施序稳定排序。
+ * 不静默 Top-N、不截断卡片：按 FACTS_TAG_PAGE_CARDS 显式分页，offset 续读；越界返回空页并明确提示。
+ * complete=true 仅表示本次匹配的卡已在本页读完，不代表标签能力或来源范围穷尽。
+ */
+function factsSearchTagsOperation(
+  parsed: ParsedToolParams,
+  context: KnowledgeToolContext,
+): {
+  data: string
+  hitIds: string[]
+  injectedIds: string[]
+  factsItems: FactsResolutionItem[]
+  factsPage: { matchedCount: number; returnedCount: number; complete: boolean; tagPage: FactsTagPage }
+} {
+  const store = loadFactsStore(context)
+  const entries = parsed.factsItems ?? []
+  const offset = typeof parsed.value?.offset === 'number' ? parsed.value.offset : 0
+  const legalTags = entries.flatMap((entry) => (entry.query === null ? [] : [entry.query]))
+  const result = store.factsSearchByTags(legalTags)
+
+  const matchedCount = result.cards.length
+  const page = result.cards.slice(offset, offset + FACTS_TAG_PAGE_CARDS)
+  const returnedCount = page.length
+  const complete = offset + returnedCount >= matchedCount
+  const nextOffset = complete ? null : offset + returnedCount
+  const outOfRange = offset > matchedCount
+  const tagPage: FactsTagPage = { offset, limit: FACTS_TAG_PAGE_CARDS, matchedCount, returnedCount, complete, nextOffset }
+
+  // 逐标签记录：canonicals 取该标签命中的卡（跨标签共享卡在各标签下都保留）。
+  const canonicalsForTag = (tag: string): string[] => dedupeCanonicals(
+    result.cards.filter((match) => match.hits.some((hit) => hit.tag === tag)).map((match) => match.card.canonical),
+  )
+  const items: FactsResolutionItem[] = entries.map((entry) => {
+    if (entry.query === null) {
+      return { index: entry.index, query: null, status: 'invalid', paths: [], canonicals: [], message: entry.message ?? '参数错误' }
+    }
+    const canonicals = canonicalsForTag(entry.query)
+    return {
+      index: entry.index,
+      query: entry.query,
+      status: canonicals.length > 0 ? 'success' : 'empty',
+      paths: [],
+      canonicals,
+      message: null,
+    }
+  })
+
+  const summary = [
+    `标签反查｜命中总数 ${matchedCount}`,
+    `本页返回 ${returnedCount}`,
+    `已覆盖全部命中卡：${complete}`,
+    complete ? '无续读' : `续读 next_offset=${nextOffset}`,
+  ].join('｜')
+  const lines = [summary, FACTS_TAG_NOTICE]
+  if (result.missingTags.length > 0) lines.push(`未收录标签：${result.missingTags.join('、')}`)
+  if (outOfRange) lines.push(`offset 超出命中总数（${matchedCount}）：${offset}`)
+  for (const match of page) {
+    lines.push(`${serializeTagCard(match)}\n命中依据：${renderTagHitBasis(match)}`)
+  }
+
+  const hitIds = page.map((match) => match.card.canonical)
+  return {
+    data: lines.join('\n\n'),
+    hitIds,
+    injectedIds: [...hitIds],
+    factsItems: items,
+    factsPage: { matchedCount, returnedCount, complete, tagPage },
+  }
+}
+
+/** 命中设施技能前置，其余技能保持原卡顺序；整卡完整返回，不裁剪。 */
+function serializeTagCard(match: TagCardMatch): string {
+  const hitGrantIds = new Set(match.matchedGrantIds)
+  const hitSkillKeys = new Set(match.hits.filter((hit) => hit.grantId === undefined).map((hit) => `${hit.room}\u0000${hit.skillName}`))
+  const isHit = (skill: { grantId?: string; room?: string; name: string }): boolean => skill.grantId !== undefined
+    ? hitGrantIds.has(skill.grantId)
+    : hitSkillKeys.has(`${skill.room ?? ''}\u0000${skill.name}`)
+  const skills = [...match.card.skills.filter(isHit), ...match.card.skills.filter((skill) => !isHit(skill))]
+  return serializeCard({ ...match.card, skills }, {})
+}
+
+/** 每卡一行命中依据：标签、设施、技能名、解锁与替换。 */
+function renderTagHitBasis(match: TagCardMatch): string {
+  return match.hits.map((hit) => {
+    const replaced = hit.replacesGrantId === undefined
+      ? undefined
+      : match.card.skills.find((skill) => skill.grantId === hit.replacesGrantId)?.name
+    const replacement = replaced === undefined ? '' : `，替换「${replaced}」`
+    return `标签「${hit.tag}」｜设施：${hit.room || '未知设施'}｜技能「${hit.skillName}」｜解锁：${hit.unlockType}${replacement}`
+  }).join('；')
 }
 
 /**

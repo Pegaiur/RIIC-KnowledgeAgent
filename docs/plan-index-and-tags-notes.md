@@ -66,7 +66,7 @@
 ### 2026-09-13 — 宽标签分页契约（步骤 3 施工契约）
 
 - **背景**：plan 要求「宽标签不静默 Top-N 或截断卡片，必要分页明确覆盖范围，具体分页契约在本步骤实施前确定」。
-- **决策**：标签结果不做静默截断。新增可选 `offset`（非负整数，默认 0）与页大小上限；返回元数据给出命中总数、本页返回数、`next_offset` 与 `complete`；每张卡保持完整。**未选定**：页大小取值与是否单独配置项，编码前结合真实宽标签体积确定并回填本节。
+- **决策**：标签结果不做静默截断。新增可选 `offset`（非负整数，默认 0）与页大小上限；返回元数据给出命中总数、本页返回数、`next_offset` 与 `complete`；每张卡保持完整。**页大小取 20 张记录卡（`FACTS_TAG_PAGE_CARDS`）**，作为固定常量不单独配置：按真实来源标签复核，44 个标签中最大命中为「订单效率」73 张、共 12 个标签超过 20 张，取 20 既限制单次结果体积，又能用 `offset` 覆盖全部命中。
 - **影响**：标签入口需携带分页元数据；不改变 queries 路径（queries 仍一次完整返回）。
 
 ## 实现调整
@@ -76,6 +76,12 @@
 - **实际做法**：生成器落 bench/src/catalog.ts，人工说明落 bench/src/facts/curation/catalog.ts；生成物为 knowledge/关键词目录.md（178 条数据行、约 1.75 万 UTF-16 字符）；重算入口 `node dist/cli.js catalog`、比对入口 `--check`；`loadKnowledgeAgentInstructions` 在 AGENTS.md 之后追加目录正文；生成一致性由 bench/tests/catalog.test.ts 按真源重算比对保证，未在门禁命令清单新增步骤（符合 ADR-018 决策 5）。
 - **原因**：组合等真源在 bench/src，scripts 按分层约定不共享，避免反推造成真源漂移。
 - **后果**：system prompt 增加约 1.75 万字符，agentInstructionsSha256 随内容变化；目录只列真实可用入口，标签独立入口仍标 R/当前路径，待步骤 3 接通后同步。既有两份质量基线（bench/results）生成于目录引入前，其 agentInstructionsSha256 与后续运行不同，跨该变更做质量或成本对照时须注意提示词差异。
+
+### 2026-09-13 — 标签反查入口落地与目录同步
+- **plan 原文**：「现有 facts 工具增加显式标签入口」「首版保留完整卡并前置命中设施技能，按设施与名称稳定排序」。
+- **实际做法**：`RecordSkill` 新增 `tags`（投影自 `SkillFact.tags`）；store 增 `factsSearchByTags`（标签 → 设施 → 技能 → grant → 干员，卡级 canonical 去重、同卡多命中保留全部依据，按最小设施序 + canonical 稳定排序）；`facts_search` 增 `tags`/`offset`，`queries` 与 `tags` 互斥、`offset` 仅随 tags；页上限 `FACTS_TAG_PAGE_CARDS=20`；`TOOL_SCHEMA_VERSION` 12→13、`FACTS_RESULT_VERSION` 6→7，结果元数据新增 `tagPage`；命中技能前置并逐卡给出命中依据；目录来源标签行入口由「标签独立入口尚未接通」改为 `F：tags`，重算生成物。
+- **原因**：见 ADR-019；接口说明归工具 schema，不在 knowledge/AGENTS.md 重复定义。
+- **后果**：RAG 内部 facts 附带仍只走 `factsSearch`，未改 ADR-013 语义；技能—持有者—解锁—替换逐项保留，标签不参与 RAG 自动附带。
 
 ## 债务记录
 

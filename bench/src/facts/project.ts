@@ -74,6 +74,8 @@ export function projectRecordCards(options: RecordCardProjectionOptions): Record
         unlockType: grant.unlockText,
         target: fact.rawAnnotationText,
         effectText: resolveSkillEffectText(fact, mode, curations),
+        // 来源标签投影自 SkillFact.tags，raw 与 curated 两种模式一致。
+        tags: [...fact.tags],
         ...(skillNotes.length === 0 ? {} : { notes: skillNotes.join('；') }),
         ...(grant.replacesGrantId === undefined ? {} : { replacesGrantId: grant.replacesGrantId }),
         skillCategories: categoriesBySkill.get(fact.id) ?? [],

@@ -97,7 +97,7 @@ const FACILITIES: Readonly<Record<string, CatalogText>> = {
   },
 }
 
-const TAG_COMMON_ENTRY = 'R：相应设施正文与技能相关事实；标签独立入口尚未接通，F 不能按此标签反查持有者'
+const TAG_COMMON_ENTRY = 'F：tags（按标签反查持有者）；R：相应设施正文与技能相关事实'
 const TAG_COMMON_SCOPE_NOTE = '标签只描述被加成对象或功能，不等于完整效果等价'
 
 /** 会客室线索编号与对应线索阵营。 */
@@ -120,7 +120,7 @@ function trainingProfession(profession: string): TagCatalogText {
   return {
     term: `${profession}（训练速度）`,
     provides: `协助${profession}干员专精训练的速度加成`,
-    entry: 'F：设施（训练室）；R 完整机制待补；标签独立入口尚未接通',
+    entry: 'F：tags（训练速度标签）与设施（训练室）；R 完整机制待补',
     scope: '默认 RAG 排除技能分片，待补训练室正文',
   }
 }
@@ -140,7 +140,7 @@ const TAGS: Readonly<Record<string, TagCatalogText>> = {
   特殊加成: {
     term: '特殊加成（须附具体技能/条件）',
     provides: '依附于具体技能的特殊效果，如招募位转线索搜集、转人间烟火等',
-    entry: 'R：类别.md 规则说明、控制中枢相关正文；标签独立入口尚未接通',
+    entry: 'F：tags（须附具体技能/条件）；R：类别.md 规则说明、控制中枢相关正文',
     scope: '不能单独作为通用入口；源内有同名定义两条，须带具体技能上下文',
   },
   无特别加成: {
@@ -170,19 +170,19 @@ const TAGS: Readonly<Record<string, TagCatalogText>> = {
   生产力: {
     term: '全局制造加成',
     provides: '控制中枢进驻时为制造站提供全局生产力加成',
-    entry: 'F：设施（控制中枢）；R：控制中枢机制；标签独立入口尚未接通',
+    entry: 'F：tags（来源标签：生产力）与设施（控制中枢）；R：控制中枢机制',
     scope: `须读技能作用范围与生效条件（同种效果取最高等）；${TAG_COMMON_SCOPE_NOTE}`,
   },
   订单效率: {
     term: '订单获取效率',
     provides: '当前贸易站订单获取速度加成',
-    entry: 'F：设施（贸易站）；R：贸易站机制；标签独立入口尚未接通',
+    entry: 'F：tags（来源标签：订单效率）与设施（贸易站）；R：贸易站机制',
     scope: '与订单上限、订单分布是不同对象；站内归零等条件须读原文',
     roomOverrides: {
       控制中枢: {
         term: '全局订单加成',
         provides: '控制中枢进驻时为贸易站提供全局订单获取效率加成',
-        entry: 'F：设施（控制中枢）；R：控制中枢机制；标签独立入口尚未接通',
+        entry: 'F：tags（来源标签：订单效率）与设施（控制中枢）；R：控制中枢机制',
         scope: '与贸易站内订单获取效率不同，须读技能作用范围',
       },
     },
@@ -190,67 +190,67 @@ const TAGS: Readonly<Record<string, TagCatalogText>> = {
   办公室: {
     term: '办公室联络加成',
     provides: '控制中枢进驻时影响人力办公室联络速度',
-    entry: 'F：设施（控制中枢）；R：控制中枢机制；标签独立入口尚未接通',
+    entry: 'F：tags（来源标签：办公室）与设施（控制中枢）；R：控制中枢机制',
     scope: `该标签来自控制中枢，作用对象是办公室；${TAG_COMMON_SCOPE_NOTE}`,
   },
   线索搜集: {
     term: '线索搜集速度（控制中枢）',
     provides: '控制中枢进驻时提升会客室线索搜集速度',
-    entry: 'F：设施（控制中枢）/会客室；R：控制中枢机制；标签独立入口尚未接通',
+    entry: 'F：tags（来源标签：线索搜集）与设施（控制中枢）/会客室；R：控制中枢机制',
     scope: `与线索倾向不同（同种效果取最高）；${TAG_COMMON_SCOPE_NOTE}`,
   },
   线索倾向: {
     term: '线索倾向（控制中枢）',
     provides: '提升会客室线索倾向（派系线索概率）',
-    entry: 'F：设施（控制中枢）/会客室；R：控制中枢机制；标签独立入口尚未接通',
+    entry: 'F：tags（来源标签：线索倾向）与设施（控制中枢）/会客室；R：控制中枢机制',
     scope: `倾向不等于搜集速度；${TAG_COMMON_SCOPE_NOTE}`,
   },
   心情消耗: {
     term: '心情消耗（控制中枢）',
     provides: '控制中枢进驻时改变自身或中枢内干员心情恢复/消耗',
-    entry: 'F：设施（控制中枢）；R：控制中枢机制、心情与工休；标签独立入口尚未接通',
+    entry: 'F：tags（来源标签：心情消耗）与设施（控制中枢）；R：控制中枢机制、心情与工休',
     scope: `区分自身、中枢内、宿舍内等作用范围；${TAG_COMMON_SCOPE_NOTE}`,
   },
   订单上限: {
     term: '订单上限',
     provides: '当前贸易站订单容量上限',
-    entry: 'F：设施（贸易站）；R：贸易站机制；标签独立入口尚未接通',
+    entry: 'F：tags（来源标签：订单上限）与设施（贸易站）；R：贸易站机制',
     scope: `容量收益不等于获取效率；${TAG_COMMON_SCOPE_NOTE}`,
   },
   特殊订单: {
     term: '特殊订单',
     provides: '固定获取可露希尔/特别独占等特殊订单及违约订单判定',
-    entry: 'F：设施（贸易站）；R：贸易站机制；标签独立入口尚未接通',
+    entry: 'F：tags（来源标签：特殊订单）与设施（贸易站）；R：贸易站机制',
     scope: `特殊订单与常规订单获取效率分开；${TAG_COMMON_SCOPE_NOTE}`,
   },
   高品质: {
     term: '高品质贵金属订单',
     provides: '提升当前贸易站高品质贵金属订单出现概率',
-    entry: 'F：设施（贸易站）；R：贸易站机制；标签独立入口尚未接通',
+    entry: 'F：tags（来源标签：高品质）与设施（贸易站）；R：贸易站机制',
     scope: `受工作时长影响，不等于订单获取效率；${TAG_COMMON_SCOPE_NOTE}`,
   },
   单体恢复: {
     term: '单体恢复（宿舍心情）',
     provides: '恢复宿舍内除自身外某一名干员心情',
-    entry: 'F：设施（宿舍）；R：宿舍、心情与工休；标签独立入口尚未接通',
+    entry: 'F：tags（来源标签：单体恢复）与设施（宿舍）；R：宿舍、心情与工休',
     scope: `作用对象为单个同宿舍干员；${TAG_COMMON_SCOPE_NOTE}`,
   },
   群体恢复: {
     term: '群体恢复（宿舍心情）',
     provides: '恢复该宿舍内所有干员心情',
-    entry: 'F：设施（宿舍）；R：宿舍、心情与工休；标签独立入口尚未接通',
+    entry: 'F：tags（来源标签：群体恢复）与设施（宿舍）；R：宿舍、心情与工休',
     scope: `叠加后最终值同种效果取最高；${TAG_COMMON_SCOPE_NOTE}`,
   },
   自身恢复: {
     term: '自身恢复（宿舍心情）',
     provides: '恢复自身心情',
-    entry: 'F：设施（宿舍）；R：宿舍、心情与工休；标签独立入口尚未接通',
+    entry: 'F：tags（来源标签：自身恢复）与设施（宿舍）；R：宿舍、心情与工休',
     scope: `部分技能同时含自身与群体恢复；${TAG_COMMON_SCOPE_NOTE}`,
   },
   特殊恢复: {
     term: '特殊恢复（宿舍心情）',
     provides: '对特定对象或条件下追加的宿舍心情恢复',
-    entry: 'F：设施（宿舍）；R：宿舍、心情与工休；标签独立入口尚未接通',
+    entry: 'F：tags（来源标签：特殊恢复）与设施（宿舍）；R：宿舍、心情与工休',
     scope: `须读附加条件（目标阵营、宿舍等级、心情阈值等）；${TAG_COMMON_SCOPE_NOTE}`,
   },
   先锋: trainingProfession('先锋'),
@@ -264,43 +264,43 @@ const TAGS: Readonly<Record<string, TagCatalogText>> = {
   全能: {
     term: '通用训练速度',
     provides: '对全部职业干员的专精训练速度加成',
-    entry: 'F：设施（训练室）；R 完整机制待补；标签独立入口尚未接通',
+    entry: 'F：tags（来源标签：全能）与设施（训练室）；R 完整机制待补',
     scope: '默认 RAG 排除技能分片，待补训练室正文',
   },
   减半: {
     term: '训练时间减半',
     provides: '单次协助满足时长后使该干员下次训练时间减半',
-    entry: 'F：设施（训练室）；R 完整机制待补；标签独立入口尚未接通',
+    entry: 'F：tags（来源标签：减半）与设施（训练室）；R 完整机制待补',
     scope: '协助关系离开训练室时效果消失；待补训练室正文',
   },
   通用生产: {
     term: '通用制造',
     provides: '所有配方的通用生产力加成（作用于赤金/作战记录/源石碎片）',
-    entry: 'F：设施（制造站）；R：制造站机制、高效率散件；标签独立入口尚未接通',
+    entry: 'F：tags（来源标签：通用生产）与设施（制造站）；R：制造站机制、高效率散件',
     scope: `不等于某一类配方加成；${TAG_COMMON_SCOPE_NOTE}`,
   },
   贵金属: {
     term: '赤金',
     provides: '贵金属类配方（赤金）的生产力加成',
-    entry: 'F：设施（制造站）/作用产物赤金；R：制造站机制；标签独立入口尚未接通',
+    entry: 'F：tags（来源标签：贵金属）与设施（制造站）/作用产物赤金；R：制造站机制',
     scope: `贵金属是来源标签用词，映射到赤金配方；${TAG_COMMON_SCOPE_NOTE}`,
   },
   作战记录: {
     term: '作战记录',
     provides: '作战记录类配方的生产力加成',
-    entry: 'F：设施（制造站）/作用产物作战记录；R：制造站机制；标签独立入口尚未接通',
+    entry: 'F：tags（来源标签：作战记录）与设施（制造站）/作用产物作战记录；R：制造站机制',
     scope: `作战记录类配方与经验产出分开；${TAG_COMMON_SCOPE_NOTE}`,
   },
   源石: {
     term: '源石碎片',
     provides: '源石类配方（源石碎片）的生产力加成',
-    entry: 'F：设施（制造站）/作用产物源石碎片；R：制造站机制；标签独立入口尚未接通',
+    entry: 'F：tags（来源标签：源石）与设施（制造站）/作用产物源石碎片；R：制造站机制',
     scope: `不将标签「源石」解释为所有源石用途；${TAG_COMMON_SCOPE_NOTE}`,
   },
   仓库容量: {
     term: '仓库容量',
     provides: '制造站仓库容量上限加成',
-    entry: 'F：设施（制造站）；R：制造站机制；标签独立入口尚未接通',
+    entry: 'F：tags（来源标签：仓库容量）与设施（制造站）；R：制造站机制',
     scope: `容量收益不等于生产力；${TAG_COMMON_SCOPE_NOTE}`,
   },
 }
