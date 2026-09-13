@@ -288,11 +288,13 @@ export function resolveProseLinks(input: {
   return { links, bySection, issues }
 }
 
-/** 从真源装配关联索引：旁挂文件 + 小节目录 + references 事实；缺文件表示无标注。 */
+/** 从真源装配关联索引：旁挂文件 + 小节目录 + references 事实；缺文件或无标注时不装配后两者。 */
 export function buildProseLinkIndex(root = process.cwd(), corpusDir = 'knowledge'): ProseLinkIndex {
   const corpusRoot = isAbsolute(corpusDir) ? corpusDir : join(root, corpusDir)
+  const file = loadProseLinkFile(corpusRoot)
+  if (file.links.length === 0) return { links: [], bySection: new Map(), issues: [] }
   return resolveProseLinks({
-    file: loadProseLinkFile(corpusRoot),
+    file,
     directory: buildSectionDirectory(corpusRoot),
     facts: loadReferenceFacts(root),
   })

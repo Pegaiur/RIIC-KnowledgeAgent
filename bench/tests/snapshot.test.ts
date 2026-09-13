@@ -45,7 +45,7 @@ describe('共享基准快照', () => {
       const delivery = [{ callId: 'a', status: 'success', fulltextRanges: [range], attachedFacts: [{
         term: '甲', start: 0, end: 1, matched: ['甲'], delivered: ['甲'], omittedReason: null, chars: 20, elapsedMs: 0,
         paths: [{ kind: 'exact' as const, category: 'operator', term: '甲', memberIds: ['甲'] }],
-      }], unexpected: 'must-drop' }]
+      }], linkedEntries: [{ sectionId: 'sec-1', file: 'base/甲.md', objectCount: 2, written: true }], unexpected: 'must-drop' }]
       const input = { runId: 'delivery', topic: '送达', meta: {}, queries: [{
         id: 'Q1', category: 'fact', question: '甲', answer: '甲', status: 'completed' as const, terminationReason: 'answer' as const,
         rounds: 1, toolRounds: 1, toolTrace: ['rag_search'], feedbackUsed: false, budgetUsed: 1, budgetRemaining: 4, injectedIds: [],
@@ -56,8 +56,9 @@ describe('共享基准快照', () => {
       const restored = readSnapshot(file)
       expect(restored.records[0]?.ragDelivery?.[0]?.fulltextRanges).toEqual([range])
       expect(restored.records[0]?.ragDelivery?.[0]?.attachedFacts).toEqual(delivery[0]!.attachedFacts)
+      expect(restored.records[0]?.ragDelivery?.[0]?.linkedEntries).toEqual([{ sectionId: 'sec-1', file: 'base/甲.md', objectCount: 2, written: true }])
       expect(readFileSync(file, 'utf8')).not.toContain('must-drop')
-      expect(aggregateSnapshot(restored).ragDeliveryStats).toMatchObject({ internalFactsQueries: 1, attachedCalls: 1, deliveredCards: 1, expandedRanges: 1 })
+      expect(aggregateSnapshot(restored).ragDeliveryStats).toMatchObject({ internalFactsQueries: 1, attachedCalls: 1, deliveredCards: 1, expandedRanges: 1, linkedHints: 1 })
       expect(createSnapshot({ ...input, records: [record()] }).records[0]).not.toHaveProperty('ragDelivery')
       range.nextOffset = 11
       expect(() => createSnapshot(input)).toThrow('原文范围与续读位置不一致')

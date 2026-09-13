@@ -2,12 +2,13 @@
  * 独立函数工具 schema 与按批次预算执行器。
  * 工具函数名直接完成路由；执行器仍共用一套预算、校验和底层检索门面。
  */
-import type { AttachedFactsObservation, FulltextRange } from './delivery.js'
-export type { AttachedFactsObservation, FulltextRange } from './delivery.js'
+import type { AttachedFactsObservation, FulltextRange, LinkedEntryObservation } from './delivery.js'
+export type { AttachedFactsObservation, FulltextRange, LinkedEntryObservation } from './delivery.js'
 import { createHash } from 'node:crypto'
 import { effectiveAttachFacts, loadConfig, type BenchConfig, type RetrieverId } from './config.js'
 import { isFulltextFile } from './corpus.js'
 import { search, type IndexEntry } from './retriever.js'
+import type { ProseLinkIndex, ResolvedProseLink } from './prose-links.js'
 import type { SectionDirectory, SectionEntry } from './sections.js'
 import { isFactTool, type BenchQuery, type DocChunk, type ToolCall } from './types.js'
 import {
@@ -27,7 +28,7 @@ import {
 export type CurrentToolId = 'rag_search' | 'facts_search' | 'read_section'
 
 /** 工具定义（含描述）变化时递增；快照保留该值供对照分组，指纹随描述变化。 */
-export const TOOL_SCHEMA_VERSION = 13 as const
+export const TOOL_SCHEMA_VERSION = 14 as const
 
 export interface ToolBudgetState {
   /** 非空执行成功额度上限（每题默认 5） */
@@ -132,6 +133,8 @@ export interface ToolExecutionResult {
   fulltextRanges?: FulltextRange[]
   /** rag_search 内部 facts 附带的触发/匹配/送达观测；无触发词时为 undefined。 */
   attachedFacts?: AttachedFactsObservation[]
+  /** rag_search 关联事实入口提示观测（ADR-020）；无提示时省略。 */
+  linkedEntries?: LinkedEntryObservation[]
   message?: string
   fatal?: boolean
 }
@@ -149,6 +152,8 @@ export interface KnowledgeToolContext {
   index: IndexEntry
   /** 运行级原文小节目录；仅开放阅读能力的模式提供，用于展示上下文与 read_section。 */
   sections?: SectionDirectory
+  /** 运行级散文小节关联索引；提供时 rag_search 给出可展开入口，read_section 可显式展开。 */
+  links?: ProseLinkIndex
   /** 由 Agent 共享的全题注入去重列表。 */
   injectedIds?: string[]
   /** 仅在 facts 工具实际取得 store 后通知 runner；不主动触发惰性加载。 */
@@ -173,7 +178,7 @@ const STATIC_TOOL_DEFINITIONS: Record<'rag_search' | 'read_section', JsonObject>
     type: 'function',
     function: {
       name: 'rag_search',
-      description: '检索机制、组合、排班及培养建议，返回知识库片段或原文范围。结果可含供 read_section 使用的小节或范围 ID、分页信息及上级范围入口；hybrid 模式还可能返回附带事实卡或未附带提示，以实际返回内容为准。',
+      description: '检索机制、组合、排班及培养建议，返回知识库片段或原文范围。结果可含供 read_section 使用的小节或范围 ID、分页信息及上级范围入口；登记了关联事实的小节会给出可展开入口（仅导航，不返回事实）；hybrid 模式还可能返回附带事实卡或未附带提示，以实际返回内容为准。',
       parameters: {
         type: 'object',
         properties: {
@@ -450,6 +455,7 @@ async function executeOne(
       injectedIds: output.injectedIds,
       fulltextRanges: output.fulltextRanges,
       attachedFacts: output.attachedFacts,
+      linkedEntries: output.linkedEntries,
       factsResult,
       // 操作直接返回的 error（如原文扩展容量不足）需带上文本，供 trace.error 与复盘定位；
       // 与 catch 分支的错误口径一致，非 fatal，不扣成功额度。
@@ -659,6 +665,7 @@ function runOperation(
   factsPage?: { matchedCount: number; returnedCount: number; complete: boolean; tagPage?: FactsTagPage }
   fulltextRanges?: FulltextRange[]
   attachedFacts?: AttachedFactsObservation[]
+  linkedEntries?: LinkedEntryObservation[]
   status?: ToolResultStatus
 } {
   if (operation === 'rag_search') return ragSearchOperation(parsed.value!, context, config)
@@ -875,12 +882,13 @@ function ragSearchOperation(
   injectedIds: string[]
   fulltextRanges: FulltextRange[]
   attachedFacts?: AttachedFactsObservation[]
+  linkedEntries?: LinkedEntryObservation[]
   status: ToolResultStatus
 } {
   const query = params.query as string
   const hits = search(context.index, query, config.topK)
   const hitIds = hits.map((index) => context.chunks[index]?.id).filter((id): id is string => Boolean(id))
-  const built = buildRagData(context.chunks, hits, config.maxContextChars, context.sections, config.expandFulltext)
+  const built = buildRagData(context.chunks, hits, config.maxContextChars, context.sections, config.expandFulltext, context.links)
 
   let attachment: FactsAttachment | undefined
   if (effectiveAttachFacts(config)) {
@@ -906,6 +914,7 @@ function ragSearchOperation(
     injectedIds: built.injectedIds,
     fulltextRanges: built.fulltextRanges,
     attachedFacts: attachment && attachment.observations.length > 0 ? attachment.observations : undefined,
+    linkedEntries: built.linkedEntries.length > 0 ? built.linkedEntries : undefined,
     status,
   }
 }
@@ -947,6 +956,8 @@ interface BuiltRagData {
   delivered: boolean
   capacityError: boolean
   fulltextRanges: FulltextRange[]
+  /** 关联事实入口提示观测；无提示时为空数组。 */
+  linkedEntries: LinkedEntryObservation[]
 }
 
 /**
@@ -961,6 +972,7 @@ function buildRagData(
   maxChars: number,
   sections: SectionDirectory | undefined,
   expandFulltext: boolean,
+  links: ProseLinkIndex | undefined,
 ): BuiltRagData {
   const blocks: RagBlock[] = hits.map((index) => {
     const chunk = chunks[index]!
@@ -968,9 +980,9 @@ function buildRagData(
   })
 
   if (!expandFulltext || !sections) {
-    return { ...buildRagDataLegacy(blocks, maxChars, sections), capacityError: false, fulltextRanges: [] }
+    return { ...buildRagDataLegacy(blocks, maxChars, sections, links), capacityError: false, fulltextRanges: [] }
   }
-  return buildExpandedRagData(blocks, maxChars, sections)
+  return buildExpandedRagData(blocks, maxChars, sections, links)
 }
 
 /** 既有行为：按 topK 顺序拼接命中块，整段硬截断到 maxChars，再按剩余空间附加小节上下文。 */
@@ -978,7 +990,8 @@ function buildRagDataLegacy(
   blocks: RagBlock[],
   maxChars: number,
   sections: SectionDirectory | undefined,
-): { data: string; injectedIds: string[]; delivered: boolean } {
+  links: ProseLinkIndex | undefined,
+): { data: string; injectedIds: string[]; delivered: boolean; linkedEntries: LinkedEntryObservation[] } {
   let body = ''
   const injectedIds: string[] = []
   for (const block of blocks) {
@@ -989,10 +1002,13 @@ function buildRagDataLegacy(
     if (Math.min(maxChars, body.length) > textStart) injectedIds.push(block.chunk.id)
   }
   let data = body.slice(0, maxChars)
+  let linkedEntries: LinkedEntryObservation[] = []
   if (sections && data.length < maxChars && blocks.some((block) => block.section)) {
-    data = appendSectionContext(data, buildSectionContext(sections, blocks, new Set(injectedIds)), maxChars)
+    const context = buildSectionContext(sections, blocks, new Set(injectedIds), links)
+    data = appendSectionContext(data, context.lines, maxChars)
+    linkedEntries = observeLinkedEntries(context.offers, data)
   }
-  return { data, injectedIds, delivered: injectedIds.length > 0 }
+  return { data, injectedIds, delivered: injectedIds.length > 0, linkedEntries }
 }
 
 type FulltextBlockAddition =
@@ -1000,7 +1016,7 @@ type FulltextBlockAddition =
   | { kind: 'tooSmall' }
 
 /** base/guides 命中扩展到整篇原文；放不下时按行边界送达可续读前缀，再放不下则停在此块。 */
-function buildExpandedRagData(blocks: RagBlock[], maxChars: number, sections: SectionDirectory): BuiltRagData {
+function buildExpandedRagData(blocks: RagBlock[], maxChars: number, sections: SectionDirectory, links: ProseLinkIndex | undefined): BuiltRagData {
   let body = ''
   const injectedIds: string[] = []
   const fulltextRanges: FulltextRange[] = []
@@ -1045,10 +1061,13 @@ function buildExpandedRagData(blocks: RagBlock[], maxChars: number, sections: Se
   }
 
   let data = body
+  let linkedEntries: LinkedEntryObservation[] = []
   if (!stopped && !capacityError && data.length < maxChars && blocks.some((block) => block.section)) {
-    data = appendSectionContext(data, buildSectionContext(sections, blocks, new Set(injectedIds)), maxChars)
+    const context = buildSectionContext(sections, blocks, new Set(injectedIds), links)
+    data = appendSectionContext(data, context.lines, maxChars)
+    linkedEntries = observeLinkedEntries(context.offers, data)
   }
-  return { data, injectedIds, delivered: injectedIds.length > 0, capacityError, fulltextRanges }
+  return { data, injectedIds, delivered: injectedIds.length > 0, capacityError, fulltextRanges, linkedEntries }
 }
 
 /** 单个文档范围的送达：整篇放得下则 complete，否则元数据先留位、按行边界送达可续读前缀。 */
@@ -1302,15 +1321,41 @@ interface SectionContextLine {
   atomic?: boolean
 }
 
+/** 一条关联事实入口提示：记录可复制的整行文本，供送达观测按行核对是否实际写入。 */
+interface LinkedOffer {
+  sectionId: string
+  file: string
+  objectCount: number
+  line: string
+}
+
+/** 关联事实入口行：完整可复制 ID、文件、标题路径与对象数。 */
+function renderLinkedEntryLine(link: ResolvedProseLink): string {
+  const path = link.headingPath.length > 0 ? link.headingPath.join(' > ') : '（文档根节点）'
+  return `- ${link.sectionId}｜${link.file}｜标题路径：${path}｜关联 ${link.objects.length} 个对象`
+}
+
+/** 提示行按整行是否出现在最终正文判定 written，避免把「已生成」误当「已送达」。 */
+function observeLinkedEntries(offers: readonly LinkedOffer[], data: string): LinkedEntryObservation[] {
+  return offers.map((offer) => ({
+    sectionId: offer.sectionId,
+    file: offer.file,
+    objectCount: offer.objectCount,
+    written: data.includes(offer.line),
+  }))
+}
+
 /**
- * 组装小节上下文，顺序固定为：当前小节标识 → 上级范围入口 → 既有父级引导 → 兄弟导航。
- * 上级范围入口只针对实际送达的命中小节，复用 parentId/get，不虚造无父级入口。
+ * 组装小节上下文，顺序固定为：当前小节标识 → 上级范围入口 → 既有父级引导 → 兄弟导航 → 关联事实入口。
+ * 上级范围入口只针对实际送达的命中小节，复用 parentId/get，不虚造无父级入口；
+ * 关联事实入口只列出命中小节所属文件中登记了非空关联的小节，仅导航、不返回事实，且只用既有上下文之后的剩余预算。
  */
 function buildSectionContext(
   sections: SectionDirectory,
   blocks: RagBlock[],
   delivered: Set<string>,
-): SectionContextLine[] {
+  links: ProseLinkIndex | undefined,
+): { lines: SectionContextLine[]; offers: LinkedOffer[] } {
   const unique: Array<{ block: RagBlock; section: SectionEntry }> = []
   const seenSections = new Set<string>()
   for (const block of blocks) {
@@ -1356,7 +1401,27 @@ function buildSectionContext(
     for (const item of navigation.items) lines.push({ text: `- ${item.sectionId}｜${item.heading}`, atomic: true })
     if (navigation.omitted > 0) lines.push({ text: `（省略 ${navigation.omitted} 项）` })
   }
-  return lines
+
+  // 关联事实入口（ADR-020 决策 3）：按命中文件列出登记了非空关联的小节，逐小节给出可复制 ID；
+  // 仅导航，不自动返回关联事实，也不并入命中小节。放在既有上下文之后，只用剩余预算。
+  const offers: LinkedOffer[] = []
+  if (links) {
+    const offerLines: SectionContextLine[] = []
+    for (const file of [...new Set(unique.map(({ block }) => block.chunk.file))]) {
+      for (const link of links.links) {
+        if (link.file !== file || link.objects.length === 0) continue
+        const line = renderLinkedEntryLine(link)
+        offerLines.push({ text: line, atomic: true })
+        offers.push({ sectionId: link.sectionId, file: link.file, objectCount: link.objects.length, line })
+      }
+    }
+    if (offerLines.length > 0) {
+      lines.push({ text: '【关联事实入口】以下小节登记了可展开的关联事实；提示只做导航，用 read_section 的 linked 选择展开：' })
+      lines.push(...offerLines)
+    }
+  }
+
+  return { lines, offers }
 }
 
 /** 上级范围入口行：完整可复制 ID、文件、标题路径与正文 UTF-16 字符数。 */

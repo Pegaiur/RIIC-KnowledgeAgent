@@ -9,6 +9,7 @@ import { join } from 'node:path'
 import { effectiveAttachFacts, type BenchConfig } from './config.js'
 import type { CardStore } from './facts/store.js'
 import type { SectionDirectory } from './sections.js'
+import { PROSE_LINKS_VERSION, type ProseLinkIndex } from './prose-links.js'
 import { currentEntityBoost, currentTokenizer } from './retriever.js'
 import type { BenchQuery, DocChunk, ThinkingMode, TokenizerId } from './types.js'
 
@@ -113,6 +114,13 @@ export interface RunInputs {
     sectionCount: number
     orderPreserved: true
   }
+  /** 仅在提供散文小节关联索引时记录；不含正文，只计条目/对象数与解析问题。 */
+  links?: {
+    version: number
+    linkCount: number
+    objectCount: number
+    issues: string[]
+  }
   facts: FactsInputObservation
 }
 
@@ -131,6 +139,8 @@ export interface RunInputsOptions {
   chunks: DocChunk[]
   /** 可选的运行级小节目录；仅开放阅读能力的模式提供。 */
   sections?: SectionDirectory
+  /** 可选的运行级散文小节关联索引。 */
+  links?: ProseLinkIndex
   sourceAtStart: SourceMetadata
 }
 
@@ -216,6 +226,16 @@ export function createRunInputs(options: RunInputsOptions): RunInputs {
             version: options.sections.version,
             sectionCount: options.sections.sections.length,
             orderPreserved: true as const,
+          },
+        }
+      : {}),
+    ...(options.links
+      ? {
+          links: {
+            version: PROSE_LINKS_VERSION,
+            linkCount: options.links.links.length,
+            objectCount: options.links.links.reduce((total, link) => total + link.objects.length, 0),
+            issues: options.links.issues.map((issue) => redactSensitiveText(issue, sensitiveValues)),
           },
         }
       : {}),

@@ -47,6 +47,14 @@
 - **后果**：解析问题可降级（跳过无效对象并记 issue），但真源语料要求零 issue；后续语料新增标注只改 `knowledge/prose-links.json`。
 - **补充**：条目内重复引用去重并记 issue（对齐 ADR-020 §2「条目内引用无重复」的检查口径）；旁挂文件仅在 ENOENT 时视为无标注，其它读取失败报中文错误，不静默降级。
 
+### 2026-09-13 — 第 3 步：RAG 关联事实入口的装配与观测
+
+- **plan 原文**：「rag_search 继续按现有正文范围返回，额外给出对应小节的可展开提示和可调用定位」「即使原文被按文件扩展，也保留关联所属小节」「元数据与原文分离装配，原文分词、切块与排序输入保持一致」。
+- **实际做法**：`buildSectionContext` 增「【关联事实入口】」块，按命中小节所属文件列出登记了非空关联的小节（整行可复制 ID，原子行，空间不足整行省略）；新增 `LinkedEntryObservation`（sectionId/file/objectCount/written），提示不计送达、仅导航；`rag_search` 描述补充该能力。runner 装配 `buildProseLinkIndex(process.cwd(), config.corpusDir)` 并经 `KnowledgeToolContext.links` 下发，同时写入 `inputs.links`（条目/对象数/解析问题，不含正文）。`TOOL_SCHEMA_VERSION` 13→14；trace 的 tool_call、records 的 ragDelivery、snapshot 白名单与 meta 汇总（`ragDeliveryStats.linkedHints`，按 written 计数）同步。
+- **原因**：提示必须与实际送达可区分，且不能按篇继承或自动附带；观测沿用既有分层（提示写入正文才计 linkedHints，未写为 0 或不可用）。
+- **后果**：跨该变更做质量/成本对照须注意工具 schema 版本与提示词/返回差异；既有两份基线早于本变更，不含 linkedEntries 观测。
+- **复核调整**：按独立审查把关联事实入口块移到既有小节上下文（父级引导、小节导航）之后，确保只用剩余预算；agent 侧 `linkedEntries` 未执行也记空数组，避免一次参数错误使整轮 `linkedHints` 不可用（历史缺字段仍为 null）；`buildProseLinkIndex` 在无标注时短路，不装配小节目录与 references 事实。提示文案中的 read_section `linked` 参数在紧随其后的第 4 步落地，其间不单独跑测或发版。
+
 ## 债务记录
 
 （待后续步骤记录）

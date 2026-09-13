@@ -6,6 +6,7 @@ import { join, relative, resolve } from 'node:path'
 import { effectiveAttachFacts, loadConfig, validateBenchConfig, type BenchConfig } from './config.js'
 import { loadCorpus, selectRetrievalChunks } from './corpus.js'
 import { buildSectionDirectory } from './sections.js'
+import { buildProseLinkIndex } from './prose-links.js'
 import { buildIndex, currentEntityBoost, currentTokenizer } from './retriever.js'
 import { buildSystemPrompt, loadKnowledgeAgentInstructions, runQuery, type AgentOptions } from './agent.js'
 import type { BenchQuery, CostRecord, TerminationReason, ThinkingMode } from './types.js'
@@ -87,6 +88,8 @@ export async function runBenchmark(
   const index = buildIndex(chunks)
   // 当前全部模式（bm25/hybrid）都开放 read_section，恒构建小节目录；与检索同用白名单原文来源。
   const sections = buildSectionDirectory(config.corpusDir)
+  // 散文小节关联索引：装配期连接小节目录与 references 事实，元数据不进入检索分词/切块/排序。
+  const links = buildProseLinkIndex(process.cwd(), config.corpusDir)
 
   const temperatureTag = config.temperature === undefined ? 'default' : `t${config.temperature}`
   const runTag = `${new Date().toISOString().replace(/[:.]/g, '-')}-${config.provider}-${opts.thinking}-${temperatureTag}`
@@ -111,6 +114,7 @@ export async function runBenchmark(
     questions,
     chunks,
     sections,
+    links,
     sourceAtStart,
   })
   // inputs.json 必须在首个 provider 调用前存在；之后只更新同一内存快照的 facts 观测状态。
@@ -132,6 +136,7 @@ export async function runBenchmark(
     agentInstructions,
     systemPrompt,
     sections,
+    links,
     onFactsStoreUsed: observeFactsStore,
     onFactsStoreLoadFailed: observeFactsFailure,
     thinking: opts.thinking,

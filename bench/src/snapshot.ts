@@ -422,6 +422,12 @@ function pickRagDelivery(value: unknown): RagDeliveryRecord[] {
         startLine: number(range.startLine), endLine: number(range.endLine), complete, nextOffset,
       }
     }) }),
+    ...(call.linkedEntries === undefined ? {} : { linkedEntries: objects(call.linkedEntries).map((entry) => ({
+      sectionId: text(entry.sectionId),
+      file: text(entry.file),
+      objectCount: number(entry.objectCount),
+      written: booleanValue(entry.written, 'ragDelivery.linkedEntries.written'),
+    })) }),
     ...(call.attachedFacts === undefined ? {} : { attachedFacts: objects(call.attachedFacts).map((fact) => {
       const start = number(fact.start)
       const end = number(fact.end)

@@ -128,8 +128,19 @@ describe('report：聚合与渲染', () => {
     const fact = { term: '测试', start: 0, end: 2, matched: ['甲'], delivered: ['甲'], omittedReason: null, chars: 20, elapsedMs: 0, paths: [] }
     const current = rec({ tools: ['rag_search'], ragDelivery: [{ callId: 'a', status: 'success', fulltextRanges: [], attachedFacts: [fact, { ...fact, term: '别名' }] }] })
     expect(aggregate([current, { ...current, round: 2 }]).ragDeliveryStats).toEqual({
-      internalFactsQueries: 4, attachedCalls: 2, omittedTerms: 0, deliveredCards: 2, expandedRanges: 0,
+      internalFactsQueries: 4, attachedCalls: 2, omittedTerms: 0, deliveredCards: 2, expandedRanges: 0, linkedHints: null,
     })
+    // 关联事实入口提示按「实际写入正文」计数；历史缺 linkedEntries 观测时判不可用，不补零。
+    const linked = rec({
+      tools: ['rag_search'],
+      ragDelivery: [{
+        callId: 'a', status: 'success', fulltextRanges: [], linkedEntries: [
+          { sectionId: 'sec-1', file: 'base/甲.md', objectCount: 2, written: true },
+          { sectionId: 'sec-2', file: 'base/甲.md', objectCount: 3, written: false },
+        ],
+      }],
+    })
+    expect(aggregate([linked]).ragDeliveryStats.linkedHints).toBe(1)
     expect(aggregate([current, rec({ tools: ['rag_search'] })]).ragDeliveryStats.internalFactsQueries).toBeNull()
     expect(aggregate([rec({ tools: ['rag_search'], ragDelivery: [{ callId: 'a', status: 'error' }] })]).ragDeliveryStats.internalFactsQueries).toBeNull()
     const omitted = { ...fact, delivered: [], omittedReason: '容量不足' }
@@ -144,11 +155,11 @@ describe('report：聚合与渲染', () => {
       ragDelivery: [{ callId: 'a', status: 'success', fulltextRanges: [], attachedFacts: [fact] }],
     })
     expect(aggregate([mixed]).ragDeliveryStats).toEqual({
-      internalFactsQueries: 1, attachedCalls: 1, omittedTerms: 0, deliveredCards: 1, expandedRanges: 0,
+      internalFactsQueries: 1, attachedCalls: 1, omittedTerms: 0, deliveredCards: 1, expandedRanges: 0, linkedHints: null,
     })
     // 请求过 rag_search 却缺整套台账（历史/异常）仍判不可用，不伪造成零送达。
     expect(aggregate([rec({ tools: ['rag_search'] })]).ragDeliveryStats).toEqual({
-      internalFactsQueries: null, attachedCalls: null, omittedTerms: null, deliveredCards: null, expandedRanges: null,
+      internalFactsQueries: null, attachedCalls: null, omittedTerms: null, deliveredCards: null, expandedRanges: null, linkedHints: null,
     })
   })
 

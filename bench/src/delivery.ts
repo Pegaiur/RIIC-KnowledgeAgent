@@ -39,10 +39,23 @@ export interface FulltextRange {
 /** 持久化路径只保留解析身份与成员；完整来源登记继续保存在 trace/inputs。 */
 export type DeliveryPath = Pick<ResolutionPath, 'kind' | 'term' | 'memberIds'> & { category?: string }
 
+/**
+ * rag_search 关联事实入口提示的观测（ADR-020 决策 3）。
+ * 提示只做导航、不返回事实：written 表示该提示行是否实际写入本次返回正文，供「提示与实际送达可区分」。
+ */
+export interface LinkedEntryObservation {
+  sectionId: string
+  file: string
+  objectCount: number
+  written: boolean
+}
+
 /** 单次外部 RAG 的送达台账；数组缺失表示异常时不可用，空数组表示已观察为零。 */
 export interface RagDeliveryRecord {
   callId: string
   status: string
   fulltextRanges?: FulltextRange[]
   attachedFacts?: Array<Omit<AttachedFactsObservation, 'paths'> & { paths: DeliveryPath[] }>
+  /** 关联事实入口提示观测（ADR-020）：rag_search 每次确定性给出数组（无提示为空数组）；历史记录缺字段表示不可用。 */
+  linkedEntries?: LinkedEntryObservation[]
 }

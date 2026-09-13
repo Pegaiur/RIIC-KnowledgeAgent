@@ -13,6 +13,7 @@ import { callLLM, type ChatMessage, type ProviderCallLedger, type ProviderOption
 import { aggregateAttemptCosts, aggregateUsages, computeCosts } from './pricing.js'
 import { isObservedTool } from './types.js'
 import type { SectionDirectory } from './sections.js'
+import type { ProseLinkIndex } from './prose-links.js'
 import { markTraceFailed, type QueryTrace, type TraceFailure, type TraceLlmEvent, type TraceToolEvent } from './trace.js'
 import type { CardStore } from './facts/store.js'
 import {
@@ -56,6 +57,8 @@ export interface AgentOptions {
   onFactsStoreLoadFailed?: (error: unknown) => void
   /** 运行级原文小节目录；由 runner 按开放阅读能力的模式提供。 */
   sections?: SectionDirectory
+  /** 运行级散文小节关联索引；由 runner 装配，供 RAG 提示入口与 read_section 显式展开。 */
+  links?: ProseLinkIndex
   /** 可选的单题执行记录。 */
   trace?: QueryTrace
   thinking: ThinkingMode
@@ -134,6 +137,7 @@ export async function runQuery(
     chunks,
     index,
     sections: opts.sections,
+    links: opts.links,
     injectedIds,
     onFactsStoreUsed: opts.onFactsStoreUsed,
     onFactsStoreLoadFailed: opts.onFactsStoreLoadFailed,
@@ -309,6 +313,8 @@ export async function runQuery(
               ...('category' in path ? { category: path.category } : {}),
             })),
           })) ?? (item.fulltextRanges !== undefined || !item.executed ? [] : undefined),
+          // 关联事实入口提示：rag_search 每次都确定性给出（无提示为空数组），未执行也如实记空，避免一次参数错误令整轮指标不可用。
+          linkedEntries: item.linkedEntries ?? [],
         }))
         if (llmEvent) llmEvent.toolBatch = toolBatch
 
@@ -337,6 +343,7 @@ export async function runQuery(
             toolEvent.injectedIds = item.injectedIds
             toolEvent.fulltextRanges = item.fulltextRanges
             toolEvent.attachedFacts = item.attachedFacts
+            toolEvent.linkedEntries = item.linkedEntries
             toolEvent.writtenContent = writtenContent
             toolEvent.reason = item.message
             if (isToolErrorStatus(item.status)) toolEvent.error = item.message

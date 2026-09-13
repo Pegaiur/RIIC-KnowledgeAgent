@@ -158,6 +158,44 @@ describe('运行输入记录', () => {
     }
   })
 
+  it('可选关联索引只在提供时写入，仅计条目/对象数与解析问题', () => {
+    const config = loadConfig()
+    const base = {
+      config,
+      thinking: 'off' as const,
+      dry: true,
+      agentInstructions: '规则',
+      systemPrompt: '规则',
+      toolSchema: { toolSchemaVersion: 6, toolNames: ['rag_search'] },
+      toolDefinitions: [],
+      questions: [],
+      chunks: [],
+      sourceAtStart: collectSourceMetadata(process.cwd(), () => ''),
+    }
+    const links = {
+      links: [{
+        sectionId: 'sec-a',
+        file: 'base/a.md',
+        headingPath: ['总览', '制造站'],
+        occurrence: 1,
+        objects: [
+          { ref: 'operator:甲', canonical: '甲' },
+          { ref: '制造站｜「技能」｜乙', canonical: '乙', grantId: 'g-1', skillId: 's-1' },
+        ],
+      }],
+      bySection: new Map(),
+      issues: ['第 1 条标注：未找到小节'],
+    }
+
+    expect(createRunInputs({ ...base, links }).links).toEqual({
+      version: 1,
+      linkCount: 1,
+      objectCount: 2,
+      issues: ['第 1 条标注：未找到小节'],
+    })
+    expect(createRunInputs(base).links).toBeUndefined()
+  })
+
   it('敏感正文脱敏并标记 redacted', () => {
     const secret = 'sk-test-secret-1234'
     const lf = captureText(`规则\nAuthorization: Bearer ${secret}`, [secret])
