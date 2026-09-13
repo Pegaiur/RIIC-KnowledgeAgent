@@ -22,3 +22,4 @@
 | [014](ADR-014-testing-convention.md) | 已实施 | 测试约定采用规则文本先行，不引入机械门禁与覆盖率阈值 | 2026-09-12 |
 | [015](ADR-015-facts-multi-term-query.md) | 已决策 | facts 多词条数组查询 | 2026-09-12 |
 | [016](ADR-016-single-tool-call-admission.md) | 已实施 | 工具步骤只准入首个调用，同批超量拒绝 | 2026-09-12 |
+| [017](ADR-017-quality-baseline-record.md) | 已实施 | 正式质量基线记录移出 spec，由 AGENTS.md 承载并入门禁校验 | 2026-09-12 |

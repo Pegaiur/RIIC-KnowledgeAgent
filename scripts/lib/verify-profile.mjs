@@ -5,4 +5,4 @@
  * 结构化结果携带）与部署等下游复用方（比对 profileVersion）消费。
  * 独立成模块，避免「门禁入口 verify.mjs 被部署脚本 import」的角色混淆。
  */
-export const PROFILE_VERSION = '1.2.0'
+export const PROFILE_VERSION = '1.3.0'

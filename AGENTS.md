@@ -132,3 +132,12 @@ node scripts/verify.mjs merge -- --base main   # 合并门禁
 | `docs/adr/INDEX.md` | ADR 状态索引 |
 | `docs/archive/INDEX.md` | 已完成计划归档索引 |
 | `scripts/INDEX.md` | 开发脚本体系导航 |
+
+## 质量基线
+
+> 正式质量基线的唯一记录处，人工指定进入 `bench/results/` 的结果，且至少一份标注为基线；`node dist/cli.js validate` 机械校验「`bench/results/` 内每份结果都已在本表登记」。哈希为结果文件的 SHA-256，供变更核对。
+
+| 结果（`bench/results/` 下） | SHA-256 | 说明 |
+| ---- | ---- | ---- |
+| `2026-09-12T15-38-28-892Z-glm-low-default.json` | `0ba20b13d3c6bc9715afa971cf706e6cfa919148b9e0256323943e12747c0825` | **当前正式质量基线**：GLM-5.3-Flash low / hybrid / 20 题；spec v4 核查满足 63、遗漏 9、冲突 0、待核验 0，「完整且有据」9/20 |
+| `2026-09-13T01-14-52-980Z-qwen-off-t0.json` | `264a6d2c1c4583ec1d4658e0fff1e348adb256daaa1ccea1f67417004c378aa3` | **qwen 侧对照基线**：qwen3.7-flash off t0 / hybrid / 20 题（schema v12，47 记录，¥0.0478，0 失败）；与 glm-low 正式基线同题集、同检索配置的跨 provider 对照样本，供后续质量与执行/费用核对 |

@@ -27,7 +27,12 @@
 
 ## 待办区
 
+- [x] **正式质量基线记录移出 spec，改由 AGENTS.md 承载并入门禁校验** — 2026-09-12 决定：spec 只管理自身版本、不记录基线；基线由根 AGENTS.md「质量基线」表承载（列：结果文件名 / SHA-256 / 简短说明，至少一行标注基线）；机械校验从简，只查「`bench/results/` 内每份结果都已在该表登记」（单向，不校验 spec 版本、哈希是否匹配、verdict 字段、反向存在性），由 bench validate 承担，并以 build + bench-validate 两步纳入合并门禁（PROFILE_VERSION 1.2.0→1.3.0）。已实现：新增 bench/src/quality-baseline.ts、接入 benchmark-integrity、写 AGENTS.md 质量基线段、spec 与 document-lifecycle 同步指向、登记 ADR-017；既有「允许空快照集合」口径随之撤销（须至少登记一条结果）。当前基线为本轮 glm-low 轮1（`2026-09-12T15-38-28-892Z-glm-low-default`），另有 `2026-09-13T01-14-52-980Z-qwen-off-t0` 登记为 qwen 侧对照基线，最早的 qwen 执行对照快照已退役。附带修复：snapshot.ts 的题头识别会把回答正文中含全角括号的小标题当作题头，导致本轮结果导出失败，已按「题头后首个非空行须为『- 问题：』」修复并补测试（先红后绿）。 — 2026-09-12 — 已完成，见 ADR-017
+
 - [x] **查询 Agent 指令结构与工具契约归位** — 2026-09-12 用户授权重写 knowledge/AGENTS.md 及工具 schema，已独立强调串行硬约束、集中取证流程、归位接口说明并移除运行时重复单调用文案；作为 docs/plan-single-tool-call-and-facts-evidence.md 的提示层补充实施，结构偏离与验证见同名 notes。工具描述变更使 TOOL_SCHEMA_VERSION 升至 12，ADR-015 与相关 plan 同步修订。typecheck、全套 533 项测试及文档校验通过；未进行真实模型质量验证。
+
+- [x] **以 glm-low 设立正式质量基线并评估本轮三项交付** — 2026-09-12 已在当前分支（gitHead 99d7a6d，schema v12、facts 结果 v6）用 glm-low 连续跑 3 轮 20 题（hybrid、预算 5），逐轮按 spec v4 从严核查并审计送达。3 轮必答 S/M/C/U 为 63/9/0/0、64/7/1/0、63/9/0/0，「完整且有据」9/10/7，工具全部成功、0 拒绝/0 错误/0 重试/0 截断，费用合计约 ¥0.447。错题共性：遗漏 25 项中 11 项为 references 技能分片未送达（办公室 5、贸易站 5、控制中枢 1）、14 项为已送达未覆盖（约 12 项属否定/边界/互斥/范围限定型）；额外断言问题集中在等价组等 references 文本的跨组数值错配与解锁档误写。三项交付观察：3 轮均无同批多调用、协议拒绝 0（单调用准入未被触发）；facts_search 均出现多词条数组且无参数错误；read_section 由旧运行 10 次降为 0。完整过程、局限与结论见 docs/exp/exp-agent-quality-baseline.md（已结束，未经人工独立复核）。是否据此在 spec 中指定正式质量基线由用户决定。
+
 
 - [ ] **LLM provider 重试时不得丢失用量数据** — 现状：provider.ts 的 fetchWithRetry 对可重试状态码（含 500/502/503/504）最多尝试 3 次，ledger 与 agent 侧按 httpAttempts 聚合各次尝试用量；但 callLLM 返回的 ProviderResult.usage 取自最后一次成功响应（parseUsage(data.usage)），跨尝试的聚合值只体现在 ledger.usage，ProviderResult.usage 仅取末次响应，两处口径不一致（现有 provider.test.ts、agent-provider-ledger.test.ts 已断言该行为）。历史上曾出现重试期间用量数据丢失、导致基准被迫重跑的情况。拟核查并明确：重试各次尝试（含失败与可重试响应）的用量必须完整计入计量，ProviderResult.usage 与 httpAttempts/ledger 聚合口径统一，失败与取消路径不得静默归零；核查失败与取消路径的现有覆盖后再决定是否补回归测试与改实现。 — 2026-09-12 — 待评估，需先定位历史重跑证据再决定是否修实现
 

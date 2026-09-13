@@ -18,38 +18,39 @@ describe('20 题基准完整性', () => {
   })
 
   it('在隔离快照集合中统计新增和移除后的数量与字节，并拒绝无效 JSON', () => {
-    const root = mkdtempSync(join(tmpdir(), 'rag-integrity-empty-'))
+    const root = mkdtempSync(join(tmpdir(), 'rag-integrity-fixture-'))
     try {
       copyIntegrityInputs(root)
-      expect(validateBenchmarkIntegrity(root)).toMatchObject({ snapshotCount: 0, snapshotBytes: 0 })
-      const resultsRoot = join(root, 'bench', 'results')
-      mkdirSync(resultsRoot, { recursive: true })
-      expect(validateBenchmarkIntegrity(root)).toMatchObject({ snapshotCount: 0, snapshotBytes: 0 })
-      const first = join(resultsRoot, 'sample-a.json')
-      const second = join(resultsRoot, 'sample-b.json')
-      const sample = createSnapshot({
-        runId: 'integrity-fixture',
-        topic: 'integrity-test',
-        meta: {},
-        queries: [{
-          id: 'F01', category: 'fact', question: '测试问题', answer: '测试答案',
-          status: 'completed', terminationReason: 'answer', rounds: 0, toolRounds: 0,
-          toolTrace: [], feedbackUsed: false, budgetUsed: 0, budgetRemaining: 0, injectedIds: [],
-        }],
-        records: [],
+      writeFixtureSnapshot(root, 'base')
+      const sampleBytes = statSync(join(root, 'bench', 'results', 'base.json')).size
+      writeBaselineAgentsMd(root, ['base.json'])
+      expect(validateBenchmarkIntegrity(root)).toMatchObject({
+        snapshotCount: 1,
+        snapshotBytes: sampleBytes,
+        baselineResults: 1,
       })
-      writeSnapshot(first, sample)
-      const sampleBytes = statSync(first).size
-      expect(validateBenchmarkIntegrity(root)).toMatchObject({ snapshotCount: 1, snapshotBytes: sampleBytes })
 
-      writeSnapshot(second, sample)
+      writeFixtureSnapshot(root, 'extra')
+      writeBaselineAgentsMd(root, ['base.json', 'extra.json'])
       expect(validateBenchmarkIntegrity(root)).toMatchObject({ snapshotCount: 2, snapshotBytes: sampleBytes * 2 })
 
-      rmSync(first)
+      rmSync(join(root, 'bench', 'results', 'extra.json'))
+      writeBaselineAgentsMd(root, ['base.json'])
       expect(validateBenchmarkIntegrity(root)).toMatchObject({ snapshotCount: 1, snapshotBytes: sampleBytes })
 
-      writeFileSync(join(resultsRoot, 'invalid.json'), '{}', 'utf8')
+      writeFileSync(join(root, 'bench', 'results', 'invalid.json'), '{}', 'utf8')
       expect(() => validateBenchmarkIntegrity(root)).toThrow('共享快照 invalid.json 校验失败')
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('质量基线表为空不再合法（至少登记 1 条结果）', () => {
+    const root = mkdtempSync(join(tmpdir(), 'rag-integrity-nobaseline-'))
+    try {
+      copyIntegrityInputs(root)
+      writeBaselineAgentsMd(root, [])
+      expect(() => validateBenchmarkIntegrity(root)).toThrow('质量基线表为空')
     } finally {
       rmSync(root, { recursive: true, force: true })
     }
@@ -63,4 +64,31 @@ function copyIntegrityInputs(root: string): void {
   cpSync(join(ROOT, 'bench', 'gold.json'), join(root, 'bench', 'gold.json'))
   cpSync(join(ROOT, 'docs', 'spec', 'rag-answer-baseline.md'), join(root, 'docs', 'spec', 'rag-answer-baseline.md'))
   cpSync(join(ROOT, 'knowledge'), join(root, 'knowledge'), { recursive: true })
+}
+
+/** 写入内容一致的最小合法快照，保证两次写入的字节数相同。 */
+function writeFixtureSnapshot(root: string, name: string): void {
+  const snapshot = createSnapshot({
+    runId: 'integrity-fixture',
+    topic: 'integrity-test',
+    meta: {},
+    queries: [{
+      id: 'F01', category: 'fact', question: '测试问题', answer: '测试答案',
+      status: 'completed', terminationReason: 'answer', rounds: 0, toolRounds: 0,
+      toolTrace: [], feedbackUsed: false, budgetUsed: 0, budgetRemaining: 0, injectedIds: [],
+    }],
+    records: [],
+  })
+  writeSnapshot(join(root, 'bench', 'results', `${name}.json`), snapshot)
+}
+
+/** 让夹具 AGENTS.md 的质量基线表与当前快照集合保持同步。 */
+function writeBaselineAgentsMd(root: string, names: string[]): void {
+  const rows = names.map((name) => `| \`${name}\` | \`hash\` | 夹具登记 |`).join('\n')
+  writeFileSync(
+    join(root, 'AGENTS.md'),
+    `# 夹具\n\n## 质量基线\n\n> 说明\n\n` +
+      `| 结果（\`bench/results/\` 下） | SHA-256 | 简短说明 |\n| ---- | ---- | ---- |\n${rows}\n`,
+    'utf8',
+  )
 }
