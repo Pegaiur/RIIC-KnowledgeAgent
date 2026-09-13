@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "links": [
+    {
+      "file": "guides/高效率散件.md",
+      "headingPath": ["高效率散件", "办公室联络散件"],
+      "objects": [
+        { "kind": "operator", "canonical": "凯尔希·思衡托" },
+        { "kind": "operator", "canonical": "斥罪" },
+        { "kind": "operator", "canonical": "普罗旺斯" },
+        { "kind": "skill", "operator": "普罗旺斯", "room": "办公室", "name": "天灾信使·β" },
+        { "kind": "operator", "canonical": "艾雅法拉" },
+        { "kind": "operator", "canonical": "遥" }
+      ]
+    },
+    {
+      "file": "guides/高效率散件.md",
+      "headingPath": ["高效率散件", "源石碎片制造（搓玉）"],
+      "objects": [
+        { "kind": "operator", "canonical": "褐果" },
+        { "kind": "operator", "canonical": "炎熔" },
+        { "kind": "operator", "canonical": "艾雅法拉" }
+      ]
+    }
+  ]
+}
