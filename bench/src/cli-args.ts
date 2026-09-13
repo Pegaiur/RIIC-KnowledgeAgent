@@ -54,7 +54,7 @@ function readNumber(argv: string[], index: number): number {
 export function parseArgs(argv: string[]): ParsedArgs {
   const parsed: ParsedArgs = {
     command: argv[0] ?? 'help',
-    thinking: 'off',
+    thinking: 'low',
     provider: undefined,
     limit: null,
     dry: false,
@@ -86,7 +86,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
     else if (arg === '--topk') parsed.topk = argv[++i] ?? null
     else if (arg === '--gold') parsed.gold = argv[++i] ?? null
     else if (arg === '--provider') parsed.provider = argv[++i] as ProviderId | undefined
-    else if (arg === '--thinking') parsed.thinking = (argv[++i] as ThinkingMode) ?? 'off'
+    else if (arg === '--thinking') parsed.thinking = (argv[++i] as ThinkingMode) ?? 'low'
     else if (arg === '--retriever') {
       const value = argv[++i]
       if (value === undefined) parsed.retrieverMissingValue = true

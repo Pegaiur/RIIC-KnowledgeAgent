@@ -3,9 +3,10 @@
  *
  * 密钥来源（按优先级）：① 仓库根 `secret.yaml` 直读（未入库，config 主来源）；
  * ② 各 provider 对应环境变量（本地 .env，gitignore 已忽略，作兜底）。两者均不回显、不写入日志。
- * 当前支持：
- *   - Hy3：TOKENHUB_API_KEY（TokenHub 端点）
+ * 当前默认与在用 provider：
+ *   - GLM-5.3-Flash：ZAI_API_KEY（智谱 BigModel，OpenAI 兼容端点；默认 provider）
  *   - Qwen3.7-Flash：DASHSCOPE_API_KEY（DashScope / 阿里云百炼，OpenAI 兼容端点）
+ * 注册表另保留 Hy3（TOKENHUB_API_KEY，已退出）与 DeepSeek 供历史对照。
  */
 import type { ProviderId, TokenizerId } from './types.js'
 import { DEEPSEEK_PRICES, GLM_PRICES, HY3_PRICES, QWEN_PRICES, type Prices } from './pricing.js'
@@ -83,7 +84,7 @@ export type RetrieverId = 'bm25' | 'hybrid'
  * （API Key 属密钥，仍走 secret.yaml/env 兜底，见 loadConfig。）
  */
 export interface ExperimentConfig {
-  /** 启用的 provider（hy3 | qwen） */
+  /** 启用的 provider；默认 glm（GLM-5.3-Flash 不支持 off 思考，CLI 默认 thinking 为 low） */
   provider: ProviderId
   /** 实体词加权因子（P2 已不采纳，默认 0 = 关闭） */
   entityBoost: number
@@ -121,7 +122,7 @@ export interface ExperimentConfig {
 
 /** 实验参数默认值（集中于此，改值时全局生效） */
 export const EXPERIMENT: ExperimentConfig = {
-  provider: 'qwen',
+  provider: 'glm',
   entityBoost: 0,
   tokenizer: 'bigram',
   toolBudget: 5,

@@ -42,6 +42,11 @@ describe('CLI 参数：工具预算与回馈兼容入口', () => {
     expect(args.retriever).toBeNull()
     expect(args.retrieverMissingValue).toBe(true)
   })
+
+  it('未传 --thinking 时默认思考档为 low，显式取值仍生效', () => {
+    expect(parseArgs(['run']).thinking).toBe('low')
+    expect(parseArgs(['run', '--thinking', 'off']).thinking).toBe('off')
+  })
 })
 
 describe('CLI 参数：四组对照三开关', () => {

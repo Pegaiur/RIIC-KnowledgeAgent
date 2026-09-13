@@ -7,7 +7,7 @@
  *     不复制底层命令——换技术栈只改本文件；
  *   - 路由表或命令构成变化时，递增 lib/verify-profile.mjs 的 PROFILE_VERSION。
  *
- * rag-test 适配：单仓（pnpm 根包），门禁 = references 投影 + typecheck + test + build + 基准完整性 + doc-check。
+ * RIIC-KnowledgeAgent 适配：单仓（pnpm 根包），门禁 = references 投影 + typecheck + test + build + 基准完整性 + doc-check。
  * 回答质量、逐题人工评分和真实 LLM 对照不是自动门禁；本门禁只校验功能、协议、计量、facts 完整性与文档一致性。
  */
 
@@ -33,7 +33,7 @@ export const BASE_STEPS = [
 
 /**
  * 路由组：变更文件命中 globs 时，merge profile 追加对应 steps（release profile 无条件全量）。
- * rag-test 为单仓，无独立模块门禁，置空。
+ * RIIC-KnowledgeAgent 为单仓，无独立模块门禁，置空。
  */
 export const ROUTE_GROUPS = []
 

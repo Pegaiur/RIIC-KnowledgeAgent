@@ -14,6 +14,11 @@ describe('配置：工具预算与单题生命周期', () => {
     expect(config.model).toBe('glm-5.3-flash')
     expect(() => loadConfig('invalid' as 'glm')).toThrow('不支持的 provider')
   })
+  it('默认 provider 为 GLM-5.3-Flash', () => {
+    const config = loadConfig()
+    expect(config.provider).toBe('glm')
+    expect(config.providerLabel).toBe('GLM-5.3-Flash')
+  })
   it('默认每题 5 点成功额度、10 次获准尝试上限、5 分钟总超时、facts 词条上限 3 并开启未调用工具回馈', () => {
     const config = loadConfig()
 

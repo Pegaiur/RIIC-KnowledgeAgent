@@ -2,8 +2,9 @@
  * LLM Provider：OpenAI 兼容端点封装（非流式）
  *
  * 支持 provider（端点/模型/定价见 config.ts 注册表）：
- *   - Hy3：TOKENHUB_API_KEY，POST {baseUrl}/v1/chat/completions
+ *   - GLM-5.3-Flash：ZAI_API_KEY，POST {baseUrl}/chat/completions（默认 provider，不支持 off 思考）
  *   - Qwen3.7-Flash：DASHSCOPE_API_KEY，POST {baseUrl}/chat/completions
+ * 注册表另保留 Hy3（TokenHub，已退出默认使用）与 DeepSeek 供历史对照。
  *
  * - dry 模式：不发请求，返回确定性假结果（验证管线用）
  * - usage 解析：prompt_tokens / completion_tokens / prompt_tokens_details.cached_tokens

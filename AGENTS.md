@@ -1,11 +1,11 @@
-# rag-test — 项目代理指南
+# RIIC-KnowledgeAgent — 项目代理指南
 
 ## 项目概述
 
-**rag-test** 是明日方舟基建 RAG 知识库（`knowledge/`，数据层为唯一真源）及其基准测试工具集。当前基准目标：基于 Qwen3.7-Flash（阿里云百炼 DashScope）的 RAG + facts 查询 Agent 工具链与查询输出成本测量——参考 Concliude 的 agent loop 骨架实现简化版查询 Agent；默认使用 Qwen 关闭思考，Hy3 保留为对照 provider。
+**RIIC-KnowledgeAgent** 是明日方舟基建 RAG 知识库（`knowledge/`，数据层为唯一真源）及其基准测试工具集。当前基准目标：基于 GLM-5.3-Flash 与 Qwen3.7-Flash 的 RAG + facts 查询 Agent 工具链与查询输出成本测量——参考 Concliude 的 agent loop 骨架实现简化版查询 Agent；默认 provider 为 GLM-5.3-Flash（默认思考档 low；GLM 不支持 off），Qwen3.7-Flash 为第二默认模型，Hy3 已退出。
 
 - TypeScript / Node.js · pnpm 单包（ESM，NodeNext）· 仅本机运行
-- 默认 LLM：Qwen3.7-Flash（阿里云百炼 DashScope，OpenAI 兼容端点），输入 0.2 元/M、输出 0.8 元/M、缓存命中 0.04 元/M；Hy3（TokenHub）保留为对照 provider
+- 默认 LLM：GLM-5.3-Flash（智谱 BigModel，OpenAI 兼容端点；默认思考档 low）与 Qwen3.7-Flash（阿里云百炼 DashScope）；单价见 bench/src/pricing.ts；Hy3（TokenHub）已退出，注册表保留以兼容历史运行
 
 ## 全局规则
 
@@ -53,7 +53,7 @@
 ## 仓库结构
 
 ```
-rag-test/
+RIIC-KnowledgeAgent/
 ├── AGENTS.md                       ← 本文件（规则索引 + 结构导航 + 工作流路由）
 ├── package.json                    ← 根包（bench 工具入口，pnpm）
 ├── tsconfig.json                   ← TypeScript 严格模式（NodeNext/ESM）
