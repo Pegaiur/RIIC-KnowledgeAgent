@@ -118,6 +118,9 @@ describe('prose-links：可读引用解析', () => {
   it('同设施技能名歧义时报告错误，补充 unlock 后可唯一解析', () => {
     const ambiguous = resolve(linkFile([{ kind: 'skill', operator: '干员甲', room: '办公室', name: '歧义技能' }]))
     expect(ambiguous.links[0]!.objects).toEqual([])
+    expect(ambiguous.links[0]!.unresolved).toEqual([
+      { ref: '办公室｜「歧义技能」｜干员甲', reason: '关联技能解析歧义（命中 2 条），需补充 unlock' },
+    ])
     expect(ambiguous.issues.join('\n')).toContain('歧义技能')
 
     const disambiguated = resolve(linkFile([{ kind: 'skill', operator: '干员甲', room: '办公室', name: '歧义技能', unlock: '精英 2 解锁' }]))
@@ -134,6 +137,11 @@ describe('prose-links：可读引用解析', () => {
     ]))
 
     expect(index.links[0]!.objects).toEqual([{ ref: 'operator:干员甲', canonical: '干员甲' }])
+    expect(index.links[0]!.unresolved).toEqual([
+      { ref: 'operator:不存在的干员', reason: '关联干员不在名册' },
+      { ref: '办公室｜「不存在的技能」｜干员甲', reason: '未找到关联技能' },
+      { ref: '办公室｜「技能」｜不存在的干员', reason: '关联技能持有者不在名册' },
+    ])
     expect(index.issues).toHaveLength(3)
     expect(index.issues.join('\n')).toContain('不存在的干员')
     expect(index.issues.join('\n')).toContain('不存在的技能')
@@ -150,6 +158,18 @@ describe('prose-links：可读引用解析', () => {
     const empty = resolve(linkFile([]))
     expect(empty.issues).toEqual([])
     expect(empty.links[0]!).toMatchObject({ objects: [] })
+  })
+
+  it('同一技能不同写法解析到同一 grant 时按对象身份去重并保留可读引用', () => {
+    const index = resolve(linkFile([
+      { kind: 'skill', operator: '干员甲', room: '办公室', name: '升级技能' },
+      { kind: 'skill', operator: '干员甲', room: '办公室', name: '升级技能', unlock: '精英 2 提升，替换「初技能」' },
+    ]))
+
+    expect(index.links[0]!.objects).toEqual([
+      { ref: '办公室｜「升级技能」｜干员甲', canonical: '干员甲', grantId: 'g-升', skillId: 's-升' },
+    ])
+    expect(index.issues.join('\n')).toContain('重复引用')
   })
 })
 

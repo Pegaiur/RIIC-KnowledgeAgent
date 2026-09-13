@@ -52,6 +52,7 @@ function linkIndexFor(heading: string, objects: ResolvedProseObject[]): ProseLin
     headingPath: [...section.ancestors, section.heading],
     occurrence: section.occurrence,
     objects,
+    unresolved: [],
   }
   return { links: [link], bySection: new Map([[section.sectionId, link]]), issues: [] }
 }
@@ -120,8 +121,8 @@ describe('RAG 关联事实入口提示', () => {
     const other = directory.sections.find((item) => item.heading === '乙节')!
     const index: ProseLinkIndex = {
       links: [
-        { sectionId: section.sectionId, file: 'base/甲.md', headingPath: ['甲文档', '甲节'], occurrence: 1, objects: [objectFor('干员甲')] },
-        { sectionId: other.sectionId, file: 'base/乙.md', headingPath: ['乙文档', '乙节'], occurrence: 1, objects: [objectFor('干员乙')] },
+        { sectionId: section.sectionId, file: 'base/甲.md', headingPath: ['甲文档', '甲节'], occurrence: 1, objects: [objectFor('干员甲')], unresolved: [] },
+        { sectionId: other.sectionId, file: 'base/乙.md', headingPath: ['乙文档', '乙节'], occurrence: 1, objects: [objectFor('干员乙')], unresolved: [] },
       ],
       bySection: new Map(),
       issues: [],

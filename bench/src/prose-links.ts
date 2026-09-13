@@ -47,12 +47,23 @@ export interface ResolvedProseObject {
   skillId?: string
 }
 
+/** 解析失败的可读引用：保留登记回显与原因，供展开时显式报告而不是静默丢弃。 */
+export interface UnresolvedProseObject {
+  /** 可读引用回显（与登记原文一致） */
+  ref: string
+  /** 解析失败原因，与 issues 同源，供展开响应与 omitted 复用 */
+  reason: string
+}
+
 export interface ResolvedProseLink {
   sectionId: string
   file: string
   headingPath: string[]
   occurrence: number
+  /** 解析成功的对象（按登记顺序） */
   objects: ResolvedProseObject[]
+  /** 解析失败的登记引用（按登记顺序）；真实语料应为空 */
+  unresolved: UnresolvedProseObject[]
 }
 
 export interface ProseLinkIndex {
@@ -186,7 +197,27 @@ function locateSection(directory: SectionDirectory, entry: ProseLinkEntry, label
   return matches[0]
 }
 
-/** 解析单个可读对象引用为当前内部 ID；解析失败记问题并返回 undefined。 */
+/** 单个可读引用的解析结果：成功保留完整对象，失败保留可读引用与原因。 */
+type ObjectResolution =
+  | { ok: true; object: ResolvedProseObject }
+  | { ok: false; ref: string; reason: string }
+
+/** 干员引用的可读回显；解析前后一致，失败时仍可报告登记原文。 */
+function readableOperatorRef(canonical: string): string {
+  return `operator:${canonical}`
+}
+
+/** 技能引用的可读回显（设施｜技能名｜持有者[｜解锁]）；解析前后一致。 */
+function readableSkillRef(ref: Extract<ProseObjectRef, { kind: 'skill' }>): string {
+  return `${ref.room}｜「${ref.name}」｜${ref.operator}${ref.unlock === undefined ? '' : `｜${ref.unlock}`}`
+}
+
+/** 解析后的对象身份：技能细化到 grant，干员定位到 canonical；用于条目内去重。 */
+function objectIdentity(object: ResolvedProseObject): string {
+  return object.grantId === undefined ? `operator:${object.canonical}` : `skill:${object.grantId}`
+}
+
+/** 解析单个可读对象引用为当前内部 ID；解析失败记问题并保留可读引用与原因。 */
 function resolveObject(
   ref: ProseObjectRef,
   operatorsByCanonical: ReadonlyMap<string, OperatorDefinition>,
@@ -194,19 +225,21 @@ function resolveObject(
   grants: readonly OperatorSkillGrant[],
   label: string,
   issues: string[],
-): ResolvedProseObject | undefined {
+): ObjectResolution {
   if (ref.kind === 'operator') {
+    const readable = readableOperatorRef(ref.canonical)
     if (!operatorsByCanonical.has(ref.canonical)) {
       issues.push(`${label}：关联干员不在名册：${ref.canonical}`)
-      return undefined
+      return { ok: false, ref: readable, reason: '关联干员不在名册' }
     }
-    return { ref: `operator:${ref.canonical}`, canonical: ref.canonical }
+    return { ok: true, object: { ref: readable, canonical: ref.canonical } }
   }
 
+  const readable = readableSkillRef(ref)
   const operator = operatorsByCanonical.get(ref.operator)
   if (!operator) {
     issues.push(`${label}：关联技能持有者不在名册：${ref.operator}`)
-    return undefined
+    return { ok: false, ref: readable, reason: '关联技能持有者不在名册' }
   }
   const candidates = grants.filter((grant) => {
     if (grant.operatorId !== operator.id) return false
@@ -217,24 +250,23 @@ function resolveObject(
   const detail = `${ref.operator}｜${ref.room}｜「${ref.name}」${ref.unlock === undefined ? '' : `｜${ref.unlock}`}`
   if (matched.length === 0) {
     issues.push(`${label}：未找到关联技能：${detail}`)
-    return undefined
+    return { ok: false, ref: readable, reason: '未找到关联技能' }
   }
   if (matched.length > 1) {
     issues.push(`${label}：关联技能解析歧义（命中 ${matched.length} 条），请补充 unlock：${detail}`)
-    return undefined
+    return { ok: false, ref: readable, reason: `关联技能解析歧义（命中 ${matched.length} 条），需补充 unlock` }
   }
   const grant = matched[0]!
   return {
-    ref: `${ref.room}｜「${ref.name}」｜${ref.operator}${ref.unlock === undefined ? '' : `｜${ref.unlock}`}`,
-    canonical: ref.operator,
-    grantId: grant.id,
-    skillId: grant.skillId,
+    ok: true,
+    object: { ref: readable, canonical: ref.operator, grantId: grant.id, skillId: grant.skillId },
   }
 }
 
 /**
  * 解析人工标注为运行时可用的关联索引：
- * 只做精确唯一匹配，不经过别名、子串或同名并集；问题进入 issues，合法对象仍保留。
+ * 只做精确唯一匹配，不经过别名、子串或同名并集；问题进入 issues，
+ * 合法对象保留在 objects，失败引用按可读回显保留在 unresolved。
  */
 export function resolveProseLinks(input: {
   file: ProseLinkFile
@@ -261,16 +293,20 @@ export function resolveProseLinks(input: {
     seenSections.add(section.sectionId)
 
     const objects: ResolvedProseObject[] = []
-    const seenRefs = new Set<string>()
+    const unresolved: UnresolvedProseObject[] = []
+    const seenIdentities = new Set<string>()
     for (const ref of entry.objects) {
-      const resolved = resolveObject(ref, operatorsByCanonical, skillById, facts.grants, label, issues)
-      if (!resolved) continue
-      if (seenRefs.has(resolved.ref)) {
-        issues.push(`${label}：重复引用已去重：${resolved.ref}`)
+      const resolution = resolveObject(ref, operatorsByCanonical, skillById, facts.grants, label, issues)
+      const readableRef = resolution.ok ? resolution.object.ref : resolution.ref
+      // 失败引用按可读回显去重后保留，供展开时在 requested/omitted 中显式报告，不静默丢弃。
+      const identity = resolution.ok ? objectIdentity(resolution.object) : `unresolved:${readableRef}`
+      if (seenIdentities.has(identity)) {
+        issues.push(`${label}：重复引用已去重：${readableRef}`)
         continue
       }
-      seenRefs.add(resolved.ref)
-      objects.push(resolved)
+      seenIdentities.add(identity)
+      if (resolution.ok) objects.push(resolution.object)
+      else unresolved.push({ ref: resolution.ref, reason: resolution.reason })
     }
 
     const link: ResolvedProseLink = {
@@ -279,6 +315,7 @@ export function resolveProseLinks(input: {
       headingPath: sectionHeadingPath(section),
       occurrence: section.occurrence,
       objects,
+      unresolved,
     }
     links.push(link)
     bySection.set(section.sectionId, link)

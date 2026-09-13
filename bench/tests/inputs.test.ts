@@ -182,6 +182,7 @@ describe('运行输入记录', () => {
           { ref: 'operator:甲', canonical: '甲' },
           { ref: '制造站｜「技能」｜乙', canonical: '乙', grantId: 'g-1', skillId: 's-1' },
         ],
+        unresolved: [],
       }],
       bySection: new Map(),
       issues: ['第 1 条标注：未找到小节'],

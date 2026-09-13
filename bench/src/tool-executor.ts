@@ -1524,7 +1524,7 @@ function readLinkedFactsOperation(
   context: KnowledgeToolContext,
 ): { data: string; hitIds: string[]; injectedIds: string[]; status: ToolResultStatus; linkedFacts: LinkedFactsObservation } {
   const link = context.links?.bySection.get(section.sectionId)
-  if (!link || link.objects.length === 0) {
+  if (!link || (link.objects.length === 0 && link.unresolved.length === 0)) {
     return {
       data: `该小节没有登记可展开的关联事实：${section.sectionId}。不会改为模糊搜索或别名展开。`,
       hitIds: [],
@@ -1556,6 +1556,11 @@ function readLinkedFactsOperation(
     delivered.push(object.canonical)
     cards.push(card)
     refLines.push(`- ${object.ref} → ${object.canonical}`)
+  }
+  // 解析失败的登记引用同样计入 requested，并在 omitted 中说明原因，不静默丢弃。
+  for (const item of link.unresolved) {
+    requested.push(item.ref)
+    omitted.push({ ref: item.ref, reason: item.reason })
   }
 
   const path = section.level === 0 ? '（文档根节点）' : [...section.ancestors, section.heading].join(' > ')

@@ -8,7 +8,7 @@ import { buildIndex } from '../src/retriever.js'
 import { buildSectionDirectory, type SectionDirectory } from '../src/sections.js'
 import { createKnowledgeToolExecutor, toolsForRetriever } from '../src/tool-executor.js'
 import { getCardStore } from '../src/facts/store.js'
-import type { ProseLinkIndex, ResolvedProseObject } from '../src/prose-links.js'
+import type { ProseLinkIndex, ResolvedProseObject, UnresolvedProseObject } from '../src/prose-links.js'
 import type { DocChunk, ToolCall } from '../src/types.js'
 
 const DOC = [
@@ -34,7 +34,7 @@ function objectFor(canonical: string): ResolvedProseObject {
 }
 
 /** 用真实小节目录构造关联索引；canonical 取仓库真实记录卡，便于复用真实 facts store。 */
-function linkIndexFor(heading: string, objects: ResolvedProseObject[]): ProseLinkIndex {
+function linkIndexFor(heading: string, objects: ResolvedProseObject[], unresolved: UnresolvedProseObject[] = []): ProseLinkIndex {
   const section = directory.sections.find((item) => item.heading === heading)!
   const link = {
     sectionId: section.sectionId,
@@ -42,6 +42,7 @@ function linkIndexFor(heading: string, objects: ResolvedProseObject[]): ProseLin
     headingPath: [...section.ancestors, section.heading],
     occurrence: section.occurrence,
     objects,
+    unresolved,
   }
   return { links: [link], bySection: new Map([[section.sectionId, link]]), issues: [] }
 }
@@ -156,6 +157,36 @@ describe('read_section 显式展开关联事实', () => {
     expect(item.hitIds).toEqual(['凯尔希·思衡托'])
     expect(item.linkedFacts?.omitted).toEqual([{ ref: 'operator:斥罪', reason: '记录卡未找到' }])
     expect(item.data).toContain('未返回：operator:斥罪（记录卡未找到）')
+  })
+
+  it('解析失败的登记引用进入 requested 与 omitted，合法对象仍返回', async () => {
+    const index = linkIndexFor('甲节', [objectFor('凯尔希·思衡托')], [
+      { ref: '办公室｜「不存在技能」｜凯尔希·思衡托', reason: '未找到关联技能' },
+    ])
+    const item = (await makeExecutor(index).executeStep([call('a', { section_id: sectionId('甲节'), linked: true })])).results[0]!
+
+    expect(item.status).toBe('success')
+    expect(item.hitIds).toEqual(['凯尔希·思衡托'])
+    expect(item.data).toContain('关联对象：2 个｜已返回记录卡：1 张')
+    expect(item.data).toContain('未返回：办公室｜「不存在技能」｜凯尔希·思衡托（未找到关联技能）')
+    expect(item.linkedFacts).toEqual({
+      sectionId: sectionId('甲节'),
+      requested: ['operator:凯尔希·思衡托', '办公室｜「不存在技能」｜凯尔希·思衡托'],
+      delivered: ['凯尔希·思衡托'],
+      omitted: [{ ref: '办公室｜「不存在技能」｜凯尔希·思衡托', reason: '未找到关联技能' }],
+    })
+  })
+
+  it('仅有失效引用的小节报告未返回原因，不误报为无关联', async () => {
+    const index = linkIndexFor('甲节', [], [{ ref: 'operator:不存在的干员', reason: '关联干员不在名册' }])
+    const item = (await makeExecutor(index).executeStep([call('a', { section_id: sectionId('甲节'), linked: true })])).results[0]!
+
+    expect(item.status).toBe('empty')
+    expect(item.data).not.toContain('没有登记可展开的关联事实')
+    expect(item.data).toContain('未返回：operator:不存在的干员（关联干员不在名册）')
+    expect(item.linkedFacts?.requested).toEqual(['operator:不存在的干员'])
+    expect(item.linkedFacts?.delivered).toEqual([])
+    expect(item.linkedFacts?.omitted).toEqual([{ ref: 'operator:不存在的干员', reason: '关联干员不在名册' }])
   })
 
   it('linked 与 offset 互斥；linked 必须是布尔值；未知字段拒绝', async () => {

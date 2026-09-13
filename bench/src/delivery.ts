@@ -53,7 +53,7 @@ export interface LinkedEntryObservation {
 /** read_section 显式展开关联事实的实际送达观测（ADR-020 决策 4）：登记范围与返回对象分开记录。 */
 export interface LinkedFactsObservation {
   sectionId: string
-  /** 人工登记的可读对象引用（按登记顺序） */
+  /** 人工登记的可读对象引用（解析成功者按登记顺序在前，解析失败者随后） */
   requested: string[]
   /** 实际送达的记录卡 canonical（按登记顺序去重） */
   delivered: string[]
