@@ -26,3 +26,5 @@
 | [018](ADR-018-keyword-catalog-delivery.md) | 已实施 | 关键词目录随查询 Agent 指令交付 | 2026-09-13 |
 | [019](ADR-019-facts-tag-lookup.md) | 已实施 | facts 显式标签反查入口 | 2026-09-13 |
 | [020](ADR-020-prose-linked-knowledge.md) | 已实施 | 散文小节关联事实的引用、提示与显式展开契约 | 2026-09-13 |
+| [021](ADR-021-facts-source-layout.md) | 已决策 | facts 真源目录归并与事实出口 | 2026-09-15 |
+| [022](ADR-022-progressive-disclosure.md) | 已决策 | 渐进披露的阅读、关联与默认送达契约 | 2026-09-15 |
