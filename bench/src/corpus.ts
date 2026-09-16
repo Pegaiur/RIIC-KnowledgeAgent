@@ -1,7 +1,7 @@
 /**
  * 语料加载与分块
  *
- * 输入：corpusDir/corpus-manifest.json 显式登记的 Markdown；未登记文件默认不进入检索。
+ * 输入：corpusDir/corpus-manifest.json 显式登记的 Markdown（仅接受 base/ 与 guides/ 前缀）；未登记文件默认不进入检索。
  * 散文语料已废弃（2026-09-03，见 docs/notes-corpus-purge.md），facts-first 重建后 facts 模式由 facts_search 取代
  * 输出：按 ## / ### 标题切分的 DocChunk 数组；超长标题节按段落二次切分。
  */
@@ -105,6 +105,10 @@ function resolveManifestFiles(corpusRoot: string, entries: readonly string[]): R
     if (lowerDocId === 'skill.md' || lowerDocId.endsWith('/skill.md')) {
       throw new Error(`语料白名单禁止登记 SKILL.md：${entry}`)
     }
+    // 按归一化后的目标限制范围，避免 base/../raw/ 一类路径绕过（ADR-021）。
+    if (!isFulltextFile(docId)) {
+      throw new Error(`语料白名单只允许登记 base/ 与 guides/ 下的文件：${entry}`)
+    }
 
     let fileStat: ReturnType<typeof lstatSync>
     try {
@@ -127,6 +131,10 @@ function resolveManifestFiles(corpusRoot: string, entries: readonly string[]): R
     }
     if (isOutsideRoot(relative(physicalRoot, physicalFilePath))) {
       throw new Error(`语料白名单路径越出语料根目录：${entry}`)
+    }
+    // 父目录也可能是链接；物理目标即使仍在语料根内，也不能落入 raw 等非检索目录。
+    if (!isFulltextFile(toDocumentId(relative(physicalRoot, physicalFilePath)))) {
+      throw new Error(`语料白名单只允许登记 base/ 与 guides/ 下的文件：${entry}`)
     }
 
     result.push({ fullPath, docId })
@@ -241,27 +249,12 @@ export function clampTexts(chunks: DocChunk[], maxChars: number): DocChunk[] {
   })
 }
 
-/** 技能表文件判定：references/ 下九份 `技能-*.md`（ADR-013 检索范围收缩对象，不含技能等价组）。 */
-const SKILL_TABLE_FILE_RE = /^references\/技能-[^/]+\.md$/
-
-export function isSkillTableFile(file: string): boolean {
-  return SKILL_TABLE_FILE_RE.test(file)
-}
-
-/** 原文扩展候选：base 与 guides 语料（references 仍按原块返回，ADR-013）。 */
+/** 原文扩展候选：manifest 登记的 base 与 guides 语料（ADR-013；raw 不进入检索与阅读目录）。 */
 export function isFulltextFile(file: string): boolean {
   return file.startsWith('base/') || file.startsWith('guides/')
 }
 
-/**
- * 按检索范围装配分块：includeSkillTables=false 时排除九份技能表（ADR-013）。
- * 过滤在建索引前执行，返回数组与索引下标配套使用；不改 knowledge 真源与 corpus-manifest 语义。
- */
-export function selectRetrievalChunks(chunks: DocChunk[], options: { includeSkillTables: boolean }): DocChunk[] {
-  return options.includeSkillTables ? chunks : chunks.filter((chunk) => !isSkillTableFile(chunk.file))
-}
-
-/** 加载整个语料库并分块 */
+/** 加载整个语料库并分块：范围等于 manifest 声明的全部块（ADR-021，不再有技能表过滤）。 */
 export function loadCorpus(corpusRoot: string, maxChars?: number): DocChunk[] {
   const files = collectMarkdownFiles(corpusRoot)
   const chunks = files.flatMap((f) => splitChunks(f, corpusRoot))

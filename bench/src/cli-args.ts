@@ -1,6 +1,9 @@
 import type { ProviderId, ThinkingMode } from './types.js'
 import type { RetrieverId } from './config.js'
 
+/** 退役参数的中文迁移提示语（逐字契约，ADR-021 决策 5）。 */
+export const RETIRED_SKILL_TABLES_MESSAGE = '--include-skill-tables 已退役；RAG 仅检索 base/guides，精确事实请使用 facts 能力'
+
 export interface ParsedArgs {
   command: string
   thinking: ThinkingMode
@@ -15,8 +18,8 @@ export interface ParsedArgs {
   retriever: RetrieverId | null
   /** --retriever 显式出现但缺少取值；与未传选项区分，由 CLI 报中文错误 */
   retrieverMissingValue: boolean
-  /** 检索语料是否包含技能表：0 排除、1 包含；null = 未传，沿用 EXPERIMENT 默认 */
-  includeSkillTables: number | null
+  /** 已退役的 --include-skill-tables 是否显式出现（0、1、缺值、非法值都算显式）；由 CLI 报中文迁移错误 */
+  retiredSkillTables: boolean
   /** 是否把 base/guides 命中小节扩展到原文：0 关闭、1 开启；null = 未传 */
   expandFulltext: number | null
   /** hybrid rag_search 是否自动附带 facts：0 关闭、1 开启；null = 未传（随模式默认） */
@@ -65,7 +68,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
     runDir: null,
     retriever: null,
     retrieverMissingValue: false,
-    includeSkillTables: null,
+    retiredSkillTables: false,
     expandFulltext: null,
     attachFacts: null,
     minRag: null,
@@ -100,8 +103,10 @@ export function parseArgs(argv: string[]): ParsedArgs {
       parsed.minRag = readNumber(argv, i)
       i++
     } else if (arg === '--include-skill-tables') {
-      parsed.includeSkillTables = readNumber(argv, i)
-      i++
+      // 退役参数只标记「显式出现」：显式 0 也不作为静默兼容（ADR-021）；取值位只在确为取值时跳过，避免把后续开关误吞。
+      parsed.retiredSkillTables = true
+      const value = argv[i + 1]
+      if (value !== undefined && !value.startsWith('-')) i++
     } else if (arg === '--expand-fulltext') {
       parsed.expandFulltext = readNumber(argv, i)
       i++
@@ -133,8 +138,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
 }
 
 /**
- * hitrate 只在检索范围上使用 --include-skill-tables；显式传入的 --expand-fulltext / --attach-facts
- * 对该命令无作用，需返回供 CLI 提示，而非静默忽略。
+ * hitrate 不使用 --expand-fulltext / --attach-facts；显式传入时需返回供 CLI 提示，而非静默忽略。
  */
 export function ignoredHitrateFlags(args: Pick<ParsedArgs, 'expandFulltext' | 'attachFacts'>): string[] {
   const ignored: string[] = []
@@ -156,7 +160,7 @@ export function unsupportedCatalogFlags(args: ParsedArgs): string[] {
   if (args.out !== null) flags.push('--out')
   if (args.runDir !== null || args.positional.length > 0) flags.push('位置参数')
   if (args.retriever !== null || args.retrieverMissingValue) flags.push('--retriever')
-  if (args.includeSkillTables !== null) flags.push('--include-skill-tables')
+  if (args.retiredSkillTables) flags.push('--include-skill-tables')
   if (args.expandFulltext !== null) flags.push('--expand-fulltext')
   if (args.attachFacts !== null) flags.push('--attach-facts')
   if (args.minRag !== null) flags.push('--min-rag')
@@ -170,4 +174,12 @@ export function unsupportedCatalogFlags(args: ParsedArgs): string[] {
   if (args.topic !== null) flags.push('--topic')
   if (args.provider !== undefined) flags.push('--provider')
   return flags
+}
+
+/**
+ * 已退役参数 --include-skill-tables 显式出现（含显式 0、缺值与非法值）即返回中文迁移提示语；
+ * 未出现返回 null。取值合法与否不参与判定——该参数整体已退役（ADR-021 决策 5）。
+ */
+export function retiredFlagError(args: Pick<ParsedArgs, 'retiredSkillTables'>): string | null {
+  return args.retiredSkillTables ? RETIRED_SKILL_TABLES_MESSAGE : null
 }

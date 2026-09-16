@@ -1,6 +1,8 @@
+import { spawnSync } from 'node:child_process'
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import {
   loadRosterFormalNames,
@@ -275,6 +277,31 @@ describe('bench/facts-evidence-observation：正式名命中对象的事实卡�
       expect(unknown.questions[0]?.reason).toContain('名册')
     } finally {
       rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('未显式指定 --roster 时默认读 <仓库根>/knowledge/raw/名册.md', () => {
+    const rootDir = mkdtempSync(join(tmpdir(), 'rag-facts-default-roster-'))
+    const runDir = writeRunDir()
+    try {
+      mkdirSync(join(rootDir, 'knowledge', 'raw'), { recursive: true })
+      writeFileSync(join(rootDir, 'knowledge', 'raw', '名册.md'), ROSTER)
+      const scriptPath = fileURLToPath(new URL('../../../tasks/bench/facts-evidence-observation.mjs', import.meta.url))
+      const child = spawnSync(process.execPath, [scriptPath, '--run', runDir, '--root', rootDir, '--json'], {
+        encoding: 'utf-8',
+        windowsHide: true,
+      })
+      expect(child.status).toBe(0)
+      const parsed = JSON.parse(child.stdout)
+      expect(parsed.rosterPath).toBe(join(rootDir, 'knowledge', 'raw', '名册.md'))
+      // 名册内容确实读自默认路径：命中对象按该名册的正式名解释。
+      expect(parsed.rosterCount).toBe(3)
+      expect(parsed.questions.find((row) => row.id === 'Q1')).toMatchObject({
+        hitObjects: ['甲干员', '乙干员'],
+      })
+    } finally {
+      rmSync(rootDir, { recursive: true, force: true })
+      rmSync(runDir, { recursive: true, force: true })
     }
   })
 })

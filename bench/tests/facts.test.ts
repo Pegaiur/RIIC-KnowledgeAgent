@@ -7,7 +7,7 @@ import { FACTS_FIXTURES } from '../src/facts/fixtures.js'
 import type { RecordCard } from '../src/facts/card.js'
 
 /** 真源名册（唯一来源）：按 canonical 定位出处行，供 0 差异核对 */
-const NAME_LIST_PATH = join(dirname(fileURLToPath(import.meta.url)), '../../knowledge/references/名册.md')
+const NAME_LIST_PATH = join(dirname(fileURLToPath(import.meta.url)), '../../knowledge/raw/名册.md')
 const nameListText = readFileSync(NAME_LIST_PATH, 'utf-8')
 
 describe('mechanical：名册.md 解析（程序化预填机械字段）', () => {

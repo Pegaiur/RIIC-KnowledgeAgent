@@ -110,8 +110,6 @@ export interface ExperimentConfig {
   temperature?: number
   /** 检索器（bm25 | hybrid） */
   retriever: RetrieverId
-  /** 检索语料是否包含九份 references/技能-*.md 技能表（false = 排除；ADR-013） */
-  includeSkillTables: boolean
   /** 命中的 base/guides 小节是否按文件扩展到原文文档范围（ADR-013） */
   expandFulltext: boolean
   /** hybrid 的 rag_search 是否自动附带内部 facts 卡；undefined = 随模式默认（hybrid 开、bm25 关） */
@@ -135,8 +133,7 @@ export const EXPERIMENT: ExperimentConfig = {
   maxTokens: 4096,
   temperature: undefined,
   retriever: 'hybrid',
-  // 默认组合：排除技能表 + 扩展原文；附带 facts 随 hybrid 默认开启（ADR-013）。
-  includeSkillTables: false,
+  // 默认组合：扩展原文；附带 facts 随 hybrid 默认开启（ADR-013）。检索范围恒为 manifest 登记的 base/guides（ADR-021）。
   expandFulltext: true,
   attachFacts: undefined,
   corpusDir: 'knowledge',
@@ -171,8 +168,6 @@ export interface BenchConfig {
   maxContextChars: number
   /** 检索器：hybrid 同时暴露 BM25 RAG 与 facts 查询工具；bm25 保留为纯 RAG 对照 */
   retriever: RetrieverId
-  /** 检索语料是否包含九份 references/技能-*.md 技能表（false = 排除；ADR-013） */
-  includeSkillTables: boolean
   /** 命中的 base/guides 小节是否按文件扩展到原文文档范围（ADR-013） */
   expandFulltext: boolean
   /** hybrid 的 rag_search 是否自动附带内部 facts 卡；undefined = 随模式默认（hybrid 开、bm25 关） */
@@ -213,7 +208,6 @@ export function loadConfig(providerInput?: ProviderId): BenchConfig {
     topK: EXPERIMENT.topK,
     maxContextChars: EXPERIMENT.maxContextChars,
     retriever: EXPERIMENT.retriever,
-    includeSkillTables: EXPERIMENT.includeSkillTables,
     expandFulltext: EXPERIMENT.expandFulltext,
     attachFacts: EXPERIMENT.attachFacts,
     toolBudget: EXPERIMENT.toolBudget,

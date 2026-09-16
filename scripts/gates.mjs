@@ -7,7 +7,7 @@
  *     不复制底层命令——换技术栈只改本文件；
  *   - 路由表或命令构成变化时，递增 lib/verify-profile.mjs 的 PROFILE_VERSION。
  *
- * RIIC-KnowledgeAgent 适配：单仓（pnpm 根包），门禁 = references 投影 + typecheck + test + build + 基准完整性 + doc-check。
+ * RIIC-KnowledgeAgent 适配：单仓（pnpm 根包），门禁 = raw 技能分片投影 + typecheck + test + build + 基准完整性 + doc-check。
  * 回答质量、逐题人工评分和真实 LLM 对照不是自动门禁；本门禁只校验功能、协议、计量、facts 完整性与文档一致性。
  */
 
@@ -19,7 +19,7 @@
  */
 export const BASE_STEPS = [
   { id: 'prose-terms', label: 'RAG 散文术语', command: ['pnpm', 'run', 'check:prose-terms'] },
-  { id: 'reference-projection', label: 'references 公共练度投影', command: ['pnpm', 'run', 'check:reference-projection'] },
+  { id: 'reference-projection', label: 'raw 技能分片公共练度投影', command: ['pnpm', 'run', 'check:reference-projection'] },
   { id: 'typecheck', label: '类型检查', command: ['pnpm', 'run', 'typecheck'] },
   { id: 'test', label: '测试', command: ['pnpm', 'run', 'test'] },
   // 构建产物是 CLI 基准完整性校验（dist/cli.js validate）的前置；先构建再校验

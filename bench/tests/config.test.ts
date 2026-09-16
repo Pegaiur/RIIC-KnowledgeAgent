@@ -64,11 +64,12 @@ describe('配置：工具预算与单题生命周期', () => {
   })
 })
 
-describe('配置：检索范围、原文扩展与 facts 附带（ADR-013）', () => {
-  it('默认排除技能表、扩展原文，hybrid 有效附带 facts', () => {
+describe('配置：检索范围、原文扩展与 facts 附带（ADR-021）', () => {
+  it('默认不携带已退役的技能表开关，扩展原文，hybrid 有效附带 facts', () => {
     const config = loadConfig()
 
-    expect(config.includeSkillTables).toBe(false)
+    // 检索范围由 manifest 决定（仅 base/guides），运行配置不再持有 includeSkillTables（ADR-021）
+    expect('includeSkillTables' in config).toBe(false)
     expect(config.expandFulltext).toBe(true)
     expect(config.attachFacts).toBeUndefined()
     expect(effectiveAttachFacts(config)).toBe(true)

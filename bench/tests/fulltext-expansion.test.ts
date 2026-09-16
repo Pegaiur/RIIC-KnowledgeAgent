@@ -96,7 +96,7 @@ const DOC = [
 
 describe('原文扩展：命中文件扩展到文档范围（ADR-013 步骤 2）', () => {
   it('base 命中扩展整篇原文（含标题前首部与后续小节），injectedIds 保持 chunk 语义', async () => {
-    const corpus = buildCorpus({ 'base/制造.md': DOC, 'references/名册.md': '# 名册\n\n名册正文。\n' })
+    const corpus = buildCorpus({ 'base/制造.md': DOC, 'guides/名册.md': '# 名册\n\n名册正文。\n' })
     const doc = corpus.directory.documentRange('base/制造.md')!
     const item = await run(executorFor(corpus), 'rag_search', { query: '制造站' })
 
@@ -120,13 +120,9 @@ describe('原文扩展：命中文件扩展到文档范围（ADR-013 步骤 2）
     expect(item.injectedIds).toHaveLength(1)
   })
 
-  it('references 命中不扩展，仍按原块返回', async () => {
-    const corpus = buildCorpus({ 'references/名册.md': '# 名册\n\n## 名册节\n\n名册关键词。\n' })
-    const item = await run(executorFor(corpus), 'rag_search', { query: '名册关键词' })
-
-    expect(item.data).toContain('【references/名册.md | 名册节 | L5-5】')
-    expect(item.data).not.toContain('原文扩展')
-    expect(item.fulltextRanges).toEqual([])
+  it('raw 目录不在检索范围：manifest 显式登记 raw 条目被拒绝', () => {
+    expect(() => buildCorpus({ 'raw/名册.md': '# 名册\n\n## 名册节\n\n名册关键词。\n' }))
+      .toThrow('语料白名单只允许登记 base/ 与 guides/ 下的文件：raw/名册.md')
   })
 
   it('关闭扩展时退回原块拼接（对照组合），不产生扩展范围', async () => {

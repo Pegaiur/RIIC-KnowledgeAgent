@@ -192,6 +192,33 @@ describe('共享基准快照', () => {
     }
   })
 
+  it('历史 includeSkillTables 与新增 retrievalScope 在 meta 中并存可读，不据 false 推断新范围', () => {
+    const query = {
+      id: 'Q1', category: 'fact', question: '问题', answer: '答案',
+      status: 'completed' as const, terminationReason: 'answer' as const, rounds: 1, toolRounds: 0,
+      toolTrace: [], feedbackUsed: false, budgetUsed: 0, budgetRemaining: 5, injectedIds: [],
+    }
+
+    const both = createSnapshot({
+      runId: 'run-scope-both',
+      topic: 'rag-hybrid',
+      meta: { retriever: 'hybrid', includeSkillTables: false, retrievalScope: 'base-guides' },
+      queries: [query],
+      records: [],
+    })
+    expect(both.meta).toEqual({ retriever: 'hybrid', includeSkillTables: false, retrievalScope: 'base-guides' })
+
+    // 只有历史字段的旧快照仍可读，且读取不补写新范围字段（只读历史展示原事实）
+    const legacy = createSnapshot({
+      runId: 'run-scope-legacy',
+      topic: 'rag-hybrid',
+      meta: { retriever: 'hybrid', includeSkillTables: false },
+      queries: [query],
+      records: [],
+    })
+    expect(legacy.meta).toEqual({ retriever: 'hybrid', includeSkillTables: false })
+  })
+
   it('从旧运行目录解析完整题集，并由 queries 补齐无记录失败题', () => {
     const dir = mkdtempSync(join(tmpdir(), 'rag-run-export-'))
     try {

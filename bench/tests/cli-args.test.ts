@@ -1,5 +1,29 @@
-import { describe, expect, it } from 'vitest'
-import { ignoredHitrateFlags, parseArgs, unsupportedCatalogFlags } from '../src/cli-args.js'
+import { describe, expect, it, vi } from 'vitest'
+import { RETIRED_SKILL_TABLES_MESSAGE, ignoredHitrateFlags, parseArgs, retiredFlagError, unsupportedCatalogFlags } from '../src/cli-args.js'
+
+const blockedWork = vi.hoisted(() => ({
+  config: vi.fn(),
+  benchmark: vi.fn(),
+  integrity: vi.fn(),
+  catalog: vi.fn(),
+  write: vi.fn(),
+}))
+
+// 保留 CLI 的真实解析与退出处理，在依赖边界阻断配置、运行和写盘；拦截回归也不能操作真实工作区。
+vi.mock('../src/config.js', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../src/config.js')>(),
+  loadConfig: blockedWork.config,
+}))
+vi.mock('../src/runner.js', () => ({ runBenchmark: blockedWork.benchmark }))
+vi.mock('../src/benchmark-integrity.js', () => ({ validateBenchmarkIntegrity: blockedWork.integrity }))
+vi.mock('../src/catalog.js', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../src/catalog.js')>(),
+  generateKeywordCatalogMarkdown: blockedWork.catalog,
+}))
+vi.mock('node:fs', async (importOriginal) => ({
+  ...await importOriginal<typeof import('node:fs')>(),
+  writeFileSync: blockedWork.write,
+}))
 
 describe('CLI 参数：工具预算与回馈兼容入口', () => {
   it('保留 --min-rag 0，不把零吞掉，并解析新参数', () => {
@@ -49,31 +73,104 @@ describe('CLI 参数：工具预算与回馈兼容入口', () => {
   })
 })
 
-describe('CLI 参数：四组对照三开关', () => {
-  it('解析 --include-skill-tables / --expand-fulltext / --attach-facts 的 0|1', () => {
+describe('CLI 参数：--expand-fulltext / --attach-facts 对照开关', () => {
+  it('解析 --expand-fulltext / --attach-facts 的 0|1', () => {
     const args = parseArgs([
       'run',
-      '--include-skill-tables', '1',
       '--expand-fulltext', '0',
       '--attach-facts', '1',
     ])
 
-    expect(args.includeSkillTables).toBe(1)
     expect(args.expandFulltext).toBe(0)
     expect(args.attachFacts).toBe(1)
   })
 
-  it('未传三开关时为 null，沿用 EXPERIMENT 默认', () => {
+  it('未传两开关时为 null，沿用 EXPERIMENT 默认', () => {
     const args = parseArgs(['run'])
 
-    expect(args.includeSkillTables).toBeNull()
     expect(args.expandFulltext).toBeNull()
     expect(args.attachFacts).toBeNull()
   })
 
   it('缺少数值时保留 NaN，让 CLI 以中文错误拒绝', () => {
     expect(parseArgs(['run', '--attach-facts']).attachFacts).toBeNaN()
-    expect(parseArgs(['run', '--include-skill-tables']).includeSkillTables).toBeNaN()
+    expect(parseArgs(['run', '--expand-fulltext']).expandFulltext).toBeNaN()
+  })
+})
+
+describe('CLI 参数：--include-skill-tables 退役（ADR-021）', () => {
+  it('四种形态（0、1、缺值、非法值）都判定为显式出现', () => {
+    const forms = [
+      ['run', '--include-skill-tables', '0'],
+      ['run', '--include-skill-tables', '1'],
+      ['run', '--include-skill-tables'],
+      ['run', '--include-skill-tables', '非法'],
+    ]
+
+    for (const argv of forms) {
+      expect(retiredFlagError(parseArgs(argv)), argv.join(' ')).toBe(RETIRED_SKILL_TABLES_MESSAGE)
+    }
+  })
+
+  it('退役提示语为约定文案，未传该参数时无错误', () => {
+    expect(RETIRED_SKILL_TABLES_MESSAGE)
+      .toBe('--include-skill-tables 已退役；RAG 仅检索 base/guides，精确事实请使用 facts 能力')
+    expect(retiredFlagError(parseArgs(['run']))).toBeNull()
+  })
+})
+
+/**
+ * 入口契约核对：cli.ts 在执行任何实际工作前拦截退役参数，并按既有口径以退出码 1 结束。
+ * 依赖替身在导入前安装，等待入口完成后才恢复进程状态。
+ */
+describe('CLI 入口：退役参数在执行前报错并以退出码 1 结束', () => {
+  async function runCli(argv: string[]): Promise<{ stderr: string; stdout: string; exitCode: number | undefined }> {
+    const originalArgv = process.argv
+    const originalExitCode = process.exitCode
+    const chunks: string[] = []
+    const output: string[] = []
+    for (const [name, boundary] of Object.entries(blockedWork)) {
+      boundary.mockImplementation(() => { throw new Error(`测试阻止 CLI 执行实际工作：${name}`) })
+    }
+    const spy = vi.spyOn(process.stderr, 'write').mockImplementation((chunk: unknown) => {
+      chunks.push(String(chunk))
+      return true
+    })
+    const stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation((chunk: unknown) => {
+      output.push(String(chunk))
+      return true
+    })
+    try {
+      process.argv = ['node', 'cli.js', ...argv]
+      process.exitCode = undefined
+      vi.resetModules()
+      const { cliCompletion } = await import('../src/cli.js')
+      await expect(cliCompletion).resolves.toBeUndefined()
+      for (const boundary of Object.values(blockedWork)) expect(boundary).not.toHaveBeenCalled()
+      return { stderr: chunks.join(''), stdout: output.join(''), exitCode: process.exitCode }
+    } finally {
+      spy.mockRestore()
+      stdoutSpy.mockRestore()
+      process.argv = originalArgv
+      process.exitCode = originalExitCode
+      for (const boundary of Object.values(blockedWork)) boundary.mockReset()
+    }
+  }
+
+  it.each([
+    ['0', ['run', '--include-skill-tables', '0']],
+    ['1', ['run', '--include-skill-tables', '1']],
+    ['缺值', ['run', '--include-skill-tables']],
+    ['非法值', ['run', '--include-skill-tables', '非法']],
+    ['hitrate', ['hitrate', '--include-skill-tables', '0']],
+    ['catalog', ['catalog', '--include-skill-tables', '0']],
+  ])('%s：报退役错误且不落入实际运行', async (_name, argv) => {
+    const { stderr, stdout, exitCode } = await runCli(argv)
+
+    expect(stderr).toContain('--include-skill-tables 已退役')
+    expect(stderr).toContain('RAG 仅检索 base/guides，精确事实请使用 facts 能力')
+    expect(stdout).toBe('')
+    expect(exitCode).toBe(1)
   })
 })
 

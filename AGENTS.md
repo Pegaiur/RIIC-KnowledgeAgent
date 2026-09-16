@@ -32,7 +32,7 @@
 | 2 | 分支工作流：禁止直接在主分支提交，走 `feature/<描述>` 分支；合并后删除分支 | — |
 | 3 | 合并门槛：合并前一律执行 `node scripts/verify.mjs merge -- --base main`（门禁唯一入口，命令清单见 `scripts/gates.mjs`） | `docs/rules/document-lifecycle.md` |
 | 4 | 文档模板：ADR 参照 `docs/templates/adr.md`，plan 参照 `docs/templates/plan.md`，草案参照 `docs/templates/draft.md`，实施笔记参照 `docs/templates/notes.md`，试验参照 `docs/templates/exp.md` | — |
-| 5 | RAG 散文清洗统一使用玩家侧规范词；references 直出层保留原格式 | `docs/rules/rag-prose-terminology.md` |
+| 5 | RAG 散文清洗统一使用玩家侧规范词；guides/类别.md、guides/歧义.md 直出层保留原格式 | `docs/rules/rag-prose-terminology.md` |
 | 6 | 文档引用仓库内其他文档一律写名称（路径/编号），不使用 Markdown 链接；例外为 ADR 索引与归档索引的机械契约表格 | `docs/rules/document-lifecycle.md` |
 | 7 | 新增或修改 bench/src、scripts 运行时行为，或新增/修改/删除相关测试时遵循测试约定 | `docs/rules/testing.md` |
 
@@ -57,13 +57,12 @@ RIIC-KnowledgeAgent/
 ├── AGENTS.md                       ← 本文件（规则索引 + 结构导航 + 工作流路由）
 ├── package.json                    ← 根包（bench 工具入口，pnpm）
 ├── tsconfig.json                   ← TypeScript 严格模式（NodeNext/ESM）
-├── knowledge/                      ← 明日方舟基建知识库（references 为机械事实真源；base/guides 为人工维护语料）
+├── knowledge/                      ← 明日方舟基建知识库（raw 为机械事实真源；base/guides 为人工维护语料）
 │   ├── AGENTS.md                   ← 查询 Agent 唯一人工指令源（所有检索模式注入）
 │   ├── corpus-manifest.json        ← 检索白名单真源（显式登记可检索语料；raw 默认不进入）
-│   ├── references/                 ← 数据层（解包直出：名册 / 技能分片×9 / 类别·技能等价组·歧义 / 数据源）
 │   ├── base/                       ← 机制基线语料（机制-*.md / 基建物流链.md）
-│   ├── guides/                     ← 已审定的 RAG 玩家散文（组合 / 新手 / 散件）
-│   └── raw/                        ← 待进一步核验与拆分的原始语料（默认不进入检索白名单）
+│   ├── guides/                     ← 已审定的 RAG 玩家散文（组合 / 新手 / 散件 / 类别 / 歧义）
+│   └── raw/                        ← 机械事实真源（名册 / 技能分片×9 / 技能等价组）及待核验原始语料；不进检索白名单
 ├── bench/                          ← 查询输出成本基准（简化版 Agent）
 │   ├── src/                        ← provider / retriever / agent / runner / report / cli
 │   ├── tests/                      ← vitest 单元测试

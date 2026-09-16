@@ -210,7 +210,7 @@ export function parseCategorySections(text: string): CatalogCategorySection[] {
     const item = line.match(CATEGORY_ITEM_PATTERN)
     if (item) current.names.push(item[1])
   }
-  if (sections.length === 0) throw new Error('关键词目录无法解析类别区段：knowledge/references/类别.md')
+  if (sections.length === 0) throw new Error('关键词目录无法解析类别区段：knowledge/guides/类别.md')
   for (const section of sections) {
     if (section.names.length === 0) throw new Error(`关键词目录类别区段为空：${section.name}`)
   }
@@ -236,9 +236,9 @@ export function loadKeywordCatalogInputs(root: string): CatalogInputs {
 
   let categoryText: string
   try {
-    categoryText = readFileSync(join(root, 'knowledge', 'references', '类别.md'), 'utf-8')
+    categoryText = readFileSync(join(root, 'knowledge', 'guides', '类别.md'), 'utf-8')
   } catch {
-    throw new Error('关键词目录无法读取类别真源：knowledge/references/类别.md')
+    throw new Error('关键词目录无法读取类别真源：knowledge/guides/类别.md')
   }
 
   return {

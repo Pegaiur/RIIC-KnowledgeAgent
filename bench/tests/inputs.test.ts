@@ -1,7 +1,7 @@
 import { mkdirSync, readFileSync, readdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { describe, expect, it, afterEach, vi } from 'vitest'
+import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest'
 import { EXPERIMENT, loadConfig } from '../src/config.js'
 import { buildIndex } from '../src/retriever.js'
 import { buildSectionDirectory } from '../src/sections.js'
@@ -31,10 +31,16 @@ function providerResult(partial: Partial<ProviderResult>): ProviderResult {
 }
 
 describe('运行输入记录', () => {
+  let previous: Pick<typeof EXPERIMENT, 'tokenizer' | 'entityBoost'>
+
+  beforeEach(() => {
+    previous = { tokenizer: EXPERIMENT.tokenizer, entityBoost: EXPERIMENT.entityBoost }
+  })
+
   afterEach(() => {
     mockCall.mockReset()
-    EXPERIMENT.tokenizer = 'bigram'
-    EXPERIMENT.entityBoost = 0
+    EXPERIMENT.tokenizer = previous.tokenizer
+    EXPERIMENT.entityBoost = previous.entityBoost
   })
 
   it('首个模型调用前已经写入 inputs，且 prompt/schema 与实际调用一致', async () => {
@@ -70,10 +76,12 @@ describe('运行输入记录', () => {
       expect(inputs.captureStatus).toBe('complete')
       expect(inputs.systemPrompt.text).toBe((mockCall.mock.calls[0]?.[0] as Array<{ role: string; content: string }>)[0]?.content)
       expect(inputs.toolSchema.definitions).toEqual(mockCall.mock.calls[0]?.[1])
-      expect(inputs.config).toMatchObject({ maxTokens: 4096, temperature: null, retriever: 'hybrid', toolAttemptLimit: 10, factsQueryListLimit: 3, parallelToolCalls: false, includeSkillTables: false, expandFulltext: true, attachFacts: true })
+      expect(inputs.config).toMatchObject({ maxTokens: 4096, temperature: null, retriever: 'hybrid', toolAttemptLimit: 10, factsQueryListLimit: 3, parallelToolCalls: false, retrievalScope: 'base-guides', expandFulltext: true, attachFacts: true })
+      expect(inputs.config).not.toHaveProperty('includeSkillTables')
       expect(inputs.facts).toEqual({ status: 'not_used' })
       const meta = JSON.parse(readFileSync(output.metaPath, 'utf-8')) as Record<string, unknown>
-      expect(meta).toMatchObject({ maxTokens: 4096, inputsSchemaVersion: 1, includeSkillTables: false, expandFulltext: true, attachFacts: true })
+      expect(meta).toMatchObject({ maxTokens: 4096, inputsSchemaVersion: 1, retrievalScope: 'base-guides', expandFulltext: true, attachFacts: true })
+      expect(meta).not.toHaveProperty('includeSkillTables')
     } finally {
       rmSync(outDir, { recursive: true, force: true })
     }

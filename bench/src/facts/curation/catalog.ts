@@ -341,7 +341,7 @@ const MECHANISMS: readonly CatalogTermEntry[] = [
 const CATEGORY_SECTIONS: Readonly<Record<string, CatalogText>> = {
   干员组: {
     provides: '阵营/干员组成员与所属',
-    entry: 'R：类别定义（knowledge/references/类别.md）；F：干员组（命中仅表示相关卡）',
+    entry: 'R：类别定义（knowledge/guides/类别.md）；F：干员组（命中仅表示相关卡）',
     scope: 'F 命中只表示相关卡，不表示组关系已取得证据',
   },
   全局资源: {

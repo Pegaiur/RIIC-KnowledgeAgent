@@ -13,7 +13,7 @@
 import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { effectiveAttachFacts, loadConfig, validateBenchConfig } from './config.js'
-import { corpusStats, loadCorpus, selectRetrievalChunks } from './corpus.js'
+import { corpusStats, loadCorpus } from './corpus.js'
 import { checkGold, loadGold, renderHitrate, runHitrate } from './hitrate.js'
 import { CATALOG_RELATIVE_PATH, catalogDifference, generateKeywordCatalogMarkdown } from './catalog.js'
 import { buildIndex } from './retriever.js'
@@ -21,7 +21,7 @@ import { runBenchmark } from './runner.js'
 import { aggregate, aggregateSnapshot, renderCrossProvider, renderCsv, renderMarkdown, type BenchReport } from './report.js'
 import type { BenchQuery, CostRecord } from './types.js'
 import { validateBenchmarkIntegrity } from './benchmark-integrity.js'
-import { ignoredHitrateFlags, parseArgs, unsupportedCatalogFlags } from './cli-args.js'
+import { ignoredHitrateFlags, parseArgs, retiredFlagError, unsupportedCatalogFlags } from './cli-args.js'
 import { readSnapshot, snapshotFromRunDir, writeSnapshot } from './snapshot.js'
 
 /** 散文 RAG 与 hitrate 均直接使用 knowledge/白名单语料，共用 questions 的题号和问题定义。 */
@@ -32,12 +32,13 @@ function printUsage(): void {
       'RIIC-KnowledgeAgent bench —— LLM 查询输出成本基准（GLM-5.3-Flash / Qwen3.7-Flash）',
       '',
       '用法：',
-      '  node dist/cli.js run [--provider glm|qwen|hy3|deepseek] [--thinking off|low|high] [--temperature N] [--retriever bm25|hybrid] [--include-skill-tables 0|1] [--expand-fulltext 0|1] [--attach-facts 0|1] [--tool-budget N] [--tool-attempt-limit N] [--session-timeout-ms N] [--min-rag 0|1] [--limit N] [--dry] [--questions <path>] [--out <dir>]',
+      '  node dist/cli.js run [--provider glm|qwen|hy3|deepseek] [--thinking off|low|high] [--temperature N] [--retriever bm25|hybrid] [--expand-fulltext 0|1] [--attach-facts 0|1] [--tool-budget N] [--tool-attempt-limit N] [--session-timeout-ms N] [--min-rag 0|1] [--limit N] [--dry] [--questions <path>] [--out <dir>]',
       '  说明：默认 provider 为 GLM-5.3-Flash、默认思考档 low（GLM 不支持 off）；DeepSeek 仅支持 off，需显式 --thinking off；Hy3 已退出，仅为历史对照保留。',
+      '  检索范围恒为 manifest 登记的 base/guides；--include-skill-tables 已退役，显式传入按参数错误拒绝。',
       '  node dist/cli.js export <runDir> [--questions <path>] [--topic <name>] [--out <path>]',
       '  node dist/cli.js report <runDir|snapshot> [--out <path>]',
       '  node dist/cli.js compare <runDir|snapshot> <runDir|snapshot> [--out <path>]',
-      '  node dist/cli.js hitrate [--topk 3,5,10] [--gold <path>] [--check-gold] [--include-skill-tables 0|1] [--out <path>]',
+      '  node dist/cli.js hitrate [--topk 3,5,10] [--gold <path>] [--check-gold] [--out <path>]',
       '  node dist/cli.js catalog [--check]',
       '  node dist/cli.js validate',
       '',
@@ -76,7 +77,7 @@ function loadRecords(runDir: string): CostRecord[] {
     .map((l) => JSON.parse(l) as CostRecord)
 }
 
-/** 三开关只接受 0/1；其他取值按中文参数错误拒绝，避免静默按默认运行。 */
+/** 开关只接受 0/1；其他取值按中文参数错误拒绝，避免静默按默认运行。 */
 function readBinarySwitch(flag: string, value: number): boolean {
   if (value !== 0 && value !== 1) throw new Error(`${flag} 仅支持 0 或 1：${value}`)
   return value === 1
@@ -92,6 +93,9 @@ function loadReportInput(inputPath: string): BenchReport {
 
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2))
+  // 退役参数在任何实际工作（检索、模型调用、写盘、catalog 写入）之前拦截，按既有口径以退出码 1 结束（ADR-021）。
+  const retiredError = retiredFlagError(args)
+  if (retiredError) throw new Error(retiredError)
   if (args.help || args.command === 'help') {
     printUsage()
     return
@@ -102,7 +106,6 @@ async function main(): Promise<void> {
     if (args.retrieverMissingValue) throw new Error('--retriever 缺少取值（可选 bm25 | hybrid）')
     const config = loadConfig(args.provider)
     if (args.retriever !== null) config.retriever = args.retriever
-    if (args.includeSkillTables !== null) config.includeSkillTables = readBinarySwitch('--include-skill-tables', args.includeSkillTables)
     if (args.expandFulltext !== null) config.expandFulltext = readBinarySwitch('--expand-fulltext', args.expandFulltext)
     if (args.attachFacts !== null) config.attachFacts = readBinarySwitch('--attach-facts', args.attachFacts)
     if (args.toolBudget !== null) config.toolBudget = args.toolBudget
@@ -131,7 +134,7 @@ async function main(): Promise<void> {
     const picked = args.limit ? questions.slice(0, args.limit) : questions
 
     process.stdout.write(
-      `Provider：${config.providerLabel}｜语料：${stats.files} 个文件｜问题：${picked.length}/${questions.length}｜档位：${args.thinking}｜temperature：${config.temperature ?? '服务端默认'}｜检索器：${config.retriever}｜包含技能表：${config.includeSkillTables ? '是' : '否'}｜扩展原文：${config.expandFulltext ? '是' : '否'}｜附带 facts：${effectiveAttachFacts(config) ? '是' : '否'}｜成功额度：${config.toolBudget}｜获准尝试上限：${config.toolAttemptLimit}｜总超时：${config.sessionTimeoutMs}ms｜未调用工具回馈：${config.feedbackOnNoToolAnswer ? '开' : '关'}｜dry：${args.dry}\n`,
+      `Provider：${config.providerLabel}｜语料：${stats.files} 个文件｜问题：${picked.length}/${questions.length}｜档位：${args.thinking}｜temperature：${config.temperature ?? '服务端默认'}｜检索器：${config.retriever}｜检索范围：base/guides（manifest 全部块）｜扩展原文：${config.expandFulltext ? '是' : '否'}｜附带 facts：${effectiveAttachFacts(config) ? '是' : '否'}｜成功额度：${config.toolBudget}｜获准尝试上限：${config.toolAttemptLimit}｜总超时：${config.sessionTimeoutMs}ms｜未调用工具回馈：${config.feedbackOnNoToolAnswer ? '开' : '关'}｜dry：${args.dry}\n`,
     )
 
     const out = await runBenchmark(picked, {
@@ -156,12 +159,10 @@ async function main(): Promise<void> {
   if (args.command === 'hitrate') {
     if (!args.questions && !args.gold) validateBenchmarkIntegrity(process.cwd())
     const config = loadConfig()
-    // hitrate 与 run 共用同一范围开关：允许 CLI 覆盖，保证 runner/CLI 范围配置在默认与显式覆盖下都一致。
-    if (args.includeSkillTables !== null) config.includeSkillTables = readBinarySwitch('--include-skill-tables', args.includeSkillTables)
-    // 显式传入扩展/附带开关时给出提示，避免静默忽略（hitrate 只按检索范围排序）。
+    // 显式传入扩展/附带开关时给出提示，避免静默忽略（hitrate 只做检索排序，不执行原文扩展与 facts 附带）。
     const ignored = ignoredHitrateFlags(args)
     if (ignored.length > 0) {
-      process.stderr.write(`提示：hitrate 仅用 --include-skill-tables 控制检索范围，忽略 ${ignored.join('、')}（该命令不执行原文扩展与 facts 附带）\n`)
+      process.stderr.write(`提示：hitrate 忽略 ${ignored.join('、')}（该命令不执行原文扩展与 facts 附带）\n`)
     }
     const goldPath = args.gold ?? join(process.cwd(), 'bench', 'gold.json')
     const gold = loadGold(goldPath)
@@ -183,11 +184,8 @@ async function main(): Promise<void> {
 
     const questionsPath = args.questions ?? join(process.cwd(), 'bench', 'questions.json')
     const questions = loadQuestions(questionsPath)
-    // 检索范围与 runner 生产路径一致（同 maxContextChars 与 includeSkillTables）；排除键只影响可达性。
-    const retrievalChunks = selectRetrievalChunks(
-      loadCorpus(config.corpusDir, config.maxContextChars),
-      { includeSkillTables: config.includeSkillTables },
-    )
+    // 检索范围与 runner 生产路径一致（同 maxContextChars）：等于 manifest 声明的全部块，无技能表过滤（ADR-021）。
+    const retrievalChunks = loadCorpus(config.corpusDir, config.maxContextChars)
     const topKs = (args.topk ?? '3,5,10')
       .split(',')
       .map((s) => Number(s.trim()))
@@ -204,7 +202,7 @@ async function main(): Promise<void> {
       { directoryChunks },
     )
     // 落盘/输出携带运行参数上下文，保证 --out 文件可复现（分词器 + 实体加权 + 检索范围）
-    const contextLine = `分词器：${config.tokenizer}｜实体加权：${config.entityBoost === 0 ? '关' : `×${config.entityBoost}`}｜检索范围：${config.includeSkillTables ? '含技能表' : '排除技能表'}｜检索 chunks：${retrievalChunks.length}｜定位目录 chunks：${directoryChunks.length}｜问题：${questions.length}`
+    const contextLine = `分词器：${config.tokenizer}｜实体加权：${config.entityBoost === 0 ? '关' : `×${config.entityBoost}`}｜检索范围：base/guides（manifest 全部块）｜检索 chunks：${retrievalChunks.length}｜定位目录 chunks：${directoryChunks.length}｜问题：${questions.length}`
     result.note = contextLine
     process.stdout.write(`${contextLine}\n`)
     const md = renderHitrate(result)
@@ -299,7 +297,8 @@ async function main(): Promise<void> {
   printUsage()
 }
 
-main().catch((err: unknown) => {
+/** 入口完成信号，包含错误退出处理；契约测试等待此 Promise 后再恢复进程状态。 */
+export const cliCompletion: Promise<void> = main().catch((err: unknown) => {
   process.stderr.write(`错误：${err instanceof Error ? err.message : String(err)}\n`)
   process.exitCode = 1
 })

@@ -49,6 +49,13 @@
 - **回执**：用户确认全部四项：①整份渐进披露定稿范围；②授权补齐 read、scope 等具体契约；③目录迁移裁决（11 份移 raw、类别/歧义移 guides、数据源移除、撤销 references）；④限定门禁延后例外——仅第 3–6 步指定旧断言可暂红，红态不合并、不发版、不登记新基线、不执行付费试验。
 - **影响**：四项授权在实施期可据此执行，例外范围不变，仍以本 plan「已授权的门禁延后例外」节为边界；本条只补回执来源，未改需求、契约或验收项。
 
+### 2026-09-16 — 用户允许目录迁移先于事实出口
+
+- **背景**：本批已实施第 2–3 步，但 plan 原定前置的第 1 步事实出口尚未补齐；原有门禁延后授权不包含这一顺序偏离。
+- **选项**：迁移先行并保留缺口、先补齐事实出口、或暂缓迁移批次提交。
+- **决策**：用户在本次验收中确认：「允许迁移先行，明确保留事实出口缺口；其余检查通过后提交该批」。据此仅调整本批执行顺序，不删除第 1 步验收要求。
+- **影响**：技能注记、同描述依据与名册边界出口继续保持未完成，facts 卡仍为 v7；迁移验收不代表这些信息已可经模型工具完整送达。旧 gold／白名单／基准完整性断言仍按既有例外留待第 6 步，其他新行为及受影响检查须通过；红态期间不合并、不发版、不登记新基线、不执行付费试验。
+
 ## 实现调整
 
 ### 2026-09-15 — CLI 参数错误退出码由 2 统一为 1
@@ -56,6 +63,39 @@
 - **实际做法**：统一为退出码 1。bench CLI 当前所有失败路径（含参数错误）都由 bench/src/cli.ts 顶层 catch 设为 1，只有 scripts/ 侧（tooling.mjs、verify.mjs、release 任务）才有「0 成功／1 一般错误／2 参数错误」的约定。
 - **原因**：避免同一 CLI 内出现两套退出码口径（仅退役参数用 2、其余参数错误用 1），也不在本计划内顺带改写全 CLI 的退出码契约。
 - **后果**：plan 第 3、5 步与 ADR-021 决策 5 的退出码描述已同步为 1；若将来要在 bench CLI 引入「2＝参数错误」的统一口径，属独立议题，从 inbox 起步。
+
+### 2026-09-15 — 数据源.md 移除前的来源与缺口留档
+- **背景**：第 3 步移除 knowledge/references/数据源.md（开发来源说明不再作为语料文件）。按该步要求，删除前把最小来源依据与限制记入本笔记，不在 knowledge 下新建副本。
+- **来源依据**：主源仓库 `arkntools/arknights-toolbox-data`，commit `4d474755461300c5c5a0414937191412162f620e`（经 RIIC-Web/src/generated/arkntools/ 落地），计数为干员 425／上游基建技能条目 747／术语 81；补源 RhodeLogisticsSteward/（派生自 ArknightsGameData）提供主源缺失的 efficiency、targets（产物／职业）与 nationId/groupId/teamId，计数略旧（干员 415、技能 727），均为主源子集。
+- **已核对的口径差异**：①星级——主源 rarity 即实际星数，补源 0 起算（+1），全量零例外；②buffId——补源 `xxx[000]`、主源 `xxx_000`，归一化后 727/747 命中；③roomType——主源无该字段，由 id 前缀推出，与补源标注全量一致。
+- **限制**：747 是上游条目数，不是规范化技能事实数；生成器缺位——本仓库没有 scripts/build_refs.py，不能承诺重跑即可重建，本次也不新增该脚本。
+- **仍需定位的缺口原标识**：补源缺 targets/efficiency 的技能 20 条——`control_hire_spd_all_000`、`dorm_rec_oneself_002`、`dorm_rec_single&tag_000`、`hire_spd_013`、`manu_formula_spd_011`、`manu_formula_spd_214`、`manu_prod_cost_min_001`、`meet_spd&cost_condChar_002`、`meet_spd_023`、`meet_spd_notOwned_004`、`meet_spd_notOwned_P_000`、`power_rec_spd_027`、`trade_ord_spd&limit_tag_000`、`trade_ord_spd_022`、`trade_ord_wt&cost_004`、`train_spd&profession3_190`、`train_spd&profession3_191`、`train_spd_doubleProf3_000`、`train_spd_doubleProf3_100`、`workshop_formula_probability_301`；补源缺派系字段的干员 10 名——予愿安洁莉娜、佩德洛、嘉辛塔、时隙、机械师、焰狐龙梓兰、珊比、罗德岛隐秘队、谬因、雷狼龙S空爆。无法判定设施的技能 0 条。原文档未给玩家侧定位提示，缺口以本标识清单为准。
+- **影响**：未来真源刷新需单独更新上述真实来源证据；本记录随计划归档进入实施纪要。
+
+### 2026-09-15 — 第 2–3 步：目录迁移与消费者闭合的实施范围
+
+- **范围**：本批只实施第 2–3 步（目录迁移与消费者闭合）。第 1 步事实出口（卡 v8）与第 4 步起的关联格式 v2、read、检索默认与目录注入开关均未实施，相关版本号（facts 7→8、工具 14→15、prose-links 1→2）仍是待实施约定，不记成已交付。
+- **迁移落位**：11 份移入 knowledge/raw/——技能-会客室.md、技能-发电站.md、技能-办公室.md、技能-加工站.md、技能-控制中枢.md、技能-贸易站.md、技能-宿舍.md、技能-训练室.md、技能-制造站.md、名册.md、技能等价组.md；类别.md、歧义.md 移入 knowledge/guides/；数据源.md 删除，来源与缺口留档见上条。knowledge/references/ 目录撤销，文件保持原名，未在 raw 下重建 references 子目录。
+- **manifest**：knowledge/corpus-manifest.json 登记由 31 条改为 19 条（base 12 + guides 7）；raw 不进检索白名单。
+- **旧参数退役**：includeSkillTables 与 `--include-skill-tables` 退役；显式传入（含 0、1、缺值及非法值）一律在执行前报中文迁移错误、按 bench CLI 现有口径以退出码 1 结束，无开关时正常运行。新 inputs/meta 写可选 retrievalScope: "base-guides"；历史 includeSkillTables 字段与旧快照/元数据保持可读，不据 false 推断为新范围。
+- **文档同步**：docs/spec/rag-answer-baseline.md 版本 v4 → v5，仅同步证据块路径与白名单范围表述（原 references/ 改记 raw/ 与 guides/）；题号、必答项、判定含义及历史运行记录均未改动。
+- **说明**：本批验证的实际数字由主代理在收齐各批次后统一补记，此处不预写测试通过/失败数。
+
+### 2026-09-15 — 目录迁移批次验证结果与红态归属
+- **验证环境**：分支 feature/index-and-tags 工作区（含本批全部改动），命令均在仓库根执行。
+- **验证结果**：`pnpm run typecheck` 通过；全套 `pnpm run test` 625 通过 / 2 失败（49 个测试文件 48 个通过）；`pnpm run check:prose-terms` 通过；`pnpm run check:reference-projection` 通过（9 分片一致）；重算后的 knowledge/关键词目录.md 与 `node dist/cli.js catalog --check` 一致；`node scripts/doc-check.mjs` 21 个错误全为 D1「活动 plan 存在未勾选条目」（plan-corpus-supplement 8、plan-progressive-disclosure 11、plan-index-and-tags 1、plan-prose-linked-knowledge 1），无 D2/D3/D4/D5/S 错误。
+- **红态与归属**：bench/tests/benchmark-integrity.test.ts 两条用例失败（「questions、gold、spec 与 manifest/实际切块完全对齐」「在隔离快照集合中统计新增和移除后的数量与字节，并拒绝无效 JSON」），原因是 bench/gold.json 的 26 条 references 锚点尚未重定位；`node dist/cli.js validate` 与 `pnpm run bench:dry`（run 分支未指定 --questions 时先做基准完整性校验）因同一原因失败。以上均属 plan「已授权的门禁延后例外」列明的「旧 gold／白名单／基准完整性断言」，解除条件为第 6 步的「gold 定位分离与 26 键迁移、白名单/完整性断言、目录一致性和两份基线口径处置」；红态期间不合并、不发版、不登记新基线、不执行付费试验。
+- **退役参数实测**：`node dist/cli.js run --include-skill-tables 0 --dry` 输出「错误：--include-skill-tables 已退役；RAG 仅检索 base/guides，精确事实请使用 facts 能力」并以退出码 1 结束。
+- **新增行为覆盖**：manifest 拒绝 raw／references 条目、检索块与模型原文阅读目录不含 raw、CLI 退役参数四形态与退出码 1、facts 从 raw 正常加载、snapshot 历史字段与新 retrievalScope 并存、prose-terms 两文件精确例外未被放宽（新增 scripts/tests/prose-terms-check.test.mjs 与 facts-evidence-observation 默认名册路径用例）。
+- **语料侧非路径改动**：13 份真源的生成头注改为真实维护信息（历史由上游生成、当前以版本控制内文本为输入、本仓库无该生成脚本）；base 35 行＋guides 3 行 references 回指改为能力表述；knowledge/guides/歧义.md 的「推王」条按本 plan 第 2 步与 ADR-010 的全部返回契约修订说明文字（不设默认目标、登记条目与成员未改）。
+- **未闭合的已知遗留**：①bench/gold.json 26 条锚点与 validate/bench:dry 的解除属第 6 步；②docs/spec 证据块现引用白名单外的 raw 真源，「可定位不可检索」的完整口径同样待第 6 步闭合；③knowledge/base/机制-心情与工休.md 首部仍有一处指向 knowledge/raw/ 的既有来源标注（预先存在、非 references 回指，本批未改）；④历史试验、归档计划、基线表与本机 bench-runs 保持原貌。
+
+### 2026-09-16 — 验收审查修复与复测
+
+- **审查发现**：首次独立审查为 FAIL，阻塞项为 manifest 使用未归一化前缀校验导致目录穿越、CLI 入口测试缺少副作用隔离与完成等待，以及 inputs 测试共享清理未恢复原值；既有 gold 红态与已授权的事实出口延期不计为新增缺陷。
+- **目录边界修复**：先在 bench/tests/corpus.test.ts 新增 4 种路径穿越、1 种目录链接和 1 种合法归一化路径用例，定向运行观察到 5 失败／13 通过；随后校验归一化 docId 与 realpath 的实际目标均属于 base/guides，18 条用例转绿。所有夹具及目录链接均位于测试持有的临时目录并自动清理。
+- **测试隔离修复**：CLI 用例在导入前用依赖替身阻断配置读取、基准运行、完整性读取、目录生成和文件写入，断言这些边界均未调用、标准输出为空、中文错误及退出码正确；先运行 6 条入口用例确认缺少完成信号导致失败，再导出已有入口 Promise（cliCompletion，包含错误处理）并等待它收束。此导出只提供入口完成信号，不更改工具协议、默认配置或 CLI 退出语义。inputs 的 beforeEach 捕获 EXPERIMENT 前值，afterEach 恢复原值；属测试装配修复，由原有行为用例覆盖，11 条 inputs 用例通过。
+- **复测结果**：`pnpm run typecheck`、`pnpm run build` 通过；全套 `pnpm run test` 为 631 通过／2 失败（49 个文件，48 个通过），新增 6 条目录边界用例均通过；剩余 2 条仍为上述旧 gold 完整性用例。此前 625／2 是修复前记录，保留作本轮验收过程证据。文档校验的未勾选计数按 8＋11＋1＋1＝21 更正，没有勾选未实施条目。
 
 ## 债务记录
 

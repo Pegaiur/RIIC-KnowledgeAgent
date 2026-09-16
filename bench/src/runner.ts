@@ -4,7 +4,7 @@
 import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join, relative, resolve } from 'node:path'
 import { effectiveAttachFacts, loadConfig, validateBenchConfig, type BenchConfig } from './config.js'
-import { loadCorpus, selectRetrievalChunks } from './corpus.js'
+import { loadCorpus } from './corpus.js'
 import { buildSectionDirectory } from './sections.js'
 import { buildProseLinkIndex } from './prose-links.js'
 import { buildIndex, currentEntityBoost, currentTokenizer } from './retriever.js'
@@ -82,9 +82,8 @@ export async function runBenchmark(
   const toolDefinitions = toolsForRetriever(config.retriever, config.factsQueryListLimit)
   const sourceAtStart = collectSourceMetadata()
 
-  // 语料 + 索引（一次构建，全部查询复用）；检索范围按 ADR-013 在装配层过滤，真源与 manifest 不变。
-  const corpusChunks = loadCorpus(config.corpusDir, config.maxContextChars)
-  const chunks = selectRetrievalChunks(corpusChunks, { includeSkillTables: config.includeSkillTables })
+  // 语料 + 索引（一次构建，全部查询复用）；检索范围等于 manifest 声明的全部块（ADR-021，不再有技能表过滤）。
+  const chunks = loadCorpus(config.corpusDir, config.maxContextChars)
   const index = buildIndex(chunks)
   // 当前全部模式（bm25/hybrid）都开放 read_section，恒构建小节目录；与检索同用白名单原文来源。
   const sections = buildSectionDirectory(config.corpusDir)
@@ -268,7 +267,7 @@ export async function runBenchmark(
         temperature: config.temperature ?? null,
         baseUrl: config.baseUrl,
         retriever: config.retriever,
-        includeSkillTables: config.includeSkillTables,
+        retrievalScope: 'base-guides',
         expandFulltext: config.expandFulltext,
         attachFacts: effectiveAttachFacts(config),
         toolBudget: config.toolBudget,
@@ -288,8 +287,9 @@ export async function runBenchmark(
         topK: config.topK,
         maxContextChars: config.maxContextChars,
         corpusDir: config.corpusDir,
+        // 检索范围等于 manifest 声明的全部块：chunks 与 corpusChunks 同源同值（ADR-021）。
         chunks: chunks.length,
-        corpusChunks: corpusChunks.length,
+        corpusChunks: chunks.length,
         questions: questions.length,
         questionIds: questions.map((question) => question.id),
         questionsPath: relativeQuestionPath(opts.questionsPath ?? join(process.cwd(), 'bench', 'questions.json')),

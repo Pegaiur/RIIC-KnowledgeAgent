@@ -79,10 +79,11 @@ const META_SUMMARY_KEYS = new Set([
   'toolResultChars', 'toolHitCount', 'toolHitUnknown', 'httpAttempts', 'retryAttempts', 'feedbackUsed', 'terminationReasons',
   'elapsedMs',
 ])
+/** meta 白名单：includeSkillTables 为历史字段（ADR-021 退役，仅只读保留），retrievalScope 记录新检索范围。 */
 const META_ALLOWED_KEYS = new Set([
   'schemaVersion', 'traceSchemaVersion', 'ts', 'thinking', 'dry', 'provider', 'model',
   'temperature', 'maxTokens', 'baseUrl', 'retriever', 'minRagCalls', 'toolBudget', 'toolAttemptLimit', 'factsQueryListLimit', 'sessionTimeoutMs',
-  'includeSkillTables', 'expandFulltext', 'attachFacts',
+  'includeSkillTables', 'retrievalScope', 'expandFulltext', 'attachFacts',
   'feedbackOnNoToolAnswer', 'toolChoice', 'parallelToolCalls', 'agentInstructionsSha256',
   'inputsSchemaVersion',
   'toolSchemaVersion', 'toolSchemaSha256', 'toolNames',

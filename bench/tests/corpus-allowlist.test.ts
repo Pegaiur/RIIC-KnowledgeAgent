@@ -18,14 +18,14 @@ describe('真实 knowledge 语料白名单', () => {
 
     expect(actual).toEqual(approved)
     expect(loadedChunks).toEqual(approved)
-    expect(actual.size).toBe(31)
+    expect(actual.size).toBe(19)
     expect([...actual].filter((file) => file.startsWith('base/'))).toHaveLength(12)
-    expect([...actual].filter((file) => file.startsWith('references/'))).toHaveLength(14)
-    expect([...actual].filter((file) => file.startsWith('guides/'))).toHaveLength(5)
+    expect([...actual].filter((file) => file.startsWith('guides/'))).toHaveLength(7)
     expect([...actual].filter((file) => file.startsWith('raw/'))).toHaveLength(0)
     expect(actual.has('AGENTS.md')).toBe(false)
     expect(actual.has('base/机制-基建总览.md')).toBe(true)
-    expect(actual.has('references/名册.md')).toBe(true)
+    expect(actual.has('guides/类别.md')).toBe(true)
+    expect(actual.has('guides/歧义.md')).toBe(true)
     expect(actual.has('guides/贸易站组合.md')).toBe(true)
     expect(actual.has('guides/新手培养.md')).toBe(true)
 
@@ -41,7 +41,7 @@ describe('真实 knowledge 语料白名单', () => {
     expect(unlockText).toContain('30 级')
     expect(unlockText).toContain('三星、四星')
     expect(unlockText).toContain('精一阶段')
-    expect(unlockText).toContain('具体解锁阶段仍以该技能在 references 中的解锁字段为准')
+    expect(unlockText).toContain('具体解锁阶段仍以该技能在 facts 返回记录中的解锁字段为准')
     expect(unlockText).not.toContain('一至三星')
 
     const pollutedDocuments = [

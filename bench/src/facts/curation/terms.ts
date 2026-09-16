@@ -34,7 +34,7 @@ function combo(
 const trade = 'knowledge/guides/贸易站组合.md'
 const manufacturing = 'knowledge/guides/制造站组合.md'
 const crossFacility = 'knowledge/guides/跨设施组合.md'
-const ambiguity = 'knowledge/references/歧义.md'
+const ambiguity = 'knowledge/guides/歧义.md'
 const substringSection = '一、子串包含对（31 组，自动生成）'
 
 /** 人工确认的入口词条；不从散文运行时解析，也不回写 RecordCard.aliases。 */

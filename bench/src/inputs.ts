@@ -62,8 +62,10 @@ export interface RunInputs {
     temperature: number | null
     maxTokens: number
     retriever: BenchConfig['retriever']
-    /** 检索语料是否包含技能表；false = 排除九份 references/技能-*.md（ADR-013）。 */
-    includeSkillTables: boolean
+    /** 检索范围：等于 manifest 登记的 base/guides（ADR-021）；历史 inputs 缺失该字段。 */
+    retrievalScope?: 'base-guides'
+    /** 历史字段：旧 inputs 曾记录检索是否含技能表；已退役，仅保留只读兼容，不据其 false 推断新范围。 */
+    includeSkillTables?: boolean
     /** 是否把 base/guides 命中小节扩展到原文文件范围（ADR-013）。 */
     expandFulltext: boolean
     /** RAG 内部 facts 附带的有效开关；未显式声明时随模式默认（ADR-013）。 */
@@ -180,7 +182,7 @@ export function createRunInputs(options: RunInputsOptions): RunInputs {
       temperature: options.config.temperature ?? null,
       maxTokens: options.config.maxTokens,
       retriever: options.config.retriever,
-      includeSkillTables: options.config.includeSkillTables,
+      retrievalScope: 'base-guides',
       expandFulltext: options.config.expandFulltext,
       attachFacts: effectiveAttachFacts(options.config),
       corpusDir: redactSensitiveText(options.config.corpusDir, sensitiveValues),

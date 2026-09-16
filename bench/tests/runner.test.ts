@@ -101,9 +101,10 @@ describe('runBenchmark：trace 逐题落盘', () => {
       expect(inputs.captureStatus).toBe('complete')
       expect(inputs.config).toMatchObject({ toolBudget: 5, toolAttemptLimit: 10, parallelToolCalls: false })
       expect(inputs.facts).toMatchObject({ status: 'captured', cardCount: expect.any(Number) })
-      // 检索范围默认排除技能表：实际检索分块数小于语料总块数（ADR-013）
-      expect(meta.includeSkillTables).toBe(false)
-      expect(Number(meta.chunks)).toBeLessThan(Number(meta.corpusChunks))
+      // 检索范围等于 manifest 声明的全部块：不再有技能表过滤，也不再写退役的 includeSkillTables（ADR-021）
+      expect(meta.includeSkillTables).toBeUndefined()
+      expect(meta.retrievalScope).toBe('base-guides')
+      expect(meta.chunks).toBe(meta.corpusChunks)
       expect(inputs.rag.chunkCount).toBe(meta.chunks)
     } finally {
       rmSync(outDir, { recursive: true, force: true })
