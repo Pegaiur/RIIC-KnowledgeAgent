@@ -90,7 +90,7 @@
 
 - **债务**：read_section 的 linked 展开首版不设分页或截断，一次展开全部登记对象，结果体积可能超过 maxContextChars；plan 将体积/分页列为非目标。代码锚点：bench/src/tool-executor.ts 的 `readLinkedFactsOperation` 顶部 `TODO(tech-debt) PLK-1`。
 - **未来偿还**：需要控制关联载荷体积时，引入分页或截断，并同步重定义 complete 与命中/送达口径。
-- **关闭记录（2026-09-16）**：docs/plan-progressive-disclosure.md 第 4 步以 read 取代 read_section，关联事实按完整对象分页（facts_offset/next_facts_offset）、单对象超容量显式报错；`readLinkedFactsOperation`、linked 参数与该 TODO 锚点已随该批删除。关闭依据、口径与验证见 docs/plan-progressive-disclosure-notes.md「第 4 步（分批之二）」与「债务记录」。
+- **关闭记录（2026-09-16）**：docs/archive/plan-progressive-disclosure.md 第 4 步以 read 取代 read_section，关联事实按完整对象分页（facts_offset/next_facts_offset）、单对象超容量显式报错；`readLinkedFactsOperation`、linked 参数与该 TODO 锚点已随该批删除。关闭依据、口径与验证见 docs/archive/plan-progressive-disclosure.md 实施纪要「第 4 步（分批之二）」与「债务记录」。
 
 ## 意外发现
 
@@ -101,8 +101,8 @@
 
 ### 2026-09-15 — 数据层事实对象（原 knowledge/references）路径已迁移
 
-- **发现**：本 plan 与笔记中的 knowledge 数据层事实对象（名册、技能分片、技能等价组）已随目录迁移改记 knowledge/raw/，类别与歧义改记 knowledge/guides/；迁移细节见 docs/plan-progressive-disclosure-notes.md。
-- **影响**：不修改本 plan 正文，上述事实定位按新位置理解；迁移范围、manifest 计数与旧参数退役以 docs/plan-progressive-disclosure-notes.md 为准。
+- **发现**：本 plan 与笔记中的 knowledge 数据层事实对象（名册、技能分片、技能等价组）已随目录迁移改记 knowledge/raw/，类别与歧义改记 knowledge/guides/；迁移细节见 docs/archive/plan-progressive-disclosure.md 实施纪要。
+- **影响**：不修改本 plan 正文，上述事实定位按新位置理解；迁移范围、manifest 计数与旧参数退役以 docs/archive/plan-progressive-disclosure.md 实施纪要为准。
 
 ## 阻塞与解决
 

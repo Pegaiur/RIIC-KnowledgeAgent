@@ -27,9 +27,9 @@
 
 ## 待办区
 
-- [ ] **渐进披露与 references 定位调整** — 见 docs/plan-progressive-disclosure.md、ADR-021、ADR-022。2026-09-15 用户要求整份渐进披露定稿并授权补齐具体契约：补齐事实出口，11 份真源移入 raw、类别/歧义移入 guides、数据源开发文档移除，撤销 references；交付 read 双偏移分页、必填 scope、概念精确引用、命中小节默认送达与默认关闭的目录注入开关，完成散文试点、定位/门禁收尾及观测。限定旧门禁延后例外保留，运行路径与新行为测试随批闭合；历史数据不改写，不自动指定新基线。2026-09-16 用户允许迁移先于事实出口，授权及后续闭合记录见 docs/plan-progressive-disclosure-notes.md。当前目录迁移（第 2–3 步）、事实出口（第 1 步、卡 v8）、第 4 步（关联格式 v2/scope/概念引用、精确技能投影、read 双偏移分页与 readDelivery 观测）、第 5 步（默认只送达命中小节块、默认关闭目录注入、RAG 片段范围观测）与第 6 步（gold 26 键迁移、gold 定位目录与检索范围分离、白名单/完整性断言与旧门禁转绿、两份已登记基线口径处置）以及第 7 步（散文试点、组合小节审阅与精确关联/概念标注）均已落地；第 8 步的零费用端到端契约与真实模型观测仍待实施，不恢复目录压缩 stash。 — 2026-09-16 — 已进入实施
+- [x] **渐进披露与 references 定位调整** — 见 docs/archive/plan-progressive-disclosure.md、ADR-021、ADR-022。2026-09-15 用户要求整份渐进披露定稿并授权补齐具体契约：补齐事实出口，11 份真源移入 raw、类别/歧义移入 guides、数据源开发文档移除，撤销 references；交付 read 双偏移分页、必填 scope、概念精确引用、命中小节默认送达与默认关闭的目录注入开关，完成散文试点、定位/门禁收尾及观测。限定旧门禁延后例外保留，运行路径与新行为测试随批闭合；历史数据不改写，不自动指定新基线。2026-09-16 用户允许迁移先于事实出口，授权及后续闭合记录见 docs/archive/plan-progressive-disclosure.md 实施纪要。当前目录迁移（第 2–3 步）、事实出口（第 1 步、卡 v8）、第 4 步（关联格式 v2/scope/概念引用、精确技能投影、read 双偏移分页与 readDelivery 观测）、第 5 步（默认只送达命中小节块、默认关闭目录注入、RAG 片段范围观测）与第 6 步（gold 26 键迁移、gold 定位目录与检索范围分离、白名单/完整性断言与旧门禁转绿、两份已登记基线口径处置）以及第 7 步（散文试点、组合小节审阅与精确关联/概念标注）均已落地；第 8 步的零费用端到端契约与一轮真实模型观测均已完成（记录见 docs/exp/exp-e2e-contract-glm-stub.md 与 docs/exp/exp-progressive-disclosure-glm-low-default.md），分阶段 hitrate 已在第 7 步完成（见 docs/archive/plan-progressive-disclosure.md 实施纪要第 7 步段与 docs/exp/exp-hitrate-migration-scope-compare.md），不恢复目录压缩 stash。 — 2026-09-16 — 已完成
 
-- [ ] **关键词目录重复文本过多，需优化** — 关键词目录重复说明文本占比过高，文本压缩继续独立评估；默认关闭的 injectKeywordCatalog 开关（含 CLI、fallback 与三处留档）已按 docs/plan-progressive-disclosure.md 第 5 步与 ADR-022 决策 8 实施，注入不再是默认路径。压缩 stash 不随该计划恢复；债务细节与重启条件以代码 TODO(tech-debt) IDX-1 为准。 — 2026-09-13 — 文本压缩待评估，注入开关已实施
+- [ ] **关键词目录重复文本过多，需优化** — 关键词目录重复说明文本占比过高，文本压缩继续独立评估；默认关闭的 injectKeywordCatalog 开关（含 CLI、fallback 与三处留档）已按 docs/archive/plan-progressive-disclosure.md 第 5 步与 ADR-022 决策 8 实施，注入不再是默认路径。压缩 stash 不随该计划恢复；债务细节与重启条件以代码 TODO(tech-debt) IDX-1 为准。 — 2026-09-13 — 文本压缩待评估，注入开关已实施
 
 - [ ] **散文断言与事实的机械核对（暂缓）** — 对正文中的数值、阈值及练度断言做机械核对需要独立断言结构或语义抽取，关联对象存在性不能替代此能力。待明确可编码范围再单独评估，不作为关键词、按需展开或语料补充三项计划的依赖。 — 2026-09-13 — 保留 inbox
 

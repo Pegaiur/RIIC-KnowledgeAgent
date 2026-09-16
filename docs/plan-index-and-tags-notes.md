@@ -110,8 +110,8 @@
 
 ### 2026-09-15 — 正文引用的 knowledge/references 路径已迁移
 
-- **发现**：plan 第 27、87、141 行提到的 knowledge/references（名册、技能分片、类别）随目录迁移改记 knowledge/raw/（名册、技能分片、技能等价组）与 knowledge/guides/（类别、歧义）；目录迁移细节见 docs/plan-progressive-disclosure-notes.md。
-- **影响**：不修改本 plan 正文，上述引用按新位置理解；迁移范围、manifest 计数与旧参数退役以 docs/plan-progressive-disclosure-notes.md 为准。
+- **发现**：plan 第 27、87、141 行提到的 knowledge/references（名册、技能分片、类别）随目录迁移改记 knowledge/raw/（名册、技能分片、技能等价组）与 knowledge/guides/（类别、歧义）；目录迁移细节见 docs/archive/plan-progressive-disclosure.md 实施纪要。
+- **影响**：不修改本 plan 正文，上述引用按新位置理解；迁移范围、manifest 计数与旧参数退役以 docs/archive/plan-progressive-disclosure.md 实施纪要为准。
 
 ## 阻塞与解决
 

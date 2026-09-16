@@ -9,7 +9,7 @@
 
 ### 目的与范围
 
-实现 docs/plan-progressive-disclosure.md 第 8 步要求的零费用端到端契约观测：在真实装配路径上跑通「RAG 命中 → 复制 read → 原文与关联分页 → 记录/报告/快照」，provider 用隔离替身，不使用真实密钥或网络。本轮不改任何运行时代码、语料、gold、spec 或配置默认值，只新增一次性观测脚本；不评估回答质量、不设达标线。
+实现 docs/archive/plan-progressive-disclosure.md 第 8 步要求的零费用端到端契约观测：在真实装配路径上跑通「RAG 命中 → 复制 read → 原文与关联分页 → 记录/报告/快照」，provider 用隔离替身，不使用真实密钥或网络。本轮不改任何运行时代码、语料、gold、spec 或配置默认值，只新增一次性观测脚本；不评估回答质量、不设达标线。
 
 ### 运行环境与配置
 
@@ -59,7 +59,7 @@
 ### 3. 原文分页未在真实语料下触发（观测事实）
 
 - 4 次有正文范围的 read（第 5 次正文已读完，`bodyRange` 为 null）的 `bodyRange.complete` 全为 true，未出现 `next_offset` 非空。
-- 复算依据：以当前小节目录统计 base/guides 全部小节范围，正文最长为 3326 字符（guides/类别.md 的 H1），其余依次为 2910（guides/高效率散件.md）、2594（guides/制造站组合.md）、2478（base/机制-后勤技能结算.md），均小于单页上限 6000。迁移撤销 references 后，docs/plan-progressive-disclosure-notes.md 旧盘点中的 16 个超 6000 字符小节已不在模型阅读目录，故默认配置下原文多页只会在更长的范围出现，本轮真实语料不可达；该分支由既有工程测试覆盖，本记录不据测试替代观测。
+- 复算依据：以当前小节目录统计 base/guides 全部小节范围，正文最长为 3326 字符（guides/类别.md 的 H1），其余依次为 2910（guides/高效率散件.md）、2594（guides/制造站组合.md）、2478（base/机制-后勤技能结算.md），均小于单页上限 6000。迁移撤销 references 后，docs/archive/plan-progressive-disclosure.md 实施纪要「意外发现」中的 16 个超 6000 字符小节已不在模型阅读目录，故默认配置下原文多页只会在更长的范围出现，本轮真实语料不可达；该分支由既有工程测试覆盖，本记录不据测试替代观测。
 
 ### 4. 计量、台账与汇总
 
@@ -80,5 +80,5 @@
 - **不支持**：本轮不能支持任何质量或费用结论。替身不是模型，未产生真实 token 与真实费用，也未验证模型是否遵守单工具约束、是否理解指令或是否采用送达证据；账面费用只为管线计量路径的自洽性证据。
 - **未覆盖**：原文多页（`next_offset`）在默认配置与当前语料下不可达，仅由工程测试覆盖；`facts_search`、RAG query 精确匹配附带 facts、容量错误与未知 ID 等分支未在本轮出现。
 - **局限**：两个合成问题不在 20 题内，不作答质量断言；替身规则为观测用途，非模型行为样本；未经独立复核，本记录不构成最终结论，也未指定为任何基线；未修改 gold、spec、质量基线表，未登记 bench/results 快照。
-- **后续入口**：真实模型观测按 docs/plan-progressive-disclosure.md 第 8 步执行，须先登记输入与费用预算并取得费用授权；本轮结果可作其工程前置。
+- **后续入口**：真实模型观测按 docs/archive/plan-progressive-disclosure.md 第 8 步执行，须先登记输入与费用预算并取得费用授权；本轮结果可作其工程前置。
 - **清理**：一次性脚本（observe.mjs、summarize.mjs、measure.mjs、snapshot-check.mjs）与对话记录（transcript.json）、运行目录与临时快照均曾位于 `dev-temp/work/e2e-contract/`，已按 scripts/INDEX.md 用显式清单预览后删除，现状核实该目录已不存在；`bench-runs/` 与 `bench/results/` 未新增产物，清理后不承诺完整重放。
