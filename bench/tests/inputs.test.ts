@@ -76,11 +76,11 @@ describe('运行输入记录', () => {
       expect(inputs.captureStatus).toBe('complete')
       expect(inputs.systemPrompt.text).toBe((mockCall.mock.calls[0]?.[0] as Array<{ role: string; content: string }>)[0]?.content)
       expect(inputs.toolSchema.definitions).toEqual(mockCall.mock.calls[0]?.[1])
-      expect(inputs.config).toMatchObject({ maxTokens: 4096, temperature: null, retriever: 'hybrid', toolAttemptLimit: 10, factsQueryListLimit: 3, parallelToolCalls: false, retrievalScope: 'base-guides', expandFulltext: true, attachFacts: true })
+      expect(inputs.config).toMatchObject({ maxTokens: 4096, temperature: null, retriever: 'hybrid', toolAttemptLimit: 10, factsQueryListLimit: 3, parallelToolCalls: false, retrievalScope: 'base-guides', expandFulltext: false, injectKeywordCatalog: false, attachFacts: true })
       expect(inputs.config).not.toHaveProperty('includeSkillTables')
       expect(inputs.facts).toEqual({ status: 'not_used' })
       const meta = JSON.parse(readFileSync(output.metaPath, 'utf-8')) as Record<string, unknown>
-      expect(meta).toMatchObject({ maxTokens: 4096, inputsSchemaVersion: 1, retrievalScope: 'base-guides', expandFulltext: true, attachFacts: true })
+      expect(meta).toMatchObject({ maxTokens: 4096, inputsSchemaVersion: 1, retrievalScope: 'base-guides', expandFulltext: false, injectKeywordCatalog: false, attachFacts: true })
       expect(meta).not.toHaveProperty('includeSkillTables')
     } finally {
       rmSync(outDir, { recursive: true, force: true })
@@ -109,6 +109,38 @@ describe('运行输入记录', () => {
       expect(inputs.config).toMatchObject({ toolBudget: 3, toolAttemptLimit: 4 })
       const meta = JSON.parse(readFileSync(output.metaPath, 'utf-8')) as Record<string, unknown>
       expect(meta).toMatchObject({ toolBudget: 3, toolAttemptLimit: 4 })
+    } finally {
+      rmSync(outDir, { recursive: true, force: true })
+    }
+  })
+
+  it.each([
+    [0, 0, false, false],
+    [0, 1, false, true],
+    [1, 0, true, false],
+    [1, 1, true, true],
+  ] as const)('expand-fulltext=%i / inject-keyword-catalog=%i 组合按有效配置装配并留档', async (expand, inject, effectiveExpand, effectiveInject) => {
+    const outDir = mkdtempSync(join(tmpdir(), 'rag-inputs-switches-'))
+    try {
+      const config = loadConfig('qwen')
+      config.retriever = 'hybrid'
+      config.feedbackOnNoToolAnswer = false
+      config.expandFulltext = expand === 1
+      config.injectKeywordCatalog = inject === 1
+      mockCall.mockImplementation(async (messages: Array<{ role: string; content: string }>) => {
+        expect(messages[0]?.content?.includes('查询关键词目录')).toBe(effectiveInject)
+        return providerResult({ content: '完成' })
+      })
+      const output = await runBenchmark(
+        [{ id: 'INPUT-SWITCHES', category: 'fact', question: '开关组合' }],
+        { thinking: 'off', dry: false, outDir, config },
+      )
+
+      const inputs = JSON.parse(readFileSync(output.inputsPath, 'utf-8')) as Record<string, any>
+      expect(inputs.config).toMatchObject({ expandFulltext: effectiveExpand, injectKeywordCatalog: effectiveInject })
+      expect(inputs.systemPrompt.text.includes('查询关键词目录')).toBe(effectiveInject)
+      const meta = JSON.parse(readFileSync(output.metaPath, 'utf-8')) as Record<string, unknown>
+      expect(meta).toMatchObject({ expandFulltext: effectiveExpand, injectKeywordCatalog: effectiveInject })
     } finally {
       rmSync(outDir, { recursive: true, force: true })
     }
@@ -301,7 +333,8 @@ describe('运行输入记录', () => {
     }))
     try {
       const { createKnowledgeToolExecutor } = await import('../src/tool-executor.js')
-      const config = loadConfig()
+    // 无目录夹具显式沿用全文回退，本用例核对 facts 加载与观测回调。
+      const config = { ...loadConfig(), expandFulltext: true }
       const used: unknown[] = []
       const failures: unknown[] = []
       const rag = createKnowledgeToolExecutor({

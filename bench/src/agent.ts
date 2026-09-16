@@ -79,9 +79,10 @@ class AgentExecutionError extends Error {
 
 /**
  * 读取查询 Agent 的决策契约；只在构建提示时读取，不产生模块顶层副作用。
- * 单一人工指令源仍是 knowledge/AGENTS.md，其后追加同通道送达的机器汇总关键词目录。
+ * 单一人工指令源是 knowledge/AGENTS.md；是否在其后追加机器汇总关键词目录由有效配置决定（ADR-022 决策 8）：
+ * 关闭时只读 AGENTS.md，目录缺失不报错；开启时按原格式追加，读取失败或为空按中文错误失败。
  */
-export function loadKnowledgeAgentInstructions(root = process.cwd()): string {
+export function loadKnowledgeAgentInstructions(root = process.cwd(), injectKeywordCatalog = false): string {
   let content: string
   try {
     content = readFileSync(join(root, 'knowledge', 'AGENTS.md'), 'utf-8')
@@ -91,6 +92,7 @@ export function loadKnowledgeAgentInstructions(root = process.cwd()): string {
   }
   const instructions = content.trim()
   if (!instructions) throw new Error('查询 Agent 决策契约为空：knowledge/AGENTS.md')
+  if (!injectKeywordCatalog) return instructions
 
   let catalog: string
   try {
@@ -106,7 +108,11 @@ export function loadKnowledgeAgentInstructions(root = process.cwd()): string {
   return `${instructions}\n\n${catalogText}`
 }
 
-/** 构建系统提示；人工规则只来自 AGENTS.md，模式差异由实际工具 schema 描述。 */
+/**
+ * 构建系统提示；人工规则只来自 AGENTS.md，模式差异由实际工具 schema 描述。
+ * 关键词目录是否随指令注入由调用方按有效配置装配（runner 与 runQuery 的兜底都显式传入），
+ * 缺省入参等于默认配置（不注入目录），不存在恒定注入的旁路。
+ */
 export function buildSystemPrompt(
   retriever: RetrieverId = 'hybrid',
   agentInstructions = loadKnowledgeAgentInstructions(),
@@ -146,7 +152,7 @@ export async function runQuery(
     factsStore: opts.factsStore,
   }, config.toolBudget)
   const messages: ChatMessage[] = [
-    { role: 'system', content: opts.systemPrompt ?? buildSystemPrompt(config.retriever, opts.agentInstructions ?? loadKnowledgeAgentInstructions(), config.toolBudget, config.toolAttemptLimit) },
+    { role: 'system', content: opts.systemPrompt ?? buildSystemPrompt(config.retriever, opts.agentInstructions ?? loadKnowledgeAgentInstructions(process.cwd(), config.injectKeywordCatalog), config.toolBudget, config.toolAttemptLimit) },
     { role: 'user', content: query.question },
   ]
   const sessionController = new AbortController()
@@ -309,6 +315,7 @@ export async function runQuery(
           status: item.status,
           // 未执行的拒绝/参数错误确认为零；执行异常缺观测时保持不可用。
           fulltextRanges: item.fulltextRanges ?? (item.executed ? undefined : []),
+          fragmentRanges: item.fragmentRanges ?? (item.executed ? undefined : []),
           attachedFacts: item.attachedFacts?.map((fact) => ({
             ...fact,
             paths: fact.paths.map((path) => ({
@@ -349,6 +356,7 @@ export async function runQuery(
             toolEvent.hitIds = item.hitIds
             toolEvent.injectedIds = item.injectedIds
             toolEvent.fulltextRanges = item.fulltextRanges
+            toolEvent.fragmentRanges = item.fragmentRanges
             toolEvent.attachedFacts = item.attachedFacts
             toolEvent.linkedEntries = item.linkedEntries
             toolEvent.readDelivery = item.readDelivery

@@ -2,13 +2,13 @@
  * 独立函数工具 schema 与按批次预算执行器。
  * 工具函数名直接完成路由；执行器仍共用一套预算、校验和底层检索门面。
  */
-import type { AttachedFactsObservation, FulltextRange, LinkedEntryObservation, ReadDeliveryRecord } from './delivery.js'
-export type { AttachedFactsObservation, FulltextRange, LinkedEntryObservation, ReadDeliveryRecord } from './delivery.js'
+import type { AttachedFactsObservation, FragmentRange, FulltextRange, LinkedEntryObservation, ReadDeliveryRecord } from './delivery.js'
+export type { AttachedFactsObservation, FragmentRange, FulltextRange, LinkedEntryObservation, ReadDeliveryRecord } from './delivery.js'
 import { createHash } from 'node:crypto'
 import { effectiveAttachFacts, loadConfig, type BenchConfig, type RetrieverId } from './config.js'
 import { isFulltextFile } from './corpus.js'
 import { search, type IndexEntry } from './retriever.js'
-import { readObjectsFor, type ProseLinkIndex, type ResolvedProseLink } from './prose-links.js'
+import { readObjectsFor, type ProseLinkIndex } from './prose-links.js'
 import { buildReadPage, type ReadPageDelivery } from './read.js'
 import type { SectionDirectory, SectionEntry } from './sections.js'
 import { isFactTool, type BenchQuery, type DocChunk, type ToolCall } from './types.js'
@@ -137,6 +137,8 @@ export interface ToolExecutionResult {
   factsResult?: FactsResultMetadata
   /** rag_search 原文扩展的实际送达范围；未扩展时为 undefined。 */
   fulltextRanges?: FulltextRange[]
+  /** rag_search 命中块与父级引导的连续正文片段（ADR-022 决策 7）；全文扩展模式为空数组。 */
+  fragmentRanges?: FragmentRange[]
   /** rag_search 内部 facts 附带的触发/匹配/送达观测；无触发词时为 undefined。 */
   attachedFacts?: AttachedFactsObservation[]
   /** rag_search 关联事实入口提示观测（ADR-020）；无提示时省略。 */
@@ -498,6 +500,7 @@ async function executeOne(
       hitIds: output.hitIds,
       injectedIds: output.injectedIds,
       fulltextRanges: output.fulltextRanges,
+      fragmentRanges: output.fragmentRanges,
       attachedFacts: output.attachedFacts,
       linkedEntries: output.linkedEntries,
       readDelivery,
@@ -750,6 +753,7 @@ function runOperation(
   /** tags 路径的分页计数；queries 路径缺省（按 hitIds 完整返回） */
   factsPage?: { matchedCount: number; returnedCount: number; complete: boolean; tagPage?: FactsTagPage }
   fulltextRanges?: FulltextRange[]
+  fragmentRanges?: FragmentRange[]
   attachedFacts?: AttachedFactsObservation[]
   linkedEntries?: LinkedEntryObservation[]
   readDelivery?: ReadPageDelivery
@@ -969,6 +973,7 @@ function ragSearchOperation(
   hitIds: string[]
   injectedIds: string[]
   fulltextRanges: FulltextRange[]
+  fragmentRanges: FragmentRange[]
   attachedFacts?: AttachedFactsObservation[]
   linkedEntries?: LinkedEntryObservation[]
   status: ToolResultStatus
@@ -995,12 +1000,13 @@ function ragSearchOperation(
   // 仅有命中编号但未送达任何正文证据时判空；极小上限放不下必要元数据时报容量错误。
   // RAG 与内部 facts 任一部分实际送达非空证据即计成功；提示与路径元数据本身不算证据。
   const delivered = built.delivered || Boolean(attachment?.delivered)
-  const status: ToolResultStatus = built.capacityError ? 'error' : delivered ? 'success' : 'empty'
+  const status: ToolResultStatus = delivered ? 'success' : built.capacityError ? 'error' : 'empty'
   return {
     data,
     hitIds,
     injectedIds: built.injectedIds,
     fulltextRanges: built.fulltextRanges,
+    fragmentRanges: built.fragmentRanges,
     attachedFacts: attachment && attachment.observations.length > 0 ? attachment.observations : undefined,
     linkedEntries: built.linkedEntries.length > 0 ? built.linkedEntries : undefined,
     status,
@@ -1044,15 +1050,18 @@ interface BuiltRagData {
   delivered: boolean
   capacityError: boolean
   fulltextRanges: FulltextRange[]
+  /** 实际送达的连续正文片段；全文扩展模式不重复登记。 */
+  fragmentRanges: FragmentRange[]
   /** 关联事实入口提示观测；无提示时为空数组。 */
   linkedEntries: LinkedEntryObservation[]
 }
 
 /**
- * 组装 RAG 命中正文（ADR-013）：
- *   - 关闭原文扩展或没有小节目录时，沿用既有「按命中块拼接 + 硬截断」行为；
- *   - 开启扩展时，base/guides 命中按文件去重并扩展到原文文档范围（运行级快照），无文档范围的块仍按块返回；
- *     容量不足时按可续读的连续原文范围送达并给出元数据，极小上限放不下必要元数据时报容量错误。
+ * 组装 RAG 送达正文（ADR-022 决策 7）：
+ *   - 默认只送达命中的 H2/H3 块：块头含小节 ID、来源与原文范围，正文取该块在同一原文快照中的行范围
+ *     （止于下一个 H2/H3 边界），超出预算时连续截取并给可复制的 read 续读入口；
+ *   - 显式 expandFulltext=1 时沿用 ADR-013 的按文件整篇扩展（base/guides 去重），续读指向 read；
+ *   - 默认路径缺少可定位原文时明确失败，避免送达没有阅读 ID 和连续范围的正文。
  */
 function buildRagData(
   chunks: DocChunk[],
@@ -1067,10 +1076,175 @@ function buildRagData(
     return { chunk, section: sections?.findByChunk(chunk.file, chunk.heading, chunk.startLine) }
   })
 
-  if (!expandFulltext || !sections) {
-    return { ...buildRagDataLegacy(blocks, maxChars, sections, links), capacityError: false, fulltextRanges: [] }
+  if (!expandFulltext) return buildHitBlockData(blocks, maxChars, sections, links)
+  if (!sections) {
+    return { ...buildRagDataLegacy(blocks, maxChars, undefined, links), capacityError: false, fulltextRanges: [], fragmentRanges: [] }
   }
-  return buildExpandedRagData(blocks, maxChars, sections, links)
+  return { ...buildExpandedRagData(blocks, maxChars, sections, links), fragmentRanges: [] }
+}
+
+/** 命中块在原文快照中的连续行范围及其坐标；用于正文送达、续读偏移与片段登记。 */
+interface HitBlockSlice {
+  text: string
+  /** 块首行在所属小节 body 中的 UTF-16 偏移（read 续读基准）。 */
+  bodyOffset: number
+  /** 块正文相对同运行 documentRange.body 的 UTF-16 半开区间。 */
+  docOffset: number
+  startLine: number
+}
+
+/** 取 [fromLine, toLine] 行区间在同一原文快照中的连续正文；行超出快照时不伪造。 */
+function snapshotLines(bodyLines: string[], bodyStartLine: number, fromLine: number, toLine: number): string | undefined {
+  const start = fromLine - bodyStartLine
+  const end = toLine - bodyStartLine
+  if (start < 0 || end < start || end >= bodyLines.length) return undefined
+  return bodyLines.slice(start, end + 1).join('\n')
+}
+
+/** 某一行在给定正文中的起始 UTF-16 偏移；行超出范围时返回 null。 */
+function lineStartOffset(bodyLines: string[], bodyStartLine: number, line: number): number | null {
+  const index = line - bodyStartLine
+  if (index < 0 || index > bodyLines.length) return null
+  return index === 0 ? 0 : bodyLines.slice(0, index).join('\n').length + 1
+}
+
+/** 命中块的原文切片；行错位或与目标正文不同源时返回 undefined，由装配方报错。 */
+function hitBlockSlice(chunk: DocChunk, target: SectionEntry, doc: SectionEntry): HitBlockSlice | undefined {
+  const docLines = doc.body.split('\n')
+  const text = snapshotLines(docLines, doc.startLine, chunk.startLine, chunk.endLine)
+  const docOffset = lineStartOffset(docLines, doc.startLine, chunk.startLine)
+  const bodyOffset = lineStartOffset(target.body.split('\n'), target.startLine, chunk.startLine)
+  if (text === undefined || text.length === 0 || docOffset === null || bodyOffset === null) return undefined
+  if (docOffset + text.length > doc.body.length) return undefined
+  if (target.body.slice(bodyOffset, bodyOffset + text.length) !== text) return undefined
+  return { text, bodyOffset, docOffset, startLine: chunk.startLine }
+}
+
+/** 命中块续读元数据行：给出可直接复制的 read 调用，用 offset 续读同一阅读范围的后续原文。 */
+function renderBlockContinuation(target: SectionEntry, nextOffset: number): string {
+  return `续读：read(section_id="${target.sectionId}", offset=${nextOffset})｜complete false｜正文 ${target.body.length} 字符`
+}
+
+function renderHitCapacityError(maxChars: number): string {
+  return `rag_search 无法在 maxContextChars=${maxChars} 内返回命中块（必要元数据加正文放不下）：请提高 maxContextChars 后重试。`
+}
+
+/**
+ * 默认送达：按检索顺序逐块送达命中块原文。必要元数据（小节 ID、来源、原文范围）优先于正文，
+ * 元数据加一单位证据都放不下时不发送该块，也不在省略后重新检索补满 topK。
+ */
+function buildHitBlockData(
+  blocks: RagBlock[],
+  maxChars: number,
+  sections: SectionDirectory | undefined,
+  links: ProseLinkIndex | undefined,
+): BuiltRagData {
+  let body = ''
+  const injectedIds: string[] = []
+  const fragmentRanges: FragmentRange[] = []
+  let capacityBlocked = false
+
+  for (const block of blocks) {
+    const { chunk } = block
+    const doc = sections?.documentRange(chunk.file)
+    // 命中块优先映射到小节；标题前首部（无对应小节）以同文件的文档范围为阅读入口。
+    const target = block.section ?? doc
+    const slice = doc && target ? hitBlockSlice(chunk, target, doc) : undefined
+    if (!slice || !target) {
+      throw new Error(`rag_search 无法定位命中块的原文阅读范围：${chunk.file}（L${chunk.startLine}-${chunk.endLine}）；请提供同一运行的小节目录。`)
+    }
+
+    const separator = body ? '\n\n' : ''
+    const header = renderRagHeader(block, target.sectionId)
+    const remaining = maxChars - body.length - separator.length - header.length - 1
+    if (remaining < 1) {
+      capacityBlocked = true
+      continue
+    }
+    // 截断时先为完整续读元数据留位；两者都放不下则跳过该块，不发送只有元数据或半段正文的结果。
+    const room = slice.text.length > remaining
+      ? remaining - renderBlockContinuation(target, target.body.length).length - 1
+      : remaining
+    if (room < 1) {
+      capacityBlocked = true
+      continue
+    }
+    const page = slice.text.length <= room ? slice.text : safeCutAtLine(slice.text.slice(0, room))
+    if (page.length === 0) {
+      capacityBlocked = true
+      continue
+    }
+    const complete = page.length === slice.text.length
+    body += `${separator}${header}\n${page}`
+    if (!complete) body += `\n${renderBlockContinuation(target, slice.bodyOffset + page.length)}`
+    injectedIds.push(chunk.id)
+    fragmentRanges.push({
+      kind: 'hit',
+      file: chunk.file,
+      sectionId: target.sectionId,
+      chunkId: chunk.id,
+      docOffset: slice.docOffset,
+      docEndOffset: slice.docOffset + page.length,
+      startLine: slice.startLine,
+      endLine: slice.startLine + countNewlines(page),
+    })
+  }
+
+  if (injectedIds.length === 0 && capacityBlocked) {
+    return {
+      data: renderHitCapacityError(maxChars),
+      injectedIds: [],
+      delivered: false,
+      capacityError: true,
+      fulltextRanges: [],
+      fragmentRanges: [],
+      linkedEntries: [],
+    }
+  }
+
+  let data = body
+  let linkedEntries: LinkedEntryObservation[] = []
+  if (sections && data.length < maxChars && blocks.some((block) => block.section)) {
+    const context = buildSectionContext(sections, blocks, new Set(injectedIds), links)
+    data = appendSectionContext(data, context.lines, maxChars)
+    linkedEntries = observeLinkedEntries(context.offers, data)
+    fragmentRanges.push(...parentLeadFragments(context.parentLeads, sections, data))
+  }
+  return {
+    data,
+    injectedIds,
+    delivered: injectedIds.length > 0,
+    capacityError: false,
+    fulltextRanges: [],
+    fragmentRanges,
+    linkedEntries,
+  }
+}
+
+/** 父级引导只在整行实际写入时登记连续范围，不把被截断的展示当成完整正文送达；同范围只登记一次。 */
+function parentLeadFragments(leads: readonly ParentLeadOffer[], sections: SectionDirectory, data: string): FragmentRange[] {
+  const ranges: FragmentRange[] = []
+  const seen = new Set<string>()
+  for (const lead of leads) {
+    if (!data.includes(lead.line)) continue
+    const doc = sections.documentRange(lead.parent.file)
+    if (!doc) continue
+    const docOffset = lineStartOffset(doc.body.split('\n'), doc.startLine, lead.startLine)
+    if (docOffset === null) continue
+    const key = `${lead.parent.sectionId}\u0000${docOffset}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    ranges.push({
+      kind: 'parent_lead',
+      file: lead.parent.file,
+      sectionId: lead.parent.sectionId,
+      docOffset,
+      docEndOffset: docOffset + lead.text.length,
+      startLine: lead.startLine,
+      endLine: lead.endLine,
+    })
+  }
+  return ranges
 }
 
 /** 既有行为：按 topK 顺序拼接命中块，整段硬截断到 maxChars，再按剩余空间附加小节上下文。 */
@@ -1104,7 +1278,7 @@ type FulltextBlockAddition =
   | { kind: 'tooSmall' }
 
 /** base/guides 命中扩展到整篇原文；放不下时按行边界送达可续读前缀，再放不下则停在此块。 */
-function buildExpandedRagData(blocks: RagBlock[], maxChars: number, sections: SectionDirectory, links: ProseLinkIndex | undefined): BuiltRagData {
+function buildExpandedRagData(blocks: RagBlock[], maxChars: number, sections: SectionDirectory, links: ProseLinkIndex | undefined): Omit<BuiltRagData, 'fragmentRanges'> {
   let body = ''
   const injectedIds: string[] = []
   const fulltextRanges: FulltextRange[] = []
@@ -1409,10 +1583,11 @@ function dedupeCanonicals(values: readonly string[]): string[] {
   return result
 }
 
-/** 来源头保持既有格式；新增小节信息一律放到正文之后，只用剩余预算，避免挤占原正文送达。 */
-function renderRagHeader(block: RagBlock): string {
+/** 来源头保持既有格式；命中块给出可调用的小节 ID，新增小节信息一律放到正文之后。 */
+function renderRagHeader(block: RagBlock, sectionId?: string): string {
   const { chunk } = block
-  return `【${chunk.file} | ${chunk.heading} | L${chunk.startLine}-${chunk.endLine}】`
+  const id = sectionId === undefined ? '' : ` | ${sectionId}`
+  return `【${chunk.file} | ${chunk.heading} | L${chunk.startLine}-${chunk.endLine}${id}】`
 }
 
 /** 含可调用小节 ID 的行必须整行放入；空间不足时省略，绝不输出被截断的 ID。 */
@@ -1429,10 +1604,19 @@ interface LinkedOffer {
   line: string
 }
 
-/** 关联事实入口行：完整可复制 ID、文件、标题路径与对象数。 */
-function renderLinkedEntryLine(link: ResolvedProseLink): string {
-  const path = link.headingPath.length > 0 ? link.headingPath.join(' > ') : '（文档根节点）'
-  return `- ${link.sectionId}｜${link.file}｜标题路径：${path}｜关联 ${link.objects.length} 个对象`
+/** 一条父级引导展示：记录其原文范围与整行文本，供按实际写入登记片段范围。 */
+interface ParentLeadOffer {
+  parent: SectionEntry
+  text: string
+  startLine: number
+  endLine: number
+  line: string
+}
+
+/** 关联事实入口行：完整可复制 ID、文件、标题路径、对象数与可直接复制的 read 示例。 */
+function renderLinkedEntryLine(section: SectionEntry, headingPath: readonly string[], objectCount: number): string {
+  const path = headingPath.length > 0 ? headingPath.join(' > ') : '（文档根节点）'
+  return `- ${section.sectionId}｜${section.file}｜标题路径：${path}｜关联 ${objectCount} 个对象｜示例：read(section_id="${section.sectionId}")`
 }
 
 /** 提示行按整行是否出现在最终正文判定 written，避免把「已生成」误当「已送达」。 */
@@ -1448,14 +1632,15 @@ function observeLinkedEntries(offers: readonly LinkedOffer[], data: string): Lin
 /**
  * 组装小节上下文，顺序固定为：当前小节标识 → 上级范围入口 → 既有父级引导 → 兄弟导航 → 关联事实入口。
  * 上级范围入口只针对实际送达的命中小节，复用 parentId/get，不虚造无父级入口；
- * 关联事实入口只列出命中小节所属文件中登记了非空关联的小节，仅导航、不返回事实，且只用既有上下文之后的剩余预算。
+ * 关联事实入口只面向实际显示的命中节点与导航项，按读取范围合并规则判断是否有可展开关联，
+ * 只列确实有登记对象的小节（给出对象数与 read 示例），不列出命中文件内其它不相关登记，且只用剩余预算。
  */
 function buildSectionContext(
   sections: SectionDirectory,
   blocks: RagBlock[],
   delivered: Set<string>,
   links: ProseLinkIndex | undefined,
-): { lines: SectionContextLine[]; offers: LinkedOffer[] } {
+): { lines: SectionContextLine[]; offers: LinkedOffer[]; parentLeads: ParentLeadOffer[] } {
   const unique: Array<{ block: RagBlock; section: SectionEntry }> = []
   const seenSections = new Set<string>()
   for (const block of blocks) {
@@ -1486,14 +1671,23 @@ function buildSectionContext(
     lines.push(...parentLines)
   }
 
+  const parentLeads: ParentLeadOffer[] = []
   for (const { section } of unique) {
     const context = sections.contextFor(section.sectionId)
-    if (context?.parentLead) {
-      lines.push({ text: `  父级引导（L${context.parentLead.startLine}-${context.parentLead.endLine}）：${truncateLead(context.parentLead.text)}` })
-    }
+    if (!context?.parentLead) continue
+    const lead = context.parentLead
+    const text = lead.text.length <= PARENT_LEAD_LIMIT ? lead.text : safeCutAtLine(lead.text.slice(0, PARENT_LEAD_LIMIT))
+    const endLine = lead.startLine + countNewlines(text)
+    const marker = text.length < lead.text.length ? '…（截断）' : ''
+    const line = `  父级引导（L${lead.startLine}-${endLine}）：${text}${marker}`
+    // 可选引导以完整展示单元送达；余量不足时省略，确保范围只登记已返回的连续正文。
+    lines.push({ text: line, atomic: true })
+    const parent = section.parentId ? sections.get(section.parentId) : undefined
+    if (parent) parentLeads.push({ parent, text, startLine: lead.startLine, endLine, line })
   }
 
-  for (const file of [...new Set(unique.map(({ block }) => block.chunk.file))]) {
+  const files = [...new Set(unique.map(({ block }) => block.chunk.file))]
+  for (const file of files) {
     const first = unique.find(({ block }) => block.chunk.file === file)
     if (!first) continue
     const navigation = sections.navigationFor(first.section.sectionId, NAVIGATION_LIMIT)
@@ -1502,18 +1696,32 @@ function buildSectionContext(
     if (navigation.omitted > 0) lines.push({ text: `（省略 ${navigation.omitted} 项）` })
   }
 
-  // 关联事实入口（ADR-020 决策 3）：按命中文件列出登记了非空关联的小节，逐小节给出可复制 ID；
-  // 仅导航，不自动返回关联事实，也不并入命中小节。放在既有上下文之后，只用剩余预算。
+  // 关联事实入口（ADR-022 决策 7）：按实际显示的命中节点与导航项逐节点计算可展开关联；
+  // 提示只做导航、不自动返回事实，也不并入命中小节。放在既有上下文之后，只用剩余预算。
   const offers: LinkedOffer[] = []
   if (links) {
     const offerLines: SectionContextLine[] = []
-    for (const file of [...new Set(unique.map(({ block }) => block.chunk.file))]) {
-      for (const link of links.links) {
-        if (link.file !== file || link.objects.length === 0) continue
-        const line = renderLinkedEntryLine(link)
-        offerLines.push({ text: line, atomic: true })
-        offers.push({ sectionId: link.sectionId, file: link.file, objectCount: link.objects.length, line })
+    const candidates: SectionEntry[] = []
+    const seenCandidates = new Set<string>()
+    const addCandidate = (section: SectionEntry | undefined): void => {
+      if (!section || seenCandidates.has(section.sectionId)) return
+      seenCandidates.add(section.sectionId)
+      candidates.push(section)
+    }
+    for (const { section } of unique) addCandidate(section)
+    for (const file of files) {
+      const first = unique.find(({ block }) => block.chunk.file === file)
+      if (!first) continue
+      for (const item of sections.navigationFor(first.section.sectionId, NAVIGATION_LIMIT).items) {
+        addCandidate(sections.get(item.sectionId))
       }
+    }
+    for (const section of candidates) {
+      const objects = readObjectsFor(section.sectionId, sections, links)
+      if (objects.length === 0) continue
+      const line = renderLinkedEntryLine(section, sections.contextFor(section.sectionId)?.headingPath ?? [], objects.length)
+      offerLines.push({ text: line, atomic: true })
+      offers.push({ sectionId: section.sectionId, file: section.file, objectCount: objects.length, line })
     }
     if (offerLines.length > 0) {
       lines.push({ text: '【关联事实入口】以下小节登记了可展开的关联事实；提示只做导航，用 read 读取该小节即可同时取得原文与登记事实：' })
@@ -1521,17 +1729,13 @@ function buildSectionContext(
     }
   }
 
-  return { lines, offers }
+  return { lines, offers, parentLeads }
 }
 
 /** 上级范围入口行：完整可复制 ID、文件、标题路径与正文 UTF-16 字符数。 */
 function renderParentRangeEntry(parent: SectionEntry): string {
   const path = parent.level === 0 ? '（文档根节点）' : [...parent.ancestors, parent.heading].join(' > ')
   return `- ${parent.sectionId}｜${parent.file}｜标题路径：${path}｜正文 ${parent.body.length} 字符`
-}
-
-function truncateLead(text: string): string {
-  return text.length <= PARENT_LEAD_LIMIT ? text : `${text.slice(0, PARENT_LEAD_LIMIT)}…（截断）`
 }
 
 /** 按行追加小节上下文；含 ID 的行只整行放入或省略，普通引导文字仍按既有方式截断。 */

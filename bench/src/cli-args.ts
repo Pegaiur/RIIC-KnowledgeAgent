@@ -22,6 +22,8 @@ export interface ParsedArgs {
   retiredSkillTables: boolean
   /** 是否把 base/guides 命中小节扩展到原文：0 关闭、1 开启；null = 未传 */
   expandFulltext: number | null
+  /** system prompt 是否追加关键词目录：0 关闭、1 开启；null = 未传 */
+  injectKeywordCatalog: number | null
   /** hybrid rag_search 是否自动附带 facts：0 关闭、1 开启；null = 未传（随模式默认） */
   attachFacts: number | null
   /** 兼容旧入口：0 关闭未调用工具回馈，1 开启一次回馈 */
@@ -70,6 +72,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
     retrieverMissingValue: false,
     retiredSkillTables: false,
     expandFulltext: null,
+    injectKeywordCatalog: null,
     attachFacts: null,
     minRag: null,
     toolBudget: null,
@@ -110,6 +113,9 @@ export function parseArgs(argv: string[]): ParsedArgs {
     } else if (arg === '--expand-fulltext') {
       parsed.expandFulltext = readNumber(argv, i)
       i++
+    } else if (arg === '--inject-keyword-catalog') {
+      parsed.injectKeywordCatalog = readNumber(argv, i)
+      i++
     } else if (arg === '--attach-facts') {
       parsed.attachFacts = readNumber(argv, i)
       i++
@@ -138,11 +144,12 @@ export function parseArgs(argv: string[]): ParsedArgs {
 }
 
 /**
- * hitrate 不使用 --expand-fulltext / --attach-facts；显式传入时需返回供 CLI 提示，而非静默忽略。
+ * hitrate 不使用 --expand-fulltext / --inject-keyword-catalog / --attach-facts；显式传入时需返回供 CLI 提示，而非静默忽略。
  */
-export function ignoredHitrateFlags(args: Pick<ParsedArgs, 'expandFulltext' | 'attachFacts'>): string[] {
+export function ignoredHitrateFlags(args: Pick<ParsedArgs, 'expandFulltext' | 'injectKeywordCatalog' | 'attachFacts'>): string[] {
   const ignored: string[] = []
   if (args.expandFulltext !== null) ignored.push('--expand-fulltext')
+  if (args.injectKeywordCatalog !== null) ignored.push('--inject-keyword-catalog')
   if (args.attachFacts !== null) ignored.push('--attach-facts')
   return ignored
 }
@@ -162,6 +169,7 @@ export function unsupportedCatalogFlags(args: ParsedArgs): string[] {
   if (args.retriever !== null || args.retrieverMissingValue) flags.push('--retriever')
   if (args.retiredSkillTables) flags.push('--include-skill-tables')
   if (args.expandFulltext !== null) flags.push('--expand-fulltext')
+  if (args.injectKeywordCatalog !== null) flags.push('--inject-keyword-catalog')
   if (args.attachFacts !== null) flags.push('--attach-facts')
   if (args.minRag !== null) flags.push('--min-rag')
   if (args.toolBudget !== null) flags.push('--tool-budget')

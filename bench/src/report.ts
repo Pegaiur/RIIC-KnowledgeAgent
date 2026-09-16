@@ -77,6 +77,8 @@ export interface RagDeliveryStats {
   omittedTerms: number | null
   deliveredCards: number | null
   expandedRanges: number | null
+  /** 实际送达的命中块与父级引导片段数（ADR-022 决策 6）；全文扩展模式为 0，历史缺观测时为 null。 */
+  fragmentRanges: number | null
   /** 实际写入正文的关联事实入口提示条数（ADR-020）；历史缺观测时为 null。 */
   linkedHints: number | null
 }
@@ -423,7 +425,7 @@ function aggregateToolUsage(records: CostRecord[]): ToolUsageAgg[] {
 }
 
 function aggregateRagDelivery(records: CostRecord[]): RagDeliveryStats {
-  const unavailable = { internalFactsQueries: null, attachedCalls: null, omittedTerms: null, deliveredCards: null, expandedRanges: null, linkedHints: null }
+  const unavailable = { internalFactsQueries: null, attachedCalls: null, omittedTerms: null, deliveredCards: null, expandedRanges: null, fragmentRanges: null, linkedHints: null }
   // agent.ts 的 ragDelivery 已排除同批超量拒绝（protocol_rejected，ADR-016），故不能按请求数比对台账长度；
   // 只在「请求过 rag_search 却缺整套送达台账」时判不可用，保留真正缺失数据的判定，不伪造成零送达。
   if (records.some((record) => (record.tools ?? []).includes('rag_search') && record.ragDelivery === undefined)) return unavailable
@@ -440,6 +442,9 @@ function aggregateRagDelivery(records: CostRecord[]): RagDeliveryStats {
     deliveredCards: factsKnown ? sum(calls.map((call) => new Set(call.attachedFacts?.flatMap((fact) => fact.delivered)).size)) : null,
     expandedRanges: calls.every((call) => call.fulltextRanges !== undefined)
       ? calls.flatMap((call) => call.fulltextRanges ?? []).filter((range) => range.endOffset > range.offset).length : null,
+    // 命中块与父级引导片段：全文扩展模式已由 fulltextRanges 登记，不重复计；历史缺字段为不可用。
+    fragmentRanges: calls.every((call) => call.fragmentRanges !== undefined)
+      ? calls.flatMap((call) => call.fragmentRanges ?? []).filter((range) => range.docEndOffset > range.docOffset).length : null,
     linkedHints: linkedKnown ? linked.filter((entry) => entry.written).length : null,
   }
 }
@@ -549,7 +554,7 @@ export function renderMarkdown(report: BenchReport): string {
     `- HTTP 尝试：${report.totalHttpAttempts}｜重试：${report.retryAttempts}`,
     `- 每查询输出 tokens：均值 ${avgOut}｜P95 ${p95Out.toLocaleString()}`,
     `- 工具批次：${report.toolStats.batches}｜提出 ${report.toolStats.requested}｜准入 ${report.toolStats.granted}｜执行 ${report.toolStats.executed}｜拒绝（预算/同批超量拒绝） ${report.toolStats.denied}｜错误 ${report.toolStats.errors}｜获准尝试 ${nullable(report.toolStats.attempts)}｜证据送达（成功） ${nullable(report.toolStats.successes)}｜有命中（旧 chunk 口径，不含 facts-only 送达） ${report.toolStats.hitCount}｜命中未知 ${report.toolStats.hitUnknown}`,
-    `- RAG 送达：原文范围 ${nullable(report.ragDeliveryStats.expandedRanges)}｜显式 facts_search ${report.toolUsage.find((item) => item.tool === 'facts_search')?.calls ?? 0}｜内部 facts 查询 ${nullable(report.ragDeliveryStats.internalFactsQueries)}｜实际附带调用 ${nullable(report.ragDeliveryStats.attachedCalls)}｜未附带词条 ${nullable(report.ragDeliveryStats.omittedTerms)}｜送达卡次 ${nullable(report.ragDeliveryStats.deliveredCards)}｜关联入口 ${nullable(report.ragDeliveryStats.linkedHints)}`,
+    `- RAG 送达：原文范围 ${nullable(report.ragDeliveryStats.expandedRanges)}｜命中片段 ${nullable(report.ragDeliveryStats.fragmentRanges)}｜显式 facts_search ${report.toolUsage.find((item) => item.tool === 'facts_search')?.calls ?? 0}｜内部 facts 查询 ${nullable(report.ragDeliveryStats.internalFactsQueries)}｜实际附带调用 ${nullable(report.ragDeliveryStats.attachedCalls)}｜未附带词条 ${nullable(report.ragDeliveryStats.omittedTerms)}｜送达卡次 ${nullable(report.ragDeliveryStats.deliveredCards)}｜关联入口 ${nullable(report.ragDeliveryStats.linkedHints)}`,
     `- read 送达：调用 ${nullable(report.readDeliveryStats.calls)}｜成功 ${nullable(report.readDeliveryStats.successes)}｜空 ${nullable(report.readDeliveryStats.empty)}｜错误 ${nullable(report.readDeliveryStats.errors)}｜原文字符 ${nullable(report.readDeliveryStats.bodyChars)}｜送达记录卡 ${nullable(report.readDeliveryStats.deliveredCards)}｜送达概念 ${nullable(report.readDeliveryStats.deliveredConcepts)}`,
     ...(report.toolUsage.length > 0
       ? [`- 工具调用：${report.toolUsage.map((u) => `${u.tool} ${u.calls} 次`).join('｜')}`]

@@ -79,7 +79,7 @@ export async function runBenchmark(
   // 程序化入口与 CLI 共用同一份校验，避免在写盘前用失效/未知模式构建工具与 meta。
   validateBenchConfig(config)
   const started = Date.now()
-  const agentInstructions = loadKnowledgeAgentInstructions()
+  const agentInstructions = loadKnowledgeAgentInstructions(process.cwd(), config.injectKeywordCatalog)
   const systemPrompt = buildSystemPrompt(config.retriever, agentInstructions, config.toolBudget, config.toolAttemptLimit)
   const toolSchema = toolSchemaMetadata(config.retriever, config.factsQueryListLimit)
   const toolDefinitions = toolsForRetriever(config.retriever, config.factsQueryListLimit)
@@ -288,6 +288,7 @@ export async function runBenchmark(
         retriever: config.retriever,
         retrievalScope: 'base-guides',
         expandFulltext: config.expandFulltext,
+        injectKeywordCatalog: config.injectKeywordCatalog,
         attachFacts: effectiveAttachFacts(config),
         toolBudget: config.toolBudget,
         toolAttemptLimit: config.toolAttemptLimit,

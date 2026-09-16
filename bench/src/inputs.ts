@@ -99,6 +99,8 @@ export interface RunInputs {
     includeSkillTables?: boolean
     /** 是否把 base/guides 命中小节扩展到原文文件范围（ADR-013）。 */
     expandFulltext: boolean
+    /** 是否把关键词目录追加到 system prompt（ADR-022 决策 8）；默认关闭。 */
+    injectKeywordCatalog: boolean
     /** RAG 内部 facts 附带的有效开关；未显式声明时随模式默认（ADR-013）。 */
     attachFacts: boolean
     corpusDir: string
@@ -217,6 +219,7 @@ export function createRunInputs(options: RunInputsOptions): RunInputs {
       retriever: options.config.retriever,
       retrievalScope: 'base-guides',
       expandFulltext: options.config.expandFulltext,
+      injectKeywordCatalog: options.config.injectKeywordCatalog,
       attachFacts: effectiveAttachFacts(options.config),
       corpusDir: redactSensitiveText(options.config.corpusDir, sensitiveValues),
       tokenizer: currentTokenizer(),

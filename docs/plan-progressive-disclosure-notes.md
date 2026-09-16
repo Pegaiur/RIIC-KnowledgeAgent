@@ -189,6 +189,26 @@
 - **TDD**：在原有 snapshot 测试中补充失败页与字段依赖回归，先观察 2 失败／12 通过；测试夹具补齐对应 queries 条目。随后扩展原有缺失 grant 用例，观察 1 失败／47 通过；实现后 read/snapshot 两个文件共 48 项通过。未修改旧 gold、benchmark-integrity 或门禁脚本。
 - **复测**：全套 `pnpm run test` 为 712 通过／2 条旧 gold 失败（714 项、50 文件）；类型检查、构建与差异空白检查通过。文档检查仍仅 18 条活动计划 D1；本轮既有 reference-projection、prose-terms、catalog --check 通过。第 5–8 步及旧门禁延后范围保持。
 
+### 2026-09-16 — 第 5 步：检索默认送达与关键词目录注入开关
+
+- **范围**：本批实施 plan 第 5 步——默认 `expandFulltext=false` 的命中块送达与 `fragmentRanges` 观测、默认 `injectKeywordCatalog=false` 的目录注入开关（含 CLI、指令装配与三处留档）。既有协议契约未变：TOOL_SCHEMA_VERSION 仍为 15、FACTS_RESULT_VERSION 仍为 8、prose-links 仍为 2、小节目录结构与 ID 算法未改。第 6–8 步未实施。
+- **RAG 默认送达**：默认（未显式 `--expand-fulltext 1`）只送达命中的 H2/H3 块。块头为 `【<file> | <标题> | L<起>-<止> | <section_id>】`，正文取该块在**同一次装配的原文快照**中的行范围（止于下一个 H2/H3 边界），不再使用 `SectionEntry.body`，命中 `##` 小节时不会混入未命中的 `###` 子节；BM25 的索引输入（`chunk.text`）保持不变。必要元数据（小节 ID、来源、行范围）优先于正文：额度连元数据加一单位正文都放不下时不发送该块（继续尝试后续更小的块，不重新检索补满 topK），全部块都放不下时返回明确容量错误。块超预算时按行边界连续截取（超长单行按字符切且不拆代理对），并追加可复制的 `续读：read(section_id="…", offset=N)｜complete false｜正文 M 字符`；`offset` 为块首行在所属小节 body 中的偏移加本页长度，续读返回的正是该块后续原文。
+- **片段范围观测**：`RagDeliveryRecord` 新增可选 `fragmentRanges`，每项为 `{kind:"hit"|"parent_lead", file, sectionId, chunkId?, docOffset, docEndOffset, startLine, endLine}`，偏移相对同运行 `documentRange.body`，与 readDelivery 的 `docOffset` 同坐标。只登记实际返回的连续正文（不含来源头、导航与分页元数据）；父级引导按实际写入登记。字段接通 trace 的单条 tool_call、records 的 ragDelivery、snapshot 白名单（逐层过滤未知字段，只接受 hit/parent_lead）与 meta/report 的 `ragDeliveryStats.fragmentRanges`（任一调用缺该字段即判不可用，全文扩展模式为已观察的 0）。全文扩展模式继续只用 `fulltextRanges`，不重复登记相同正文。
+- **关联提示改向**：`rag_search` 的【关联事实入口】改为面向**实际显示的命中节点与导航项**，按 ADR-022 决策 4 的读取范围合并规则逐节点计算是否有可展开关联，只列确实有登记对象的小节，行内给出对象数与可直接复制的 read 示例（`｜示例：read(section_id="…")`）；不再按命中文件列出全部登记。提示仍是导航，`linkedEntries.written` 只表示该行确实写入本次 data。
+- **目录注入开关**：`ExperimentConfig`/`BenchConfig` 新增 `injectKeywordCatalog`（默认 false）；`loadKnowledgeAgentInstructions(root, injectKeywordCatalog)` 关闭时只读取并返回 `knowledge/AGENTS.md`（目录缺失不报错），开启时按原格式追加目录正文，缺失/读取失败/为空仍按中文错误失败。CLI 新增 `--inject-keyword-catalog 0|1`（缺值与非法值按 `readBinarySwitch` 报中文错误、退出码 1），未显式传入沿用默认；run 的回显行新增「目录注入：开/关」；hitrate 显式传入时提示忽略；catalog 子命令列为不支持参数且不写文件。runner 与 `runQuery` 的提示兜底都按有效配置装配指令，`buildSystemPrompt` 的缺省入参等于默认配置（关闭），不保留暗中恒定注入的旁路。inputs/meta 记录 `injectKeywordCatalog`，snapshot 的 meta 白名单放行该键（历史缺字段不推定当时关闭）。
+- **实施决策**：①命中块无对应小节时（标题前首部等「（未分段）」块）以同文件文档范围 `doc:<file>` 作为可调用 ID 与续读基准，不新增 chunk ID 冒充 read 目标；②关联提示不含上级范围入口与文档范围块，后者等价于「列出命中文件全部登记」；③父级引导取最多 300 UTF-16 字符的连续前缀，行范围与字符范围均按该前缀登记，展示单元放不下则整条省略；④默认路径缺少目录或原文映射失败时报错，停止发送无阅读 ID 的正文；显式全文回退保留既有无目录兼容行为。
+- **契约变更**：RAG 极小额度下的失败语义由「硬截断产生截断头部 → empty」改为「不发送该块 → 明确容量错误（`无法在 maxContextChars=N 内返回命中块…`）」，与 ADR-022 的 read 容量口径及既有全文扩展分支一致，仍不扣成功额度；tool-executor 原用例随之更名并改断言。
+- **TDD 与验证**：先写/改测试并观察失败——配置与目录注入一批（config/catalog/cli-args/inputs 4 文件）在把 `bench/src` 改动暂存回旧实现后运行，得到 11 失败／60 通过；RAG 送达与片段范围一批（新增 bench/tests/rag-delivery.test.ts 6 项，另改 prose-links-hint、section-navigation、report、snapshot、facts-attach、tool-executor）首轮定向 13 失败／101 通过，修正夹具与契约后 4 失败／118 通过，实现完成后相关 5 文件 89 项全绿。最终全套 `pnpm run test` 为 727 通过／2 失败（729 项、51 文件），两条失败仍是第 6 步延后的 benchmark-integrity 旧 gold 锚点用例，本批无新增失败；`pnpm run typecheck`、`pnpm run build`、`catalog --check`、`check:reference-projection`（9 分片一致）、`check:prose-terms` 通过；`node scripts/doc-check.mjs` 由 18 条 D1 减为 15 条（本计划勾选 3 项），无 D2–D5 与结构类错误。
+- **新增覆盖要点**：默认 `expandFulltext`/`injectKeywordCatalog` 为 false 且可显式回退；四组 expand/inject 组合下的 systemPrompt、inputs.config 与 meta 一致性；目录关闭时缺失不报错、开启时缺失与空目录报中文错误；`--inject-keyword-catalog` 解析、hitrate 忽略提示与 catalog 拒绝；命中块头含 ID/来源/行范围且止于下一个 H2/H3 边界；末尾上下文装不下时 ID 仍随块送达；容量不足不发送该块、不出现被截断 ID；连续截取页与 read 续读拼接覆盖整块；父级引导片段坐标与原文一致；全文扩展模式 `fragmentRanges` 为空且不重复登记；提示只覆盖命中节点与导航项、未被显示与其它文件的登记不再列出；report 的 `fragmentRanges` 计数与不可用口径；snapshot 片段的往返、未知字段过滤与非法类型拒绝；真实 runner 下默认无全文扩展范围、片段范围非空并与 meta 汇总一致。
+- **连带更新**：`bench/src/catalog.ts` 的 `TODO(tech-debt) IDX-1` 注释改为「显式开启注入时才随 prompt 送达」（债务对象不变）；docs/inbox.md 的渐进披露条目与本条目录压缩条目的实施状态同步；plan 验收清单勾选「read/RAG 实际范围与对象送达接通」「expandFulltext 默认关闭」「injectKeywordCatalog 默认关闭」三项。
+- **未闭合**：第 6 步（gold 定位分离与 26 键迁移、白名单/完整性断言转绿、关键词目录全文重生成与一致性门禁、两份基线用途与口径处置）、第 7 步（散文试点与标注）与第 8 步（零费用端到端契约、分阶段 hitrate、真实模型观测）均未开始；旧 gold 及依赖它的 `validate`／`bench:dry` 红态不变，红态期间不合并、不发版、不登记新基线、不执行付费试验。
+
+### 2026-09-16 — 第 5 步验收修缮
+
+- **审查处置**：独立审查发现父级引导范围高报／漏记、小预算下实际附带 facts 却未计成功、默认无目录入口送达无阅读 ID 正文及未使用导入。按既定契约修复：引导展示与登记共用连续切片，余量不足整条省略；RAG 或 facts 任一实际送达即计成功；默认缺少有效阅读范围明确失败；删除失去消费者的导入和中间字段。
+- **TDD**：在 rag-delivery 与 section-navigation 的现有测试入口先观察 3 失败／25 通过，修复后 28 项通过。全套复测暴露 21 项旧无目录夹具的前置条件变化；循环、预算与 facts 边界用例显式选择原有全文回退，保持原断言；默认容量用例改用真实白名单目录。默认行为仍由真实目录的送达、续读、范围与缺目录回归覆盖，无独立探针或新诊断框架。
+- **验证**：修缮后全套 pnpm run test 为 729 通过／2 条旧 gold 失败（731 项、51 文件），pnpm run typecheck 通过。旧 gold、benchmark-integrity 断言与门禁脚本均未修改。目录开关的新增测试覆盖解析、分流辅助函数、四组合 prompt 与留档；真实 CLI 退出处理及 runQuery 缺省装配由静态审查核对，未宣称新增入口回归覆盖。
+
 ## 债务记录
 
 ### 2026-09-16 — PLK-1 关联载荷体积（已关闭）

@@ -176,7 +176,8 @@ describe('runQuery：轮次耗尽兜底（末位强制作答轮）', () => {
   })
 
   it('工具预算内模型持续请求工具，预算归零后仍暴露工具并产出最终答案', async () => {
-    const config = loadConfig()
+    // 无目录夹具显式沿用全文回退，保持本用例的循环／预算前置条件。
+    const config = { ...loadConfig(), expandFulltext: true }
     config.retriever = 'bm25'
     config.toolBudget = 5
     const index = buildIndex(chunks)
@@ -204,7 +205,8 @@ describe('runQuery：轮次耗尽兜底（末位强制作答轮）', () => {
   })
 
   it('模型在某轮直接作答（无工具调用），不会多余跑兜底轮', async () => {
-    const config = loadConfig()
+    // 无目录夹具显式沿用全文回退，保持本用例的循环／预算前置条件。
+    const config = { ...loadConfig(), expandFulltext: true }
     config.toolBudget = 5
     const index = buildIndex(chunks)
 
@@ -247,7 +249,8 @@ describe('runQuery：注入片段记录（injectedIds）', () => {
       { id: 'a#1', file: 'a.md', heading: '甲乙', text: 'x'.repeat(50), startLine: 1, endLine: 1 },
       { id: 'b#2', file: 'b.md', heading: '乙', text: 'y'.repeat(50), startLine: 1, endLine: 1 },
     ]
-    const config = loadConfig()
+    // 无目录夹具显式沿用全文回退，保持本用例的循环／预算前置条件。
+    const config = { ...loadConfig(), expandFulltext: true }
     config.topK = 2
     // 第一块（头部 ~18 字符 + 50 正文 ≈ 68）起点 0 < 60 计入；第二块起点 ~68 ≥ 60 不计入
     config.maxContextChars = 60
@@ -271,7 +274,8 @@ describe('runQuery：注入片段记录（injectedIds）', () => {
       { id: 'a#1', file: 'a.md', heading: '甲乙', text: 'x'.repeat(10), startLine: 1, endLine: 1 },
       { id: 'b#2', file: 'b.md', heading: '乙', text: 'y'.repeat(10), startLine: 1, endLine: 1 },
     ]
-    const config = loadConfig()
+    // 无目录夹具显式沿用全文回退，保持本用例的循环／预算前置条件。
+    const config = { ...loadConfig(), expandFulltext: true }
     config.topK = 2
     config.maxContextChars = 12000
     const index = buildIndex(chunks)

@@ -866,7 +866,8 @@ describe('runQuery（hybrid 模式）', () => {
   beforeEach(() => mockCall.mockReset())
 
   it('同一 Agent 暴露并派发 rag_search 与 facts_search', async () => {
-    const config = loadConfig()
+    // 无目录夹具显式沿用全文回退，本用例核对 RAG 与 facts 工具派发。
+    const config = { ...loadConfig(), expandFulltext: true }
     config.retriever = 'hybrid'
     const index = buildIndex(chunks)
 

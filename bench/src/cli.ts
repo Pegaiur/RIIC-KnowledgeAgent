@@ -32,7 +32,7 @@ function printUsage(): void {
       'RIIC-KnowledgeAgent bench —— LLM 查询输出成本基准（GLM-5.3-Flash / Qwen3.7-Flash）',
       '',
       '用法：',
-      '  node dist/cli.js run [--provider glm|qwen|hy3|deepseek] [--thinking off|low|high] [--temperature N] [--retriever bm25|hybrid] [--expand-fulltext 0|1] [--attach-facts 0|1] [--tool-budget N] [--tool-attempt-limit N] [--session-timeout-ms N] [--min-rag 0|1] [--limit N] [--dry] [--questions <path>] [--out <dir>]',
+      '  node dist/cli.js run [--provider glm|qwen|hy3|deepseek] [--thinking off|low|high] [--temperature N] [--retriever bm25|hybrid] [--expand-fulltext 0|1] [--inject-keyword-catalog 0|1] [--attach-facts 0|1] [--tool-budget N] [--tool-attempt-limit N] [--session-timeout-ms N] [--min-rag 0|1] [--limit N] [--dry] [--questions <path>] [--out <dir>]',
       '  说明：默认 provider 为 GLM-5.3-Flash、默认思考档 low（GLM 不支持 off）；DeepSeek 仅支持 off，需显式 --thinking off；Hy3 已退出，仅为历史对照保留。',
       '  检索范围恒为 manifest 登记的 base/guides；--include-skill-tables 已退役，显式传入按参数错误拒绝。',
       '  node dist/cli.js export <runDir> [--questions <path>] [--topic <name>] [--out <path>]',
@@ -119,6 +119,7 @@ async function main(): Promise<void> {
     const config = loadConfig(args.provider)
     if (args.retriever !== null) config.retriever = args.retriever
     if (args.expandFulltext !== null) config.expandFulltext = readBinarySwitch('--expand-fulltext', args.expandFulltext)
+    if (args.injectKeywordCatalog !== null) config.injectKeywordCatalog = readBinarySwitch('--inject-keyword-catalog', args.injectKeywordCatalog)
     if (args.attachFacts !== null) config.attachFacts = readBinarySwitch('--attach-facts', args.attachFacts)
     if (args.toolBudget !== null) config.toolBudget = args.toolBudget
     if (args.toolAttemptLimit !== null) config.toolAttemptLimit = args.toolAttemptLimit
@@ -146,7 +147,7 @@ async function main(): Promise<void> {
     const picked = args.limit ? questions.slice(0, args.limit) : questions
 
     process.stdout.write(
-      `Provider：${config.providerLabel}｜语料：${stats.files} 个文件｜问题：${picked.length}/${questions.length}｜档位：${args.thinking}｜temperature：${config.temperature ?? '服务端默认'}｜检索器：${config.retriever}｜检索范围：base/guides（manifest 全部块）｜扩展原文：${config.expandFulltext ? '是' : '否'}｜附带 facts：${effectiveAttachFacts(config) ? '是' : '否'}｜成功额度：${config.toolBudget}｜获准尝试上限：${config.toolAttemptLimit}｜总超时：${config.sessionTimeoutMs}ms｜未调用工具回馈：${config.feedbackOnNoToolAnswer ? '开' : '关'}｜dry：${args.dry}\n`,
+      `Provider：${config.providerLabel}｜语料：${stats.files} 个文件｜问题：${picked.length}/${questions.length}｜档位：${args.thinking}｜temperature：${config.temperature ?? '服务端默认'}｜检索器：${config.retriever}｜检索范围：base/guides（manifest 全部块）｜扩展原文：${config.expandFulltext ? '是' : '否'}｜目录注入：${config.injectKeywordCatalog ? '开' : '关'}｜附带 facts：${effectiveAttachFacts(config) ? '是' : '否'}｜成功额度：${config.toolBudget}｜获准尝试上限：${config.toolAttemptLimit}｜总超时：${config.sessionTimeoutMs}ms｜未调用工具回馈：${config.feedbackOnNoToolAnswer ? '开' : '关'}｜dry：${args.dry}\n`,
     )
 
     const out = await runBenchmark(picked, {
@@ -171,10 +172,10 @@ async function main(): Promise<void> {
   if (args.command === 'hitrate') {
     if (!args.questions && !args.gold) validateBenchmarkIntegrity(process.cwd())
     const config = loadConfig()
-    // 显式传入扩展/附带开关时给出提示，避免静默忽略（hitrate 只做检索排序，不执行原文扩展与 facts 附带）。
+    // 显式传入扩展/附带/目录注入开关时给出提示，避免静默忽略（hitrate 只做检索排序，不执行原文扩展、facts 附带与指令装配）。
     const ignored = ignoredHitrateFlags(args)
     if (ignored.length > 0) {
-      process.stderr.write(`提示：hitrate 忽略 ${ignored.join('、')}（该命令不执行原文扩展与 facts 附带）\n`)
+      process.stderr.write(`提示：hitrate 忽略 ${ignored.join('、')}（该命令不执行原文扩展、目录注入与 facts 附带）\n`)
     }
     const goldPath = args.gold ?? join(process.cwd(), 'bench', 'gold.json')
     const gold = loadGold(goldPath)

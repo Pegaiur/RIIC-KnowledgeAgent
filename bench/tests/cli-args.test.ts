@@ -98,6 +98,22 @@ describe('CLI 参数：--expand-fulltext / --attach-facts 对照开关', () => {
   })
 })
 
+describe('CLI 参数：--inject-keyword-catalog 目录注入开关', () => {
+  it('解析 0|1，未传时为 null，缺值时保留 NaN', () => {
+    expect(parseArgs(['run', '--inject-keyword-catalog', '1']).injectKeywordCatalog).toBe(1)
+    expect(parseArgs(['run', '--inject-keyword-catalog', '0']).injectKeywordCatalog).toBe(0)
+    expect(parseArgs(['run']).injectKeywordCatalog).toBeNull()
+    expect(parseArgs(['run', '--inject-keyword-catalog']).injectKeywordCatalog).toBeNaN()
+  })
+
+  it('hitrate 显式传入时提示忽略，catalog 子命令列为不支持参数', () => {
+    expect(ignoredHitrateFlags(parseArgs(['hitrate', '--inject-keyword-catalog', '1'])))
+      .toEqual(['--inject-keyword-catalog'])
+    expect(unsupportedCatalogFlags(parseArgs(['catalog', '--inject-keyword-catalog', '1'])))
+      .toEqual(['--inject-keyword-catalog'])
+  })
+})
+
 describe('CLI 参数：--include-skill-tables 退役（ADR-021）', () => {
   it('四种形态（0、1、缺值、非法值）都判定为显式出现', () => {
     const forms = [

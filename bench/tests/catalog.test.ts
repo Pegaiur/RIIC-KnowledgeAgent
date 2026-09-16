@@ -184,9 +184,17 @@ describe('catalog：真源机械核对', () => {
   })
 })
 
-describe('catalog：随 Agent 指令送达', () => {
-  it('loadKnowledgeAgentInstructions 同时返回 AGENTS.md 正文与关键词目录', () => {
+describe('catalog：随 Agent 指令送达（ADR-022 决策 8）', () => {
+  it('默认只送达 AGENTS.md 正文，不读取关键词目录', () => {
     const instructions = loadKnowledgeAgentInstructions()
+
+    expect(instructions).toContain('明日方舟基建查询 Agent 决策契约')
+    expect(instructions).not.toContain('查询关键词目录')
+    expect(instructions).not.toContain('| 检索词 | 能查什么 | 工具入口 | 必要范围 |')
+  })
+
+  it('显式开启目录注入时按原格式追加关键词目录正文', () => {
+    const instructions = loadKnowledgeAgentInstructions(process.cwd(), true)
 
     expect(instructions).toContain('明日方舟基建查询 Agent 决策契约')
     expect(instructions).toContain('查询关键词目录')
@@ -195,24 +203,25 @@ describe('catalog：随 Agent 指令送达', () => {
     expect(instructions).not.toContain('请勿手改')
   })
 
-  it('缺少关键词目录时报中文错误并指明关键词目录', () => {
+  it('默认关闭时目录缺失不报错，显式开启时缺失报中文错误并指明关键词目录', () => {
     const root = mkdtempSync(join(tmpdir(), 'rag-catalog-missing-'))
     try {
       mkdirSync(join(root, 'knowledge'))
       writeFileSync(join(root, 'knowledge', 'AGENTS.md'), '# 决策契约\n', 'utf-8')
-      expect(() => loadKnowledgeAgentInstructions(root)).toThrowError('关键词目录')
+      expect(loadKnowledgeAgentInstructions(root)).toBe('# 决策契约')
+      expect(() => loadKnowledgeAgentInstructions(root, true)).toThrowError('关键词目录')
     } finally {
       rmSync(root, { recursive: true, force: true })
     }
   })
 
-  it('关键词目录为空时报中文错误', () => {
+  it('显式开启时关键词目录为空报中文错误', () => {
     const root = mkdtempSync(join(tmpdir(), 'rag-catalog-empty-'))
     try {
       mkdirSync(join(root, 'knowledge'))
       writeFileSync(join(root, 'knowledge', 'AGENTS.md'), '# 决策契约\n', 'utf-8')
       writeFileSync(join(root, 'knowledge', '关键词目录.md'), '  \n', 'utf-8')
-      expect(() => loadKnowledgeAgentInstructions(root)).toThrowError('关键词目录为空')
+      expect(() => loadKnowledgeAgentInstructions(root, true)).toThrowError('关键词目录为空')
     } finally {
       rmSync(root, { recursive: true, force: true })
     }

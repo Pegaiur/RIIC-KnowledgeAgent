@@ -163,8 +163,20 @@ describe('report：聚合与渲染', () => {
     const fact = { term: '测试', start: 0, end: 2, matched: ['甲'], delivered: ['甲'], omittedReason: null, chars: 20, elapsedMs: 0, paths: [] }
     const current = rec({ tools: ['rag_search'], ragDelivery: [{ callId: 'a', status: 'success', fulltextRanges: [], attachedFacts: [fact, { ...fact, term: '别名' }] }] })
     expect(aggregate([current, { ...current, round: 2 }]).ragDeliveryStats).toEqual({
-      internalFactsQueries: 4, attachedCalls: 2, omittedTerms: 0, deliveredCards: 2, expandedRanges: 0, linkedHints: null,
+      internalFactsQueries: 4, attachedCalls: 2, omittedTerms: 0, deliveredCards: 2, expandedRanges: 0, fragmentRanges: null, linkedHints: null,
     })
+    // 命中片段按实际返回的连续正文计数；零长度范围不计，历史缺字段判不可用。
+    const fragments = rec({
+      tools: ['rag_search'],
+      ragDelivery: [{
+        callId: 'a', status: 'success', fulltextRanges: [],
+        fragmentRanges: [
+          { kind: 'hit', file: 'base/甲.md', sectionId: 'sec-1', chunkId: 'base/甲.md#甲节', docOffset: 0, docEndOffset: 12, startLine: 3, endLine: 3 },
+          { kind: 'parent_lead', file: 'base/甲.md', sectionId: 'sec-2', docOffset: 40, docEndOffset: 40, startLine: 9, endLine: 9 },
+        ],
+      }],
+    })
+    expect(aggregate([fragments]).ragDeliveryStats.fragmentRanges).toBe(1)
     // 关联事实入口提示按「实际写入正文」计数；历史缺 linkedEntries 观测时判不可用，不补零。
     const linked = rec({
       tools: ['rag_search'],
@@ -190,11 +202,11 @@ describe('report：聚合与渲染', () => {
       ragDelivery: [{ callId: 'a', status: 'success', fulltextRanges: [], attachedFacts: [fact] }],
     })
     expect(aggregate([mixed]).ragDeliveryStats).toEqual({
-      internalFactsQueries: 1, attachedCalls: 1, omittedTerms: 0, deliveredCards: 1, expandedRanges: 0, linkedHints: null,
+      internalFactsQueries: 1, attachedCalls: 1, omittedTerms: 0, deliveredCards: 1, expandedRanges: 0, fragmentRanges: null, linkedHints: null,
     })
     // 请求过 rag_search 却缺整套台账（历史/异常）仍判不可用，不伪造成零送达。
     expect(aggregate([rec({ tools: ['rag_search'] })]).ragDeliveryStats).toEqual({
-      internalFactsQueries: null, attachedCalls: null, omittedTerms: null, deliveredCards: null, expandedRanges: null, linkedHints: null,
+      internalFactsQueries: null, attachedCalls: null, omittedTerms: null, deliveredCards: null, expandedRanges: null, fragmentRanges: null, linkedHints: null,
     })
   })
 

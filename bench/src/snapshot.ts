@@ -84,7 +84,7 @@ const META_SUMMARY_KEYS = new Set([
 const META_ALLOWED_KEYS = new Set([
   'schemaVersion', 'traceSchemaVersion', 'ts', 'thinking', 'dry', 'provider', 'model',
   'temperature', 'maxTokens', 'baseUrl', 'retriever', 'minRagCalls', 'toolBudget', 'toolAttemptLimit', 'factsQueryListLimit', 'sessionTimeoutMs',
-  'includeSkillTables', 'retrievalScope', 'expandFulltext', 'attachFacts',
+  'includeSkillTables', 'retrievalScope', 'expandFulltext', 'injectKeywordCatalog', 'attachFacts',
   'feedbackOnNoToolAnswer', 'toolChoice', 'parallelToolCalls', 'agentInstructionsSha256',
   'inputsSchemaVersion',
   'toolSchemaVersion', 'toolSchemaSha256', 'toolNames',
@@ -424,6 +424,29 @@ function pickRagDelivery(value: unknown): RagDeliveryRecord[] {
       return {
         file: text(range.file), docId: text(range.docId), offset, endOffset,
         startLine: number(range.startLine), endLine: number(range.endLine), complete, nextOffset,
+      }
+    }) }),
+    ...(call.fragmentRanges === undefined ? {} : { fragmentRanges: objects(call.fragmentRanges).map((range) => {
+      const kind = range.kind
+      if (kind !== 'hit' && kind !== 'parent_lead') {
+        throw new Error('基准快照格式错误：ragDelivery 片段类型无效')
+      }
+      const docOffset = number(range.docOffset)
+      const docEndOffset = number(range.docEndOffset)
+      const startLine = number(range.startLine)
+      const endLine = number(range.endLine)
+      if (docEndOffset < docOffset) throw new Error('基准快照格式错误：ragDelivery 片段范围倒置')
+      if (endLine < startLine) throw new Error('基准快照格式错误：ragDelivery 片段行范围倒置')
+      const chunkId = range.chunkId === undefined ? {} : { chunkId: text(range.chunkId) }
+      return {
+        kind,
+        file: text(range.file),
+        sectionId: text(range.sectionId),
+        ...chunkId,
+        docOffset,
+        docEndOffset,
+        startLine,
+        endLine,
       }
     }) }),
     ...(call.linkedEntries === undefined ? {} : { linkedEntries: objects(call.linkedEntries).map((entry) => ({

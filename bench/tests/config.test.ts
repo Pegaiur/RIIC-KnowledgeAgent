@@ -65,14 +65,20 @@ describe('配置：工具预算与单题生命周期', () => {
 })
 
 describe('配置：检索范围、原文扩展与 facts 附带（ADR-021）', () => {
-  it('默认不携带已退役的技能表开关，扩展原文，hybrid 有效附带 facts', () => {
+  it('默认不携带已退役的技能表开关，按命中小节送达，hybrid 有效附带 facts', () => {
     const config = loadConfig()
 
     // 检索范围由 manifest 决定（仅 base/guides），运行配置不再持有 includeSkillTables（ADR-021）
     expect('includeSkillTables' in config).toBe(false)
-    expect(config.expandFulltext).toBe(true)
+    // 默认送达命中小节原文与阅读入口，不再按文件扩展整篇（ADR-022 决策 7、8）
+    expect(config.expandFulltext).toBe(false)
     expect(config.attachFacts).toBeUndefined()
     expect(effectiveAttachFacts(config)).toBe(true)
+  })
+
+  it('默认不注入关键词目录，显式开启可作为回退', () => {
+    expect(loadConfig().injectKeywordCatalog).toBe(false)
+    expect({ ...loadConfig(), injectKeywordCatalog: true }.injectKeywordCatalog).toBe(true)
   })
 
   it('bm25 未显式附带时校验通过且有效附带为关', () => {

@@ -63,9 +63,12 @@ function makeExecutor(overrides: Partial<BenchConfig> = {}, withSections = true)
   }, 5)
 }
 
-/** 旧实现基线：来源头不含新增字段，正文优先送达。 */
+/** 默认送达基线：块头含小节 ID、来源与原文范围，正文来自同一原文快照的块行范围。 */
 function blockFor(chunk: DocChunk): string {
-  return `【${chunk.file} | ${chunk.heading} | L${chunk.startLine}-${chunk.endLine}】\n${chunk.text}`
+  // 无对应小节的标题前首部以同文件文档范围为阅读入口，与运行时的映射一致。
+  const target = directory.findByChunk(chunk.file, chunk.heading, chunk.startLine) ?? directory.documentRange(chunk.file)
+  const id = target ? ` | ${target.sectionId}` : ''
+  return `【${chunk.file} | ${chunk.heading} | L${chunk.startLine}-${chunk.endLine}${id}】\n${chunk.text}`
 }
 
 function baselineFor(query: string): string {
@@ -124,7 +127,7 @@ describe('RAG 展示：标题上下文与导航', () => {
 
     expect(item.status).toBe('success')
     expect(item.data.startsWith(baselineFor('制造站效率'))).toBe(true)
-    expect(item.data).toContain('【base/制造.md | 效率 | L11-11】')
+    expect(item.data).toContain(`【base/制造.md | 效率 | L11-11 | ${efficiency.sectionId}】`)
     expect(item.data).toContain(efficiency.sectionId)
     expect(item.data).toContain('标题路径：制造体系 > 制造站 > 效率')
     expect(item.data).toContain('父级引导（L7-7）：制造站引言。')
@@ -157,7 +160,7 @@ describe('RAG 展示：标题上下文与导航', () => {
     expect(item.data.length).toBeLessThanOrEqual(firstBlock.length)
   })
 
-  it('附加信息只用剩余空间，不改变原正文送达范围', async () => {
+  it('附加信息只用剩余空间，不改变已送达正文的连续前缀', async () => {
     const baseline = baselineFor('制造站效率')
     const maxChars = baseline.length - 10
     const result = await makeExecutor({ maxContextChars: maxChars }).executeStep([
@@ -165,18 +168,22 @@ describe('RAG 展示：标题上下文与导航', () => {
     ])
     const item = result.results[0]!
 
-    expect(item.data).toBe(baseline.slice(0, maxChars))
-    expect(item.data).not.toContain('sec-')
-    expect(item.data).not.toContain('【小节上下文】')
+    // 去掉截断块的续读元数据与末尾上下文后，已送达正文仍是各命中块的连续前缀，未做首尾压缩。
+    const bodyOnly = item.data.split('\n\n【小节上下文】')[0]!.split('\n续读：')[0]!
+    expect(baseline.startsWith(bodyOnly)).toBe(true)
+    expect(item.data.length).toBeLessThanOrEqual(maxChars)
   })
 
-  it('无小节目录时退回原格式，不出现小节标识', async () => {
+  it('默认送达缺少小节目录时报错，不返回没有阅读 ID 的正文', async () => {
     const result = await makeExecutor({}, false).executeStep([call('a', 'rag_search', { query: '制造站效率' })])
     const item = result.results[0]!
-    expect(item.status).toBe('success')
+    expect(item.status).toBe('error')
+    expect(item.data).toContain('无法定位命中块的原文阅读范围')
     expect(item.data).not.toContain('sec-')
     expect(item.data).not.toContain('【小节上下文】')
-    expect(item.data).toContain('【base/制造.md | 效率 | L11-11】')
+    expect(item.data).not.toContain('制造站效率由干员技能决定')
+    expect(item.fragmentRanges).toBeUndefined()
+    expect(result.snapshot.successUsed).toBe(0)
   })
 
   it('上级范围入口映射直接父级，同父级按命中顺序去重', async () => {
@@ -243,6 +250,7 @@ describe('RAG 展示：标题上下文与导航', () => {
 
   it('首个可调用 ID 行放不下时整行省略，不输出截断 ID', async () => {
     const baseline = baselineFor('制造站效率')
+    const efficiency = directory.sections.find((section) => section.heading === '效率')!
     const header = '【小节上下文】'
     const maxChars = baseline.length + 2 + header.length + 1
     const result = await makeExecutor({ maxContextChars: maxChars }).executeStep([
@@ -252,7 +260,8 @@ describe('RAG 展示：标题上下文与导航', () => {
 
     expect(item.data.startsWith(baseline)).toBe(true)
     expect(item.data.endsWith(header)).toBe(true)
-    expect(item.data).not.toContain('sec-')
+    // 含 ID 的上下文行要么整行写入，要么整行省略，不出现被截断的 ID。
+    expect(item.data).not.toContain(`- ${efficiency.sectionId}｜base/制造.md｜标题路径：`)
     expect(item.data).not.toContain('…（截断）')
     expect(item.data.length).toBeLessThanOrEqual(maxChars)
     expect(item.injectedIds?.every((id) => !id.startsWith('sec-'))).toBe(true)

@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { loadConfig } from '../src/config.js'
+import { loadCorpus } from '../src/corpus.js'
 import { buildIndex } from '../src/retriever.js'
+import { buildSectionDirectory } from '../src/sections.js'
 import type { DocChunk, ToolCall } from '../src/types.js'
 import { getCardStore } from '../src/facts/store.js'
 import {
@@ -198,7 +200,8 @@ describe('独立函数工具 schema', () => {
 
 describe('单工具调用准入（每步只准入首项）', () => {
   function bm25Executor(limit = 5) {
-    const config = loadConfig()
+    // 无目录夹具显式沿用全文回退，保持本用例的循环／预算前置条件。
+    const config = { ...loadConfig(), expandFulltext: true }
     config.retriever = 'bm25'
     return createKnowledgeToolExecutor({ config, query: { id: 'ADMISSION', category: 'fact', question: '单调用准入' }, chunks, index: buildIndex(chunks) }, limit)
   }
@@ -253,7 +256,8 @@ describe('单工具调用准入（每步只准入首项）', () => {
   })
 
   it('获准尝试余额耗尽时超量项不提示重试', async () => {
-    const config = loadConfig()
+    // 无目录夹具显式沿用全文回退，保持本用例的循环／预算前置条件。
+    const config = { ...loadConfig(), expandFulltext: true }
     config.retriever = 'bm25'
     config.toolAttemptLimit = 1
     const executor = createKnowledgeToolExecutor({ config, query: { id: 'ADMISSION-ATTEMPT', category: 'fact', question: '尝试上限' }, chunks, index: buildIndex(chunks) }, 5)
@@ -273,7 +277,8 @@ describe('单工具调用准入（每步只准入首项）', () => {
 
 describe('独立函数 executor：逐步单调用结算双上限预算', () => {
   it('空结果与参数错误不扣成功额度，仅非空成功扣点，超限后按成功额度拒绝', async () => {
-    const config = loadConfig()
+    // 无目录夹具显式沿用全文回退，保持本用例的循环／预算前置条件。
+    const config = { ...loadConfig(), expandFulltext: true }
     config.retriever = 'bm25'
     const executor = createKnowledgeToolExecutor({ config, query: { id: 'SETTLE', category: 'fact', question: '制造站效率？' }, chunks, index: buildIndex(chunks) }, 2)
 
@@ -292,18 +297,22 @@ describe('独立函数 executor：逐步单调用结算双上限预算', () => {
     expect(snapshot).toMatchObject({ successLimit: 2, successUsed: 2, attemptLimit: 10, attemptUsed: 4, requested: 5, denied: 1, executed: 3, remaining: 0 })
   })
 
-  it('RAG 未送达正文证据（仅截断头部）判空并免扣成功额度，不拒绝后续调用', async () => {
+  it('RAG 容量连必要元数据都放不下时报明确容量错误，不扣成功额度', async () => {
     const config = loadConfig()
     config.retriever = 'bm25'
     config.maxContextChars = 1
-    const executor = createKnowledgeToolExecutor({ config, query: { id: 'RAG-NO-BODY', category: 'fact', question: '制造站效率？' }, chunks, index: buildIndex(chunks) }, 1)
+    const chunks = loadCorpus(config.corpusDir)
+    const sections = buildSectionDirectory(config.corpusDir)
+    const executor = createKnowledgeToolExecutor({ config, query: { id: 'RAG-NO-BODY', category: 'fact', question: '制造站效率？' }, chunks, index: buildIndex(chunks), sections }, 1)
 
     const { results, snapshot } = await runSequential(executor, [
       call('a', 'rag_search', { query: '制造站效率' }),
       call('b', 'rag_search', { query: '制造站效率' }),
     ])
 
-    expect(results.map((item) => item.status)).toEqual(['empty', 'empty'])
+    // 必要元数据（小节 ID、来源、原文范围）优先于正文：放不下时明确报容量错误，不发送只有元数据的结果。
+    expect(results.map((item) => item.status)).toEqual(['error', 'error'])
+    expect(results[0]?.data).toContain('无法在 maxContextChars=1 内返回命中块')
     expect(results.every((item) => item.executed)).toBe(true)
     expect(results[0]?.injectedIds).toEqual([])
     expect(snapshot).toMatchObject({ successUsed: 0, attemptUsed: 2, denied: 0, executed: 2, remaining: 1 })
@@ -324,7 +333,8 @@ describe('独立函数 executor：逐步单调用结算双上限预算', () => {
   })
 
   it('两项上限同时用尽时优先提示成功额度', async () => {
-    const config = loadConfig()
+    // 无目录夹具显式沿用全文回退，保持本用例的循环／预算前置条件。
+    const config = { ...loadConfig(), expandFulltext: true }
     config.retriever = 'bm25'
     config.toolAttemptLimit = 1
     const executor = createKnowledgeToolExecutor({ config, query: { id: 'BOTH', category: 'fact', question: '双限' }, chunks, index: buildIndex(chunks) }, 1)
@@ -358,7 +368,8 @@ describe('独立函数 executor：逐步单调用结算双上限预算', () => {
   })
 
   it('第五次成功扣点后拒绝第六次，每项余额按结算后状态生成', async () => {
-    const config = loadConfig()
+    // 无目录夹具显式沿用全文回退，保持本用例的循环／预算前置条件。
+    const config = { ...loadConfig(), expandFulltext: true }
     const executor = createKnowledgeToolExecutor({ config, query: { id: 'BATCH-5', category: 'fact', question: '查询' }, chunks, index: buildIndex(chunks) }, 5)
     const calls = Array.from({ length: 6 }, (_, i) => call(`call-${i + 1}`, 'rag_search', { query: '制造站效率' }))
 

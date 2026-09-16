@@ -50,11 +50,30 @@ export interface LinkedEntryObservation {
   written: boolean
 }
 
+/**
+ * rag_search 实际送达的连续正文片段（ADR-022 决策 6）：offset 相对同运行 documentRange.body，
+ * 与 readDelivery 的 docOffset 同坐标，跨小节可直接比较重叠；父级引导纳入，不漏算为新证据。
+ */
+export interface FragmentRange {
+  kind: 'hit' | 'parent_lead'
+  file: string
+  /** 片段所属小节 ID；父级引导记其所属父级小节 */
+  sectionId: string
+  /** 命中块片段对应的切块 ID；父级引导不携带 */
+  chunkId?: string
+  docOffset: number
+  docEndOffset: number
+  startLine: number
+  endLine: number
+}
+
 /** 单次外部 RAG 的送达台账；数组缺失表示异常时不可用，空数组表示已观察为零。 */
 export interface RagDeliveryRecord {
   callId: string
   status: string
   fulltextRanges?: FulltextRange[]
+  /** 命中块与父级引导的连续正文片段；全文扩展模式不重复登记（历史记录缺字段表示不可用）。 */
+  fragmentRanges?: FragmentRange[]
   attachedFacts?: Array<Omit<AttachedFactsObservation, 'paths'> & { paths: DeliveryPath[] }>
   /** 关联事实入口提示观测（ADR-020）：rag_search 每次确定性给出数组（无提示为空数组）；历史记录缺字段表示不可用。 */
   linkedEntries?: LinkedEntryObservation[]

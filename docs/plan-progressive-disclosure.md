@@ -350,9 +350,9 @@ node scripts/doc-check.mjs
 - [x] 读取、生成、观测脚本、夹具、manifest、当前语料/spec/规则/导航同步；旧参数退役与新范围留档验证完成。
 - [x] prose-links v2、必填 scope、概念定位、精确技能投影及当前 v1 标注迁移完成。
 - [x] read 替代旧工具，双偏移、容量、next_call、错误与预算契约全覆盖，PLK-1 按规则收束。
-- [ ] read/RAG 实际范围与对象送达接通 trace、records、meta/report、inputs、snapshot，历史缺字段和旧名称兼容通过。
-- [ ] expandFulltext 默认关闭及显式回退有效，必要 ID 优先，原有 query facts 附带契约保持。
-- [ ] injectKeywordCatalog 默认关闭，CLI/fallback/目录生成及三处配置留档同步，未应用压缩 stash。
+- [x] read/RAG 实际范围与对象送达接通 trace、records、meta/report、inputs、snapshot，历史缺字段和旧名称兼容通过。
+- [x] expandFulltext 默认关闭及显式回退有效，必要 ID 优先，原有 query facts 附带契约保持。
+- [x] injectKeywordCatalog 默认关闭，CLI/fallback/目录生成及三处配置留档同步，未应用压缩 stash。
 - [ ] 全部延后项转绿：gold 定位分离与 26 键迁移、白名单/完整性断言、目录一致性和两份基线用途/口径处置完成。
 - [ ] 指定散文试点与组合小节审阅、精确关联及概念标注完成，gold/spec/目录随批更新并记录范围变化。
 - [ ] pnpm run typecheck、全套 pnpm run test、reference-projection、prose-terms、catalog --check、validate、gold 校验和 dry 全部通过。

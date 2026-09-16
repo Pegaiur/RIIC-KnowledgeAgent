@@ -42,7 +42,10 @@ describe('共享基准快照', () => {
     const dir = mkdtempSync(join(tmpdir(), 'rag-delivery-snapshot-'))
     try {
       const range = { file: 'base/甲.md', docId: 'doc:base/甲.md', offset: 0, endOffset: 12, startLine: 1, endLine: 2, complete: false, nextOffset: 12 }
-      const delivery = [{ callId: 'a', status: 'success', fulltextRanges: [range], attachedFacts: [{
+      const delivery = [{ callId: 'a', status: 'success', fulltextRanges: [range], fragmentRanges: [
+        { kind: 'hit' as const, file: 'base/甲.md', sectionId: 'sec-1', chunkId: 'base/甲.md#甲节', docOffset: 0, docEndOffset: 12, startLine: 3, endLine: 3, unexpected: 'must-drop-2' },
+        { kind: 'parent_lead' as const, file: 'base/甲.md', sectionId: 'sec-2', docOffset: 40, docEndOffset: 48, startLine: 9, endLine: 9 },
+      ], attachedFacts: [{
         term: '甲', start: 0, end: 1, matched: ['甲'], delivered: ['甲'], omittedReason: null, chars: 20, elapsedMs: 0,
         paths: [{ kind: 'exact' as const, category: 'operator', term: '甲', memberIds: ['甲'] }],
       }], linkedEntries: [{ sectionId: 'sec-1', file: 'base/甲.md', objectCount: 2, written: true }], unexpected: 'must-drop' }]
@@ -55,11 +58,23 @@ describe('共享基准快照', () => {
       writeSnapshot(file, snapshot)
       const restored = readSnapshot(file)
       expect(restored.records[0]?.ragDelivery?.[0]?.fulltextRanges).toEqual([range])
+      // 片段按契约字段逐层过滤未知字段，命中片段保留 chunkId，父级引导不携带。
+      expect(restored.records[0]?.ragDelivery?.[0]?.fragmentRanges).toEqual([
+        { kind: 'hit', file: 'base/甲.md', sectionId: 'sec-1', chunkId: 'base/甲.md#甲节', docOffset: 0, docEndOffset: 12, startLine: 3, endLine: 3 },
+        { kind: 'parent_lead', file: 'base/甲.md', sectionId: 'sec-2', docOffset: 40, docEndOffset: 48, startLine: 9, endLine: 9 },
+      ])
       expect(restored.records[0]?.ragDelivery?.[0]?.attachedFacts).toEqual(delivery[0]!.attachedFacts)
       expect(restored.records[0]?.ragDelivery?.[0]?.linkedEntries).toEqual([{ sectionId: 'sec-1', file: 'base/甲.md', objectCount: 2, written: true }])
       expect(readFileSync(file, 'utf8')).not.toContain('must-drop')
-      expect(aggregateSnapshot(restored).ragDeliveryStats).toMatchObject({ internalFactsQueries: 1, attachedCalls: 1, deliveredCards: 1, expandedRanges: 1, linkedHints: 1 })
+      expect(readFileSync(file, 'utf8')).not.toContain('must-drop-2')
+      expect(aggregateSnapshot(restored).ragDeliveryStats).toMatchObject({ internalFactsQueries: 1, attachedCalls: 1, deliveredCards: 1, expandedRanges: 1, fragmentRanges: 2, linkedHints: 1 })
       expect(createSnapshot({ ...input, records: [record()] }).records[0]).not.toHaveProperty('ragDelivery')
+      // 片段类型只接受 hit / parent_lead；非法类型拒绝写入快照。
+      const badFragment = { ...delivery[0]!, fragmentRanges: [{ ...delivery[0]!.fragmentRanges![0]!, kind: 'other' }] }
+      expect(() => createSnapshot({
+        ...input,
+        records: [{ ...record(), tools: ['rag_search' as const], ragDelivery: [badFragment] as unknown as typeof delivery }],
+      })).toThrow('ragDelivery 片段类型无效')
       range.nextOffset = 11
       expect(() => createSnapshot(input)).toThrow('原文范围与续读位置不一致')
     } finally {
