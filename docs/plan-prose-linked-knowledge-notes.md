@@ -98,6 +98,11 @@
 - **发现**：plan 第 2 步写作「办公室联络选择、源石制造」，正文实际标题为 `guides/高效率散件.md` 的 `## 办公室联络散件` 与 `## 源石碎片制造（搓玉）`。
 - **影响**：不修改 plan 正文；标注按实际「文件 + 标题路径」登记（`人工定位使用文件与标题路径` 本就是 plan 要求），测试断言使用实际标题路径。
 
+### 2026-09-15 — 数据层事实对象（原 knowledge/references）路径已迁移
+
+- **发现**：本 plan 与笔记中的 knowledge 数据层事实对象（名册、技能分片、技能等价组）已随目录迁移改记 knowledge/raw/，类别与歧义改记 knowledge/guides/；迁移细节见 docs/plan-progressive-disclosure-notes.md。
+- **影响**：不修改本 plan 正文，上述事实定位按新位置理解；迁移范围、manifest 计数与旧参数退役以 docs/plan-progressive-disclosure-notes.md 为准。
+
 ## 阻塞与解决
 
 （暂无）
