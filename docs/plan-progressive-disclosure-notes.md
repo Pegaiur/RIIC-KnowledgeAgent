@@ -56,6 +56,21 @@
 - **决策**：用户在本次验收中确认：「允许迁移先行，明确保留事实出口缺口；其余检查通过后提交该批」。据此仅调整本批执行顺序，不删除第 1 步验收要求。
 - **影响**：技能注记、同描述依据与名册边界出口继续保持未完成，facts 卡仍为 v7；迁移验收不代表这些信息已可经模型工具完整送达。旧 gold／白名单／基准完整性断言仍按既有例外留待第 6 步，其他新行为及受影响检查须通过；红态期间不合并、不发版、不登记新基线、不执行付费试验。
 
+### 2026-09-16 — 验收清单第 12 项暂不随第 6 步勾选
+
+- **背景**：第 6 步完成后，验收清单第 12 项列出的命令（typecheck、全套 test、reference-projection、prose-terms、catalog --check、validate、gold 校验与 dry）当前全部通过，但该项在清单中位于第 11 项（散文试点与关联标注）之后；plan 第 6 步的验收只列到 `hitrate --check-gold`。
+- **选项**：
+  - A：验证既已通过，随第 6 步一并勾选。
+  - B：保留未勾选，留待第 7 步内容拆分落地后按同一批命令重新验证时勾选。
+- **决策**：选 B。第 7 步会再次改动语料小节、gold、spec 与目录，验证结论应以拆分批次的实际结果为准；提前勾选会让「全部通过」早于它要验证的变更生效。
+- **影响**：doc-check D1 仍保留该活动 plan 的未勾选条目（第 11–14 项）；第 6 步的实际验证结果已逐条记入本笔记「实现调整」，不因未勾选而缺失。
+
+### 2026-09-16 — 两份迁移前基线继续保留的用户裁决
+
+- **背景**：第 6 步要求核对当前用途；只引用登记表、通用 report/compare 入口或「至少一份基线」要求，不能证明两份快照应继续保留。
+- **决策**：用户在本轮验收中明确授权：「明确保留两份作为迁移前基线，本次授权其继续保留」。按该裁决保留现有 GLM 正式基线与 Qwen 对照基线，适用范围限定为迁移前来源与检索配置；不据此把旧成绩用于迁移后同口径比较。
+- **影响**：此次明确授权闭合两份快照的保留处置；快照内容、历史计数、基线登记要求及机械校验均不改写。目录注入历史按 docs/plan-index-and-tags-notes.md 核对：两份均产生于关键词目录引入前。
+
 ## 实现调整
 
 ### 2026-09-15 — CLI 参数错误退出码由 2 统一为 1
@@ -208,6 +223,25 @@
 - **审查处置**：独立审查发现父级引导范围高报／漏记、小预算下实际附带 facts 却未计成功、默认无目录入口送达无阅读 ID 正文及未使用导入。按既定契约修复：引导展示与登记共用连续切片，余量不足整条省略；RAG 或 facts 任一实际送达即计成功；默认缺少有效阅读范围明确失败；删除失去消费者的导入和中间字段。
 - **TDD**：在 rag-delivery 与 section-navigation 的现有测试入口先观察 3 失败／25 通过，修复后 28 项通过。全套复测暴露 21 项旧无目录夹具的前置条件变化；循环、预算与 facts 边界用例显式选择原有全文回退，保持原断言；默认容量用例改用真实白名单目录。默认行为仍由真实目录的送达、续读、范围与缺目录回归覆盖，无独立探针或新诊断框架。
 - **验证**：修缮后全套 pnpm run test 为 729 通过／2 条旧 gold 失败（731 项、51 文件），pnpm run typecheck 通过。旧 gold、benchmark-integrity 断言与门禁脚本均未修改。目录开关的新增测试覆盖解析、分流辅助函数、四组合 prompt 与留档；真实 CLI 退出处理及 runQuery 缺省装配由静态审查核对，未宣称新增入口回归覆盖。
+
+### 2026-09-16 — 第 6 步：gold 定位分离、26 键迁移与门禁转绿
+
+- **范围**：本批实施 plan 第 6 步——gold 的 26 条 references 锚点按真源路径迁移；hitrate／benchmark-integrity 的完整定位目录改为「manifest 原文分块 + facts 声明的 11 份 raw 真源」并与检索范围分离；白名单/完整性断言按新职责调整并转绿；关键词目录重算与一致性检查；两份已登记快照的逐份用途核对与口径标注。TOOL_SCHEMA_VERSION 15、FACTS_RESULT_VERSION 8、prose-links v2、小节目录结构与 ID 算法均未变；第 7–8 步未实施。
+- **gold 迁移**：bench/gold.json 保留原结构 `{题号: {golden: [file#标题]}}`，20 题与 69 条 golden 未增删、未替换；26 条 references 锚点按迁移清单改路径——`references/类别.md` → `guides/类别.md`（S02、S03 共 2 条），`references/技能-*.md` 与 `references/技能等价组.md` → `raw/` 同名文件（24 条）；标题文本逐条保持原样，未按长度或难度调整。数据源.md 无 gold 键，未补替代证据。
+- **定位目录**：corpus.ts 新增 `loadGoldAnchorChunks(corpusRoot, rawDocIds)`＝`loadCorpus(manifest)` + 指定 raw 真源分块，复用同一 `splitChunks`；raw 清单由 facts/references.ts 新增的 `RAW_MACHINE_SOURCE_DOC_IDS` 单点声明（名册、技能等价组、9 个设施分片，共 11 份），references.ts 与 equivalence.ts 的加载器改用同一批文件常量，避免第二份人工名单。`resolveRawSourceFiles` 只接受 raw/ 下的普通 Markdown 文件：越界路径、非 raw 前缀、符号链接、非普通文件与缺失都直接报中文错误，不递归扫描 raw、不静默返回空库。
+- **消费者**：cli.ts 的 hitrate 与 `--check-gold` 改用定位目录（上下文行标注「manifest + raw 机械真源 11 份」）；benchmark-integrity.ts 的 gold 文档/锚点校验与 checkGold 改在定位目录解析，summary 新增 anchorFileCount／anchorChunkCount，`validate` 输出同步；RAG 检索、模型 sections 目录与 inputs 模型目录仍只用 manifest，两个目录不互相传错。
+- **完整性断言**：白名单断言维持「manifest 文件集合＝真实加载集合＝模型阅读集合、均不含 raw」与精确计数（19 份：base 12、guides 7）；「gold 来源有效」不再等价于属于 manifest，改由定位目录判定，raw 真源可定位但被检索范围排除。
+- **实测计数**：`node dist/cli.js validate` 通过并输出 20 题 / 20 个 gold 题号 / 20 个 spec 题号 / 19 个白名单文档 / 121 个切块 / 30 个定位文档（742 个定位切块）/ 2 个共享快照；`hitrate --check-gold` 通过（20 题 69 项 golden 全部可解析）；零费用 `hitrate --topk 3,5,10` 的范围计数为定位目录 742 块｜检索范围 121 块｜排除 621 块｜被排除 gold 键 24 项（@3 R 51.1%／P 48.3%／nDCG 0.623，@5 60.7%／36.0%／0.638，@10 66.7%／20.0%／0.664）。这是纯迁移时点观测，与迁移前（定位 749／检索 145／排除 23）口径不同，不直接横比；试点时点的分阶段对照仍按第 7 步口径另行记录。
+- **关键词目录**：`node dist/cli.js catalog --check` 通过，重算写回后无差异；纯迁移时点计数为 18 张表／178 条数据行／17,727 字符（含换行），后续内容拆分批次另行记录同一口径，避免把迁移与拆分两类变化混为一个改进。
+- **基线口径处置**：逐份核对两份已登记快照的真实消费者与用途——`2026-09-12T15-38-28-892Z-glm-low-default.json` 是正式质量基线的来源运行（消费者为根 AGENTS.md 质量基线表登记、`node dist/cli.js validate` 的「至少一条且全部登记」机械校验、report/compare 的快照入口），`2026-09-13T01-14-52-980Z-qwen-off-t0.json` 是 ADR-017 允许登记的跨 provider 对照基线；两者生成于 `references/` 目录、默认全文展开、尚未注入关键词目录时期，其迁移后同口径成绩对照不再适用。2026-09-16 用户在本轮验收中明确回复：「明确保留两份作为迁移前基线，本次授权其继续保留」。据此保留两份迁移前基线；保留依据为本次用户授权，非历史 exp 引用或机械校验要求。现有「至少一份基线」要求不变，只在根 AGENTS.md 说明列与段首标注「适用迁移前来源与检索范围」，快照内容与历史计数未改。
+- **TDD 与验证**：先改/补测试并观察失败——benchmark-integrity 更新 corpusFileCount 并新增定位目录精确计数与「gold 的 raw 来源可定位、不进检索」关系断言，corpus-allowlist 新增定位目录 2 条（真实语料组成＝manifest+11 raw、真源缺失/越界/非 raw 即失败），首轮定向读到 5 失败／2 通过；实现后 benchmark-integrity、corpus-allowlist、hitrate 共 26 项通过。全套 `pnpm run test` 为 734 通过／0 失败（51 文件），持续多批的 2 条旧 gold 锚点失败全部转绿。`pnpm run typecheck`、`pnpm run build`、`check:reference-projection`（9 分片一致）、`check:prose-terms`、`catalog --check`、`validate`、`hitrate --check-gold`、`pnpm run bench:dry` 均通过；`node scripts/doc-check.mjs` 由 15 条 D1 减为 14 条（本计划勾选第 10 项），无 D2–D5 与结构类错误。
+- **临时产物**：`bench-runs/2026-09-16T06-59-46-775Z-glm-low-default`（bench:dry 的 2 题假数据运行目录）已删除；hitrate 只输出终端、未落盘；未新增入库产物。
+- **未闭合**：验收清单第 12 项列出的命令在本批均已通过，但按步骤归属保留未勾选（见「决策偏离」）；第 11、13、14 项分别属第 7 步散文试点与第 8 步端到端/真实模型观测，均未开始。docs/adr/ADR-020、ADR-010 正文仍写 `knowledge/references/` 旧路径，历史 ADR 正文按维护口径未回改，迁移事实由 ADR-021 承载；knowledge/base/机制-心情与工休.md 首部的既有 raw 来源标注同样保持原样。
+
+### 2026-09-16 — 第 6 步验收记录
+
+- **复验**：全套 pnpm run test 为 734 通过／0 失败（51 文件）；typecheck、build、reference-projection、prose-terms、catalog --check、validate、hitrate --check-gold、bench:dry 全部通过。hitrate 仍为 69 个 gold 键，其中 24 个被检索范围排除，分母未删减；未设答对或命中率门槛。doc-check 仅 14 条活动计划 D1。
+- **修缮与清理**：纠正旧快照的目录注入历史，按本轮用户明确裁决登记保留范围；本轮 dry 产物 dev-temp/work/step6-acceptance 已经 tooling 清单预览和执行删除，清单同步移除。未新增探针、诊断框架或入库运行产物。
 
 ## 债务记录
 

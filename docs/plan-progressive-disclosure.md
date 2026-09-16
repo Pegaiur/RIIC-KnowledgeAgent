@@ -353,7 +353,7 @@ node scripts/doc-check.mjs
 - [x] read/RAG 实际范围与对象送达接通 trace、records、meta/report、inputs、snapshot，历史缺字段和旧名称兼容通过。
 - [x] expandFulltext 默认关闭及显式回退有效，必要 ID 优先，原有 query facts 附带契约保持。
 - [x] injectKeywordCatalog 默认关闭，CLI/fallback/目录生成及三处配置留档同步，未应用压缩 stash。
-- [ ] 全部延后项转绿：gold 定位分离与 26 键迁移、白名单/完整性断言、目录一致性和两份基线用途/口径处置完成。
+- [x] 全部延后项转绿：gold 定位分离与 26 键迁移、白名单/完整性断言、目录一致性和两份基线用途/口径处置完成。
 - [ ] 指定散文试点与组合小节审阅、精确关联及概念标注完成，gold/spec/目录随批更新并记录范围变化。
 - [ ] pnpm run typecheck、全套 pnpm run test、reference-projection、prose-terms、catalog --check、validate、gold 校验和 dry 全部通过。
 - [ ] 零费用端到端契约、分阶段 hitrate 和一轮真实模型观测完成，费用授权与结果记录完整，不设质量达标线。
