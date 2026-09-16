@@ -1,11 +1,24 @@
 import { readFileSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { loadConfig } from '../src/config.js'
 import { aggregate } from '../src/report.js'
 import { runBenchmark } from '../src/runner.js'
 import type { CostRecord } from '../src/types.js'
+
+/** 模块级卡片单例的调用计数：runner 应使用运行级快照，不回落单例（ADR-022 决策 6）。 */
+const singletonCalls = vi.hoisted(() => ({ count: 0 }))
+vi.mock('../src/facts/store.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/facts/store.js')>()
+  return {
+    ...actual,
+    getCardStore: () => {
+      singletonCalls.count += 1
+      return actual.getCardStore()
+    },
+  }
+})
 
 describe('runBenchmark：trace 逐题落盘', () => {
   it('LLM 失败时追加失败记录并保留 llm_call 事件', async () => {
@@ -32,8 +45,8 @@ describe('runBenchmark：trace 逐题落盘', () => {
         factsQueryListLimit: 3,
         sessionTimeoutMs: 300000,
         feedbackOnNoToolAnswer: true,
-        toolSchemaVersion: 14,
-        toolNames: ['rag_search', 'facts_search', 'read_section'],
+        toolSchemaVersion: 15,
+        toolNames: ['rag_search', 'facts_search', 'read'],
         modelSteps: 2,
         toolBatches: 0,
         toolCallsRequested: 0,
@@ -150,6 +163,27 @@ describe('runBenchmark：trace 逐题落盘', () => {
       )
       const answers = readFileSync(output.answersPath, 'utf-8')
       expect(answers).toContain('拒绝（预算/同批超量拒绝）：1')
+    } finally {
+      rmSync(outDir, { recursive: true, force: true })
+    }
+  })
+
+  it('卡片 store 来自运行级快照，不回落跨运行单例', async () => {
+    const outDir = mkdtempSync(join(tmpdir(), 'rag-snapshot-runner-'))
+    try {
+      const config = loadConfig('qwen')
+      config.retriever = 'hybrid'
+      config.feedbackOnNoToolAnswer = false
+      const before = singletonCalls.count
+      const output = await runBenchmark(
+        [{ id: 'RUN-SNAPSHOT-1', category: 'fact', question: '第一题' }],
+        { thinking: 'off', dry: true, outDir, config },
+      )
+      const inputs = JSON.parse(readFileSync(output.inputsPath, 'utf-8')) as Record<string, any>
+
+      // dry 的 hybrid 流程会执行 facts_search：卡片确实来自运行级快照，而不是模块级单例。
+      expect(inputs.facts).toMatchObject({ status: 'captured', cardCount: expect.any(Number) })
+      expect(singletonCalls.count).toBe(before)
     } finally {
       rmSync(outDir, { recursive: true, force: true })
     }

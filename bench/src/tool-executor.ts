@@ -2,13 +2,14 @@
  * 独立函数工具 schema 与按批次预算执行器。
  * 工具函数名直接完成路由；执行器仍共用一套预算、校验和底层检索门面。
  */
-import type { AttachedFactsObservation, FulltextRange, LinkedEntryObservation, LinkedFactsObservation } from './delivery.js'
-export type { AttachedFactsObservation, FulltextRange, LinkedEntryObservation, LinkedFactsObservation } from './delivery.js'
+import type { AttachedFactsObservation, FulltextRange, LinkedEntryObservation, ReadDeliveryRecord } from './delivery.js'
+export type { AttachedFactsObservation, FulltextRange, LinkedEntryObservation, ReadDeliveryRecord } from './delivery.js'
 import { createHash } from 'node:crypto'
 import { effectiveAttachFacts, loadConfig, type BenchConfig, type RetrieverId } from './config.js'
 import { isFulltextFile } from './corpus.js'
 import { search, type IndexEntry } from './retriever.js'
-import { conceptIdentity, serializeConceptCard, type ProseLinkIndex, type ResolvedProseLink } from './prose-links.js'
+import { readObjectsFor, type ProseLinkIndex, type ResolvedProseLink } from './prose-links.js'
+import { buildReadPage, type ReadPageDelivery } from './read.js'
 import type { SectionDirectory, SectionEntry } from './sections.js'
 import { isFactTool, type BenchQuery, type DocChunk, type ToolCall } from './types.js'
 import {
@@ -25,10 +26,14 @@ import {
 } from './facts/store.js'
 
 /** 当前可下发的工具集合；grep_search 等历史名不在其中。 */
-export type CurrentToolId = 'rag_search' | 'facts_search' | 'read_section'
+export type CurrentToolId = 'rag_search' | 'facts_search' | 'read'
 
 /** 工具定义（含描述）变化时递增；快照保留该值供对照分组，指纹随描述变化。 */
-export const TOOL_SCHEMA_VERSION = 14 as const
+export const TOOL_SCHEMA_VERSION = 15 as const
+
+/** 旧原文读取工具名退役提示（ADR-022 决策 1）：按未知工具拒绝，不静默改译。 */
+export const RETIRED_READ_SECTION_MESSAGE = 'read_section 已退役；请改用 read（参数：section_id、offset、facts_offset），原文与关联事实在同一次读取中返回；本次调用未执行。'
+const RETIRED_READ_SECTION_TOOL = 'read_section'
 
 export interface ToolBudgetState {
   /** 非空执行成功额度上限（每题默认 5） */
@@ -136,8 +141,8 @@ export interface ToolExecutionResult {
   attachedFacts?: AttachedFactsObservation[]
   /** rag_search 关联事实入口提示观测（ADR-020）；无提示时省略。 */
   linkedEntries?: LinkedEntryObservation[]
-  /** read_section 显式展开关联事实的实际送达观测（ADR-020）；未展开时省略。 */
-  linkedFacts?: LinkedFactsObservation
+  /** read 的单次送达台账（ADR-022 决策 6）；非 read 调用或未识别时省略。 */
+  readDelivery?: ReadDeliveryRecord
   message?: string
   fatal?: boolean
 }
@@ -153,9 +158,9 @@ export interface KnowledgeToolContext {
   query: BenchQuery
   chunks: DocChunk[]
   index: IndexEntry
-  /** 运行级原文小节目录；仅开放阅读能力的模式提供，用于展示上下文与 read_section。 */
+  /** 运行级原文小节目录；仅开放阅读能力的模式提供，用于展示上下文与 read。 */
   sections?: SectionDirectory
-  /** 运行级散文小节关联索引；提供时 rag_search 给出可展开入口，read_section 可显式展开。 */
+  /** 运行级散文小节关联索引；提供时 rag_search 给出可展开入口，read 按该索引返回登记事实。 */
   links?: ProseLinkIndex
   /** 由 Agent 共享的全题注入去重列表。 */
   injectedIds?: string[]
@@ -163,6 +168,11 @@ export interface KnowledgeToolContext {
   onFactsStoreUsed?: (store: CardStore) => void
   /** facts store 加载失败时通知 runner，随后继续抛出原错误。 */
   onFactsStoreLoadFailed?: (error: unknown) => void
+  /**
+   * 运行级 facts 卡片快照提供者（ADR-022 决策 6）：由 runner 装配并注入，
+   * 供 facts 工具与 read 共用同一份实例；缺省时按模块级单例惰性加载。
+   */
+  factsStore?: () => CardStore
 }
 
 export interface KnowledgeToolExecutor {
@@ -176,12 +186,12 @@ const ATTEMPT_BUDGET_HINT = '工具获准尝试次数已用尽，请依据已有
 type JsonObject = Record<string, unknown>
 
 /** 与配置无关的静态工具定义；facts_search 的 maxItems 由配置上限派生，见 factsSearchDefinition。 */
-const STATIC_TOOL_DEFINITIONS: Record<'rag_search' | 'read_section', JsonObject> = {
+const STATIC_TOOL_DEFINITIONS: Record<'rag_search' | 'read', JsonObject> = {
   rag_search: {
     type: 'function',
     function: {
       name: 'rag_search',
-      description: '检索机制、组合、排班及培养建议，返回知识库片段或原文范围。结果可含供 read_section 使用的小节或范围 ID、分页信息及上级范围入口；登记了关联事实的小节会给出可展开入口（仅导航，不返回事实）；hybrid 模式还可能返回附带事实卡或未附带提示，以实际返回内容为准。',
+      description: '检索机制、组合、排班及培养建议，返回知识库片段或原文范围。结果可含供 read 使用的小节或范围 ID、分页信息及上级范围入口；登记了关联事实的小节会给出可展开入口（仅导航，不返回事实）；hybrid 模式还可能返回附带事实卡或未附带提示，以实际返回内容为准。',
       parameters: {
         type: 'object',
         properties: {
@@ -192,17 +202,17 @@ const STATIC_TOOL_DEFINITIONS: Record<'rag_search' | 'read_section', JsonObject>
       },
     },
   },
-  read_section: {
+  read: {
     type: 'function',
     function: {
-      name: 'read_section',
-      description: '按已返回的 ID 读取知识库原文小节或范围，可分段续读；ID 可来自检索结果、续读信息或上级范围入口。返回的 complete=false 表示该范围还有后续页，complete=true 仅表示该范围读完，不表示问题已完整解决。可选 linked=true 时改为展开该小节登记关联的事实卡（直接读取登记对象，不走别名/子串/同名集合扩展），不返回原文正文，且与 offset 互斥。',
+      name: 'read',
+      description: '按已返回的 ID 读取知识库原文与明确登记关联的事实，两者各有独立偏移、可分别分段续读；ID 可来自检索结果、分页信息或上级范围入口。offset 续读原文正文，facts_offset 续读关联事实；返回的 complete=false 表示该范围还有后续页，complete=true 仅表示该范围读完，不表示问题已完整解决。',
       parameters: {
         type: 'object',
         properties: {
           section_id: { type: 'string', minLength: 1, description: '工具结果已给出的小节或范围 ID，原样使用。' },
-          offset: { type: 'integer', minimum: 0, description: '可选，正文 UTF-16 索引，默认 0；用返回的 next_offset 续读' },
-          linked: { type: 'boolean', description: '可选；设为 true 时只展开该小节登记关联的事实卡，不返回原文正文，且不能与 offset 同时使用。' },
+          offset: { type: 'integer', minimum: 0, description: '可选，原文正文 UTF-16 索引，默认 0；用返回的 next_offset 续读' },
+          facts_offset: { type: 'integer', minimum: 0, description: '可选，关联事实对象序号，默认 0；用返回的 next_facts_offset 续读' },
         },
         required: ['section_id'],
         additionalProperties: false,
@@ -258,8 +268,8 @@ function toolDefinitionFor(name: CurrentToolId, factsQueryListLimit: number): Js
 
 function allowedOperations(retriever: RetrieverId): CurrentToolId[] {
   return retriever === 'hybrid'
-    ? ['rag_search', 'facts_search', 'read_section']
-    : ['rag_search', 'read_section']
+    ? ['rag_search', 'facts_search', 'read']
+    : ['rag_search', 'read']
 }
 
 /** 返回当前模式实际发送的独立函数工具数组；facts maxItems 由调用方传入的配置上限派生。 */
@@ -394,6 +404,18 @@ function exhaustedResult(call: ToolCall, state: ToolBudgetState): ToolExecutionR
     data: message,
     budgetRemaining: state.successLimit - state.successUsed,
     message,
+    // 被拒绝的 read 没有解析参数也不进入执行：仍按契约留下 sectionId=null 的不可送达台账（ADR-022 决策 6）。
+    ...(call.name === 'read'
+      ? {
+          readDelivery: {
+            callId: call.id,
+            status: 'budget_exhausted',
+            sectionId: null,
+            factsResultVersion: FACTS_RESULT_VERSION,
+            resultChars: message.length,
+          },
+        }
+      : {}),
   }
 }
 
@@ -418,12 +440,26 @@ async function executeOne(
   config: BenchConfig,
   state: ToolBudgetState,
 ): Promise<ToolExecutionResult> {
+  // 旧原文读取工具名按未知工具规则拒绝并给出新工具名；不静默改译，也不记为新 read 台账。
+  if (call.name === RETIRED_READ_SECTION_TOOL) {
+    return result(call, call.name, 'unknown_operation', false, RETIRED_READ_SECTION_MESSAGE, state)
+  }
   if (!allowed.has(call.name as CurrentToolId)) {
     return result(call, call.name, 'unknown_operation', false, `当前检索模式不开放工具：${call.name}`, state)
   }
   const parsed = parseToolParams(call.name as CurrentToolId, call.arguments, config.factsQueryListLimit)
   if (!parsed.value) {
-    return result(call, call.name, 'invalid_params', false, parsed.reason, state)
+    return result(
+      call,
+      call.name,
+      'invalid_params',
+      false,
+      parsed.reason,
+      state,
+      undefined,
+      false,
+      readDeliveryFor(call, 'invalid_params', parsed.readSectionId ?? null, undefined, parsed.reason.length),
+    )
   }
 
   try {
@@ -432,7 +468,7 @@ async function executeOne(
       ?? (isFactTool(call.name)
         ? output.hitIds.length > 0 ? 'success' : 'empty'
         : output.data ? 'success' : 'empty')
-    // 上下文相关的参数错误（如 read_section 越界 offset）不计入已执行，但仍占用一次获准尝试。
+    // 上下文相关的参数错误（如 read 越界 offset）不计入已执行，但仍占用一次获准 attempt。
     const executed = status !== 'invalid_params'
     if (executed) state.executed++
     const factsPage = isFactTool(call.name) ? output.factsPage : undefined
@@ -447,12 +483,16 @@ async function executeOne(
           ...(factsPage?.tagPage === undefined ? {} : { tagPage: factsPage.tagPage }),
         }
       : undefined
+    const data = output.data || '（无匹配结果）'
+    const readDelivery = call.name === 'read'
+      ? readDeliveryFor(call, status, parsed.value.section_id as string, output.readDelivery, data.length)
+      : undefined
     return {
       callId: call.id,
       operation: call.name,
       status,
       executed,
-      data: output.data || '（无匹配结果）',
+      data,
       budgetRemaining: state.remaining,
       actualParams: parsed.value,
       hitIds: output.hitIds,
@@ -460,24 +500,50 @@ async function executeOne(
       fulltextRanges: output.fulltextRanges,
       attachedFacts: output.attachedFacts,
       linkedEntries: output.linkedEntries,
-      linkedFacts: output.linkedFacts,
+      readDelivery,
       factsResult,
-      // 操作直接返回的 error（如原文扩展容量不足）需带上文本，供 trace.error 与复盘定位；
-      // 与 catch 分支的错误口径一致，非 fatal，不扣成功额度。
+      ...(output.fatal === undefined ? {} : { fatal: output.fatal }),
+      // 操作返回的 error 带上文本供 trace.error 定位；容量错误非 fatal，加载或投影异常保留 fatal。
       ...(status === 'error' ? { message: output.data } : {}),
     }
   } catch (error) {
     state.executed++
+    const message = error instanceof Error ? error.message : String(error)
     return result(
       call,
       call.name,
       'error',
       true,
-      error instanceof Error ? error.message : String(error),
+      message,
       state,
       parsed.value,
       true,
+      readDeliveryFor(call, 'error', parsed.value.section_id as string, undefined, message.length),
     )
+  }
+}
+
+/**
+ * read 台账（ADR-022 决策 6）：只有识别到的新 read 调用才记录；失败在送达前不写实际范围，
+ * resultChars 取最终回写文本长度。旧 read_section 调用不进入本台账。
+ */
+function readDeliveryFor(
+  call: ToolCall,
+  status: ToolResultStatus,
+  sectionId: string | null,
+  observed: ReadPageDelivery | undefined,
+  resultChars: number,
+): ReadDeliveryRecord | undefined {
+  if (call.name !== 'read') return undefined
+  return {
+    callId: call.id,
+    status,
+    sectionId,
+    factsResultVersion: FACTS_RESULT_VERSION,
+    ...(observed?.bodyRange === undefined ? {} : { bodyRange: observed.bodyRange }),
+    ...(observed?.factsPage === undefined ? {} : { factsPage: observed.factsPage }),
+    ...(observed?.deliveredObjects === undefined ? {} : { deliveredObjects: observed.deliveredObjects }),
+    resultChars,
   }
 }
 
@@ -490,6 +556,7 @@ function result(
   state: ToolBudgetState,
   actualParams?: unknown,
   fatal = false,
+  readDelivery?: ReadDeliveryRecord,
 ): ToolExecutionResult {
   return {
     callId: call.id,
@@ -501,6 +568,7 @@ function result(
     actualParams,
     message,
     fatal,
+    ...(readDelivery === undefined ? {} : { readDelivery }),
   }
 }
 
@@ -521,6 +589,8 @@ interface ParsedToolParams {
   factsItems?: FactsParseItem[]
   /** facts_search 专用：本次走 queries 还是 tags 分支。 */
   factsMode?: 'queries' | 'tags'
+  /** read 专用：参数整体非法时仍可识别的 section_id；无法识别为 null。 */
+  readSectionId?: string | null
 }
 
 function parseToolParams(
@@ -536,12 +606,12 @@ function parseToolParams(
   }
   if (!isObject(raw)) return { reason: `${tool} 参数必须是对象；参数示例：${exampleFor(tool)}` }
 
-  if (tool === 'read_section') return parseReadSectionParams(raw, exampleFor(tool))
+  if (tool === 'read') return parseReadParams(raw, exampleFor(tool))
   if (tool === 'facts_search') return parseFactsParams(raw, factsQueryListLimit, exampleFor(tool))
 
   const allowedKeys = ['query']
   const unknownKey = Object.keys(raw).find((key) => !allowedKeys.includes(key))
-  if (unknownKey) return { reason: `${tool} 不支持参数字段 ${unknownKey}；参数示例：${exampleFor(tool)}` }
+  if (unknownKey !== undefined) return { reason: `${tool} 不支持参数字段 ${unknownKey}；参数示例：${exampleFor(tool)}` }
 
   return parseRequiredString(raw, tool, 'query', exampleFor(tool))
 }
@@ -558,7 +628,7 @@ function parseFactsParams(
 ): ParsedToolParams {
   const allowedKeys = ['queries', 'tags', 'offset']
   const unknownKey = Object.keys(input).find((key) => !allowedKeys.includes(key))
-  if (unknownKey) return { reason: `facts_search 不支持参数字段 ${unknownKey}；参数示例：${example}` }
+  if (unknownKey !== undefined) return { reason: `facts_search 不支持参数字段 ${unknownKey}；参数示例：${example}` }
 
   const hasQueries = input.queries !== undefined
   const hasTags = input.tags !== undefined
@@ -616,33 +686,37 @@ function parseFactsTags(raw: unknown, rawOffset: unknown, limit: number, example
   return { value: { tags: legalTags, offset }, factsItems, factsMode: 'tags', reason: '' }
 }
 
-/** read_section 参数：section_id 必填非空字符串，offset 可选非负整数，linked 可选布尔（与 offset 互斥），额外字段拒绝。 */
-function parseReadSectionParams(
+/**
+ * read 参数：section_id 必填非空字符串，offset 与 facts_offset 可选非负安全整数，额外字段（含旧 linked）拒绝。
+ * 参数整体非法时仍尽力识别 section_id，供 readDelivery 记录；不因任何非法参数执行读取。
+ */
+function parseReadParams(
   input: JsonObject,
   example: string,
-): { value?: Record<string, unknown>; reason: string } {
-  const allowedKeys = ['section_id', 'offset', 'linked']
-  const unknownKey = Object.keys(input).find((key) => !allowedKeys.includes(key))
-  if (unknownKey) return { reason: `read_section 不支持参数字段 ${unknownKey}；参数示例：${example}` }
+): ParsedToolParams {
+  const sectionId = typeof input.section_id === 'string' && input.section_id.trim() !== ''
+    ? input.section_id.trim()
+    : null
+  const reject = (reason: string): ParsedToolParams => ({ reason, readSectionId: sectionId })
 
-  if (typeof input.section_id !== 'string' || input.section_id.trim() === '') {
-    return { reason: `read_section 缺少非空字符串 section_id；参数示例：${example}` }
-  }
-  if (input.linked !== undefined && typeof input.linked !== 'boolean') {
-    return { reason: `read_section 的 linked 必须是布尔值；参数示例：${example}` }
-  }
-  const linked = input.linked === true
-  if (linked && input.offset !== undefined) {
-    return { reason: `read_section 的 linked 与 offset 互斥；参数示例：${example}` }
-  }
-  let offset = 0
-  if (input.offset !== undefined) {
-    if (typeof input.offset !== 'number' || !Number.isInteger(input.offset) || input.offset < 0) {
-      return { reason: `read_section 的 offset 必须是非负整数；参数示例：${example}` }
+  const allowedKeys = ['section_id', 'offset', 'facts_offset']
+  const unknownKey = Object.keys(input).find((key) => !allowedKeys.includes(key))
+  if (unknownKey !== undefined) return reject(`read 不支持参数字段 ${unknownKey}；参数示例：${example}`)
+  if (sectionId === null) return reject(`read 缺少非空字符串 section_id；参数示例：${example}`)
+
+  const offsets: Record<string, number> = { offset: 0, facts_offset: 0 }
+  for (const field of ['offset', 'facts_offset'] as const) {
+    const raw = input[field]
+    if (raw === undefined) continue
+    if (typeof raw !== 'number' || !Number.isSafeInteger(raw) || raw < 0) {
+      return reject(`read 的 ${field} 必须是非负安全整数；参数示例：${example}`)
     }
-    offset = input.offset
+    offsets[field] = raw
   }
-  return { value: { section_id: input.section_id.trim(), offset, ...(linked ? { linked: true } : {}) }, reason: '' }
+  return {
+    value: { section_id: sectionId, offset: offsets.offset!, facts_offset: offsets.facts_offset! },
+    reason: '',
+  }
 }
 
 function parseRequiredString(
@@ -658,7 +732,7 @@ function parseRequiredString(
 }
 
 function exampleFor(tool: CurrentToolId): string {
-  if (tool === 'read_section') return '{"section_id":"检索结果中的小节 ID"}'
+  if (tool === 'read') return '{"section_id":"检索结果中的小节 ID"}'
   if (tool === 'facts_search') return '{"queries":["完整词条"]}'
   return '{"query":"查询"}'
 }
@@ -678,11 +752,12 @@ function runOperation(
   fulltextRanges?: FulltextRange[]
   attachedFacts?: AttachedFactsObservation[]
   linkedEntries?: LinkedEntryObservation[]
-  linkedFacts?: LinkedFactsObservation
+  readDelivery?: ReadPageDelivery
   status?: ToolResultStatus
+  fatal?: boolean
 } {
   if (operation === 'rag_search') return ragSearchOperation(parsed.value!, context, config)
-  if (operation === 'read_section') return readSectionOperation(parsed.value!, context, config)
+  if (operation === 'read') return readOperation(parsed.value!, context, config)
   return factsSearchOperation(parsed, context)
 }
 
@@ -936,7 +1011,7 @@ function ragSearchOperation(
 function loadFactsStore(context: KnowledgeToolContext): CardStore {
   let store: CardStore
   try {
-    store = getCardStore()
+    store = context.factsStore ? context.factsStore() : getCardStore()
   } catch (error) {
     try {
       context.onFactsStoreLoadFailed?.(error)
@@ -1129,9 +1204,9 @@ function appendFulltextBlock(body: string, separator: string, doc: SectionEntry,
   }
 }
 
-/** 续读元数据行；含可复用文档范围 ID，可用 read_section(section_id=ID, offset=next_offset) 续读。 */
+/** 续读元数据行；给出可直接复制的 read 调用，用 offset 续读同一范围的原文。 */
 function renderFulltextContinuation(doc: SectionEntry, offset: number, nextOffset: number, totalChars: number): string {
-  return `续读：ID ${doc.sectionId}｜offset ${offset}｜next_offset ${nextOffset}｜complete false｜正文 ${totalChars} 字符`
+  return `续读：read(section_id="${doc.sectionId}", offset=${nextOffset})｜complete false｜正文 ${totalChars} 字符`
 }
 
 function renderFulltextCapacityError(file: string, maxChars: number): string {
@@ -1311,6 +1386,18 @@ function indentBlock(text: string): string {
   return text.split('\n').map((line) => `  ${line}`).join('\n')
 }
 
+function countNewlines(text: string): number {
+  let count = 0
+  for (let i = 0; i < text.length; i++) if (text.charCodeAt(i) === 10) count++
+  return count
+}
+
+/** 在最后一个换行处截断；单行超长时保留原样，避免空页导致无法续读。 */
+function cutAtLine(text: string): string {
+  const newline = text.lastIndexOf('\n')
+  return newline > 0 ? text.slice(0, newline) : text
+}
+
 function dedupeCanonicals(values: readonly string[]): string[] {
   const seen = new Set<string>()
   const result: string[] = []
@@ -1429,7 +1516,7 @@ function buildSectionContext(
       }
     }
     if (offerLines.length > 0) {
-      lines.push({ text: '【关联事实入口】以下小节登记了可展开的关联事实；提示只做导航，用 read_section 的 linked 选择展开：' })
+      lines.push({ text: '【关联事实入口】以下小节登记了可展开的关联事实；提示只做导航，用 read 读取该小节即可同时取得原文与登记事实：' })
       lines.push(...offerLines)
     }
   }
@@ -1465,198 +1552,93 @@ function appendSectionContext(data: string, lines: SectionContextLine[], maxChar
   return out
 }
 
-/** 单次 read_section 的正文页上限（UTF-16 字符）。 */
-const READ_SECTION_PAGE_CHARS = 6000
+/** 无关联索引时的空索引：read 仍可读取原文，只是没有登记事实可送。 */
+const EMPTY_PROSE_LINK_INDEX: ProseLinkIndex = { links: [], bySection: new Map(), issues: [] }
 
-function readSectionOperation(
-  params: Record<string, unknown>,
-  context: KnowledgeToolContext,
-  config: BenchConfig,
-): { data: string; hitIds: string[]; injectedIds: string[]; status: ToolResultStatus; linkedFacts?: LinkedFactsObservation } {
-  const sectionId = params.section_id as string
-  const offset = params.offset as number
-  const directory = context.sections
-  if (!directory) {
-    return { data: `本运行未启用小节阅读（没有小节目录），无法读取：${sectionId}。`, hitIds: [], injectedIds: [], status: 'empty' }
-  }
-  const section = directory.get(sectionId)
-  if (!section) {
-    return { data: `本运行目录中没有该小节：${sectionId}。不会改为模糊搜索。`, hitIds: [], injectedIds: [], status: 'empty' }
-  }
-  if (params.linked === true) return readLinkedFactsOperation(section, context)
-  if (offset > section.body.length) {
-    return {
-      data: `read_section 的 offset 超出小节正文长度（${section.body.length}）：${offset}`,
-      hitIds: [],
-      injectedIds: [],
-      status: 'invalid_params',
-    }
-  }
-  const remaining = section.body.length - offset
-  const metaLength = sectionMetaLength(section, offset)
-  // 元数据无法容纳，或剩余正文连一个字符都放不下时，明确报错，不静默放宽上限。
-  if (metaLength > config.maxContextChars || (remaining > 0 && metaLength + 1 > config.maxContextChars)) {
-    return {
-      data: `read_section 无法在 maxContextChars=${config.maxContextChars} 内返回正文：分页元数据已占约 ${metaLength} 字符。请提高 maxContextChars 后重试。`,
-      hitIds: [],
-      injectedIds: [],
-      status: 'error',
-    }
-  }
-  // 末尾读取（offset 恰等于正文长度）或空小节正文只返回分页元数据，按非空证据判定为 empty，不扣成功额度。
-  return {
-    data: renderSectionPage(section, offset, config.maxContextChars, directory),
-    hitIds: [],
-    injectedIds: [],
-    status: remaining > 0 ? 'success' : 'empty',
-  }
+const TRUNCATED_ID_MARKER = '…（已截断）'
+
+/**
+ * 回显模型提供的 section_id 的安全提示：整条文本不超过 maxContextChars，
+ * 超预算时按字符截断 ID 且不拆 UTF-16 代理对，保证 empty 结果的 data 同样守住预算。
+ */
+function boundIdMessage(prefix: string, sectionId: string, suffix: string, maxChars: number): string {
+  const message = `${prefix}${sectionId}${suffix}`
+  if (message.length <= maxChars) return message
+  const budget = maxChars - prefix.length - suffix.length - TRUNCATED_ID_MARKER.length
+  if (budget <= 0) return message.slice(0, Math.max(0, maxChars))
+  const head = sectionId.slice(0, budget)
+  const last = head.length === 0 ? 0 : head.charCodeAt(head.length - 1)
+  const safeHead = last >= 0xd800 && last <= 0xdbff ? head.slice(0, -1) : head
+  return `${prefix}${safeHead}${TRUNCATED_ID_MARKER}${suffix}`
 }
 
 /**
- * read_section 的 linked 展开（ADR-020 决策 4）：直接按人工登记引用读取记录卡，
- * 不经过别名、子串或同名全部返回入口，也不递归扩大对象集合；返回范围即登记对象。
- * 校验不扩展到散文数值抽取、阈值与练度断言。
- * TODO(tech-debt) PLK-1：关联载荷首版不设分页或截断（plan 非目标），结果体积可能超过 maxContextChars；
- * 重启条件：引入分页或体积优化时须同时重定义 complete 与命中/送达口径。
+ * read（ADR-022 决策 1、4、6）：一次调用同时返回所读范围的原文子树与明确登记关联的事实，
+ * 两侧各自分页。本函数只做定位、范围校验与快照装配；内容组装、容量契约与行范围在 read.ts。
+ * 未知 ID 返回 empty 并提示使用本次返回的 ID，不做模糊搜索、不访问文件系统。
  */
-function readLinkedFactsOperation(
-  section: SectionEntry,
+function readOperation(
+  params: Record<string, unknown>,
   context: KnowledgeToolContext,
-): { data: string; hitIds: string[]; injectedIds: string[]; status: ToolResultStatus; linkedFacts: LinkedFactsObservation } {
-  if (context.links && context.links.issues.length > 0) {
-    throw new Error(`关联元数据无法读取：${context.links.issues.join('\n')}`)
-  }
-  const link = context.links?.bySection.get(section.sectionId)
-  if (!link || (link.objects.length === 0 && link.unresolved.length === 0)) {
+  config: BenchConfig,
+): { data: string; hitIds: string[]; injectedIds: string[]; status: ToolResultStatus; readDelivery: ReadPageDelivery; fatal?: boolean } {
+  const sectionId = params.section_id as string
+  const directory = context.sections
+  if (!directory) {
     return {
-      data: `该小节没有登记可展开的关联事实：${section.sectionId}。不会改为模糊搜索或别名展开。`,
+      data: boundIdMessage('本运行未启用小节阅读（没有小节目录），无法读取：', sectionId, '。使用当前返回的 ID。', config.maxContextChars),
       hitIds: [],
       injectedIds: [],
       status: 'empty',
-      linkedFacts: { sectionId: section.sectionId, requested: [], delivered: [], deliveredConcepts: [], omitted: [] },
+      readDelivery: {},
     }
   }
-
-  const store = loadFactsStore(context)
-  const requested: string[] = []
-  const delivered: string[] = []
-  const deliveredConcepts: string[] = []
-  const omitted: Array<{ ref: string; reason: string }> = []
-  const bodies: string[] = []
-  const seen = new Set<string>()
-  const seenConcepts = new Set<string>()
-  const refLines: string[] = []
-  for (const object of link.objects) {
-    requested.push(object.ref)
-    if (object.kind === 'concept') {
-      const key = conceptIdentity(object)
-      if (seenConcepts.has(key)) {
-        refLines.push(`- ${object.ref}（与已返回概念同一定位，去重）`)
-        continue
-      }
-      seenConcepts.add(key)
-      deliveredConcepts.push(object.name)
-      bodies.push(serializeConceptCard(object))
-      refLines.push(`- ${object.ref} → 概念：${object.name}`)
-      continue
+  const section = directory.get(sectionId)
+  if (!section) {
+    // 模型可能回传任意长度的 ID；回显提示同样受 maxContextChars 约束，不整段超发。
+    return {
+      data: boundIdMessage('本运行目录中没有该小节：', sectionId, '。不会改为模糊搜索；请使用本次返回的 ID。', config.maxContextChars),
+      hitIds: [],
+      injectedIds: [],
+      status: 'empty',
+      readDelivery: {},
     }
-    if (seen.has(object.canonical)) {
-      refLines.push(`- ${object.ref}（与已返回卡同卡，去重）`)
-      continue
+  }
+  // 关联对象与原文来自同一次运行快照；关联索引损坏时显式报错，不静默降级成空关联。
+  const objects = readObjectsFor(section.sectionId, directory, context.links ?? EMPTY_PROSE_LINK_INDEX)
+  const factsOffset = params.facts_offset as number
+  try {
+    const store = objects.some((object) => object.kind === 'card') ? loadFactsStore(context) : undefined
+    const page = buildReadPage({
+      section,
+      directory,
+      objects,
+      ...(store === undefined ? {} : { store }),
+      offset: params.offset as number,
+      factsOffset,
+      maxChars: config.maxContextChars,
+      factsResultVersion: FACTS_RESULT_VERSION,
+    })
+    return {
+      data: page.data,
+      hitIds: page.hitIds,
+      injectedIds: page.injectedIds,
+      status: page.status,
+      readDelivery: page.delivery,
     }
-    const card = store.byCanonical.get(object.canonical)
-    if (!card) {
-      omitted.push({ ref: object.ref, reason: '记录卡未找到' })
-      continue
+  } catch (error) {
+    // 已知对象序列与有效偏移仍须留档；实际证据未送达，原有 fatal 错误语义保持。
+    return {
+      data: error instanceof Error ? error.message : String(error),
+      hitIds: [],
+      injectedIds: [],
+      status: 'error',
+      fatal: true,
+      readDelivery: factsOffset <= objects.length
+        ? { factsPage: { offset: factsOffset, nextOffset: null, total: objects.length, returned: 0, complete: false } }
+        : {},
     }
-    seen.add(object.canonical)
-    delivered.push(object.canonical)
-    bodies.push(serializeCard(card, {}))
-    refLines.push(`- ${object.ref} → ${object.canonical}`)
   }
-  // 解析失败的登记引用同样计入 requested，并在 omitted 中说明原因，不静默丢弃。
-  for (const item of link.unresolved) {
-    requested.push(item.ref)
-    omitted.push({ ref: item.ref, reason: item.reason })
-  }
-
-  const path = section.level === 0 ? '（文档根节点）' : [...section.ancestors, section.heading].join(' > ')
-  const lines = [
-    `【read_section｜关联事实】${section.sectionId}`,
-    `标题路径：${path}`,
-    `关联对象：${requested.length} 个｜已返回记录卡：${delivered.length} 张｜已返回概念：${deliveredConcepts.length} 条`,
-    '说明：直接按人工登记引用读取，不经过别名、子串或同名集合扩展；范围即登记对象。',
-    ...refLines,
-  ]
-  if (omitted.length > 0) lines.push(`未返回：${omitted.map((item) => `${item.ref}（${item.reason}）`).join('；')}`)
-  const body = bodies.join('\n\n')
-  return {
-    data: body ? `${lines.join('\n')}\n\n${body}` : lines.join('\n'),
-    hitIds: delivered,
-    injectedIds: [...delivered],
-    status: omitted.length > 0 ? 'error' : delivered.length + deliveredConcepts.length > 0 ? 'success' : 'empty',
-    linkedFacts: { sectionId: section.sectionId, requested, delivered, deliveredConcepts, omitted },
-  }
-}
-
-/** 分页元数据（含与正文之间的空行）的保守长度，用于先扣除元数据预算。 */
-function sectionMetaLength(section: SectionEntry, offset: number): number {
-  return sectionMetaPrefix(section, offset, '', Number.MAX_SAFE_INTEGER, false).length + 2
-}
-
-/** 固定格式的分页元数据；正文页决定实际行范围。 */
-function sectionMetaPrefix(
-  section: SectionEntry,
-  offset: number,
-  page: string,
-  nextOffset: number | null,
-  complete: boolean,
-): string {
-  const path = section.level === 0 ? '（文档根节点）' : [...section.ancestors, section.heading].join(' > ')
-  const startLine = section.startLine + countNewlines(section.body.slice(0, offset))
-  const endLine = page.length === 0 ? startLine - 1 : startLine + countNewlines(page)
-  return [
-    `【read_section】${section.sectionId}`,
-    `标题路径：${path}`,
-    `行范围：L${startLine}-${endLine}｜offset：${offset}｜next_offset：${nextOffset === null ? 'null' : nextOffset}｜complete：${complete}`,
-  ].join('\n')
-}
-
-/** 渲染一页原文；元数据先占预算，必要时在行边界缩短，保证可续读且不丢中段。 */
-function renderSectionPage(section: SectionEntry, offset: number, maxContextChars: number, directory?: SectionDirectory): string {
-  const remaining = section.body.length - offset
-  const budget = Math.min(READ_SECTION_PAGE_CHARS, remaining, Math.max(0, maxContextChars - sectionMetaLength(section, offset)))
-  let page = section.body.slice(offset, offset + budget)
-  if (offset + page.length < section.body.length) page = cutAtLine(page)
-  const nextOffset = offset + page.length
-  const complete = nextOffset >= section.body.length
-  const core = `${sectionMetaPrefix(section, offset, page, complete ? null : nextOffset, complete)}\n\n${page}`
-  const parentLine = renderSectionParentLine(section, directory)
-  // 先按原算法确定正文页、next_offset 与 complete；仅在剩余空间足够时附加完整父级行，不重切正文。
-  if (!parentLine || core.length + 1 + parentLine.length > maxContextChars) return core
-  const separator = core.indexOf('\n\n')
-  return separator < 0 ? `${core}\n${parentLine}` : `${core.slice(0, separator)}\n${parentLine}${core.slice(separator)}`
-}
-
-/** 直接父级行：完整 ID、文件、标题路径与正文长度；无父级返回 null，不虚造。 */
-function renderSectionParentLine(section: SectionEntry, directory?: SectionDirectory): string | null {
-  if (!directory || !section.parentId) return null
-  const parent = directory.get(section.parentId)
-  if (!parent) return null
-  const path = parent.level === 0 ? '（文档根节点）' : [...parent.ancestors, parent.heading].join(' > ')
-  return `父级范围：${parent.sectionId}｜${parent.file}｜标题路径：${path}｜正文 ${parent.body.length} 字符（包含下级小节的原文范围）`
-}
-
-function countNewlines(text: string): number {
-  let count = 0
-  for (let i = 0; i < text.length; i++) if (text.charCodeAt(i) === 10) count++
-  return count
-}
-
-/** 在最后一个换行处截断；单行超长时保留原样，避免空页导致无法续读。 */
-function cutAtLine(text: string): string {
-  const newline = text.lastIndexOf('\n')
-  return newline > 0 ? text.slice(0, newline) : text
 }
 
 /** 将执行结果写成 tool message；同一对象同时用于 trace 的 writtenContent。 */

@@ -203,8 +203,21 @@ describe('运行输入记录', () => {
       linkCount: 1,
       objectCount: 2,
       issues: ['第 1 条标注：未找到小节'],
+      // 每条 v2 登记保留定位与可读引用；概念精确位置与送达记录按 ref 关联。
+      entries: [{
+        sectionId: 'sec-a',
+        file: 'base/a.md',
+        headingPath: ['总览', '制造站'],
+        occurrence: 1,
+        scope: 'section',
+        objects: [
+          { kind: 'operator', ref: 'operator:甲', canonical: '甲' },
+          { kind: 'skill', ref: '制造站｜「技能」｜乙', canonical: '乙', grantId: 'g-1' },
+        ],
+      }],
     })
     expect(createRunInputs(base).links).toBeUndefined()
+    expect(createRunInputs(base).factsResultVersion).toBe(8)
   })
 
   it('敏感正文脱敏并标记 redacted', () => {
@@ -324,8 +337,10 @@ describe('运行输入记录', () => {
   it('runner 将 facts 加载失败状态写入 inputs，且不落盘已知密钥', async () => {
     vi.resetModules()
     const loadError = new Error('加载失败 opaque-runner-secret')
-    vi.doMock('../src/facts/final.js', () => ({
-      loadValidatedRecordCards: () => { throw loadError },
+    // 运行级 raw facts 共享快照正常加载，卡片投影阶段失败：facts 工具取用 store 时才暴露（运行级快照注入）。
+    vi.doMock('../src/facts/final.js', async (importOriginal) => ({
+      ...(await importOriginal<typeof import('../src/facts/final.js')>()),
+      projectValidatedRecordCards: () => { throw loadError },
     }))
     vi.doMock('../src/provider.js', () => ({ callLLM: mockCall }))
     const outDir = mkdtempSync(join(tmpdir(), 'rag-inputs-failure-'))

@@ -86,10 +86,11 @@
 
 ## 债务记录
 
-### 2026-09-13 — PLK-1 关联载荷体积
+### 2026-09-13 — PLK-1 关联载荷体积（已于 2026-09-16 关闭）
 
 - **债务**：read_section 的 linked 展开首版不设分页或截断，一次展开全部登记对象，结果体积可能超过 maxContextChars；plan 将体积/分页列为非目标。代码锚点：bench/src/tool-executor.ts 的 `readLinkedFactsOperation` 顶部 `TODO(tech-debt) PLK-1`。
 - **未来偿还**：需要控制关联载荷体积时，引入分页或截断，并同步重定义 complete 与命中/送达口径。
+- **关闭记录（2026-09-16）**：docs/plan-progressive-disclosure.md 第 4 步以 read 取代 read_section，关联事实按完整对象分页（facts_offset/next_facts_offset）、单对象超容量显式报错；`readLinkedFactsOperation`、linked 参数与该 TODO 锚点已随该批删除。关闭依据、口径与验证见 docs/plan-progressive-disclosure-notes.md「第 4 步（分批之二）」与「债务记录」。
 
 ## 意外发现
 

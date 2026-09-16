@@ -9,8 +9,9 @@ import { join } from 'node:path'
 import { effectiveAttachFacts, type BenchConfig } from './config.js'
 import type { CardStore } from './facts/store.js'
 import type { SectionDirectory } from './sections.js'
-import { PROSE_LINKS_VERSION, type ProseLinkIndex } from './prose-links.js'
+import { PROSE_LINKS_VERSION, type ProseLinkIndex, type ProseScope, type ResolvedProseLink } from './prose-links.js'
 import { currentEntityBoost, currentTokenizer } from './retriever.js'
+import { FACTS_RESULT_VERSION } from './tool-executor.js'
 import type { BenchQuery, DocChunk, ThinkingMode, TokenizerId } from './types.js'
 
 export const RUN_INPUTS_SCHEMA_VERSION = 1 as const
@@ -39,6 +40,34 @@ export interface FactsInputObservation {
   error?: string
 }
 
+/** 单条登记对象的可读引用留档；概念保留精确来源位置，卡片保留 canonical 与具体 grant。 */
+export type ProseLinkObjectCapture =
+  | { kind: 'operator'; ref: string; canonical: string }
+  | { kind: 'skill'; ref: string; canonical: string; grantId: string }
+  | {
+      kind: 'concept'
+      ref: string
+      name: string
+      file: string
+      headingPath: string[]
+      occurrence: number
+      term?: string
+      termOccurrence?: number
+      startLine: number
+      endLine: number
+    }
+  | { kind: 'unresolved'; ref: string; reason: string }
+
+/** 每条 v2 登记的定位与对象引用；与 read 台账按 ref 关联，不复制正文。 */
+export interface ProseLinkEntryCapture {
+  sectionId: string
+  file: string
+  headingPath: string[]
+  occurrence: number
+  scope: ProseScope
+  objects: ProseLinkObjectCapture[]
+}
+
 export interface RunInputs {
   schemaVersion: typeof RUN_INPUTS_SCHEMA_VERSION
   captureStatus: 'pending' | 'complete'
@@ -51,6 +80,8 @@ export interface RunInputs {
     definitions: unknown
     redacted: boolean
   }
+  /** 本次运行生效的 facts 结果卡版本；read 与 facts 出口共用同一渲染契约。 */
+  factsResultVersion: number
   config: {
     provider: BenchConfig['provider']
     providerLabel: string
@@ -116,12 +147,13 @@ export interface RunInputs {
     sectionCount: number
     orderPreserved: true
   }
-  /** 仅在提供散文小节关联索引时记录；不含正文，只计条目/对象数与解析问题。 */
+  /** 仅在提供散文小节关联索引时记录；不含正文，逐条保留定位与可读引用。 */
   links?: {
     version: number
     linkCount: number
     objectCount: number
     issues: string[]
+    entries: ProseLinkEntryCapture[]
   }
   facts: FactsInputObservation
 }
@@ -171,6 +203,7 @@ export function createRunInputs(options: RunInputsOptions): RunInputs {
       definitions: toolSchema.value,
       redacted: toolSchema.redacted,
     },
+    factsResultVersion: FACTS_RESULT_VERSION,
     config: {
       provider: options.config.provider,
       providerLabel: configStrings.providerLabel.text,
@@ -238,10 +271,43 @@ export function createRunInputs(options: RunInputsOptions): RunInputs {
             linkCount: options.links.links.length,
             objectCount: options.links.links.reduce((total, link) => total + link.objects.length, 0),
             issues: options.links.issues.map((issue) => redactSensitiveText(issue, sensitiveValues)),
+            entries: options.links.links.map((link) => captureProseLinkEntry(link, sensitiveValues)),
           },
         }
       : {}),
     facts: { status: 'not_used' },
+  }
+}
+
+/** 单条登记留档：保留定位与可读引用，概念另带精确来源位置；不复制正文或定义原文。 */
+function captureProseLinkEntry(link: ResolvedProseLink, sensitiveValues: Array<string | undefined>): ProseLinkEntryCapture {
+  const ref = (value: string): string => redactSensitiveText(value, sensitiveValues)
+  const objects: ProseLinkObjectCapture[] = [
+    ...link.objects.map((object): ProseLinkObjectCapture => object.kind === 'concept'
+      ? {
+          kind: 'concept',
+          ref: ref(object.ref),
+          name: ref(object.name),
+          file: object.file,
+          headingPath: [...object.headingPath],
+          occurrence: object.occurrence,
+          ...(object.term === undefined ? {} : { term: ref(object.term) }),
+          ...(object.termOccurrence === undefined ? {} : { termOccurrence: object.termOccurrence }),
+          startLine: object.startLine,
+          endLine: object.endLine,
+        }
+      : object.grantId === undefined
+        ? { kind: 'operator', ref: ref(object.ref), canonical: object.canonical }
+        : { kind: 'skill', ref: ref(object.ref), canonical: object.canonical, grantId: object.grantId }),
+    ...link.unresolved.map((item): ProseLinkObjectCapture => ({ kind: 'unresolved', ref: ref(item.ref), reason: ref(item.reason) })),
+  ]
+  return {
+    sectionId: link.sectionId,
+    file: link.file,
+    headingPath: [...link.headingPath],
+    occurrence: link.occurrence,
+    scope: link.scope,
+    objects,
   }
 }
 

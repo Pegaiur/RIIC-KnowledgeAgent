@@ -377,7 +377,7 @@ function objectIdentity(object: ResolvedProseObject): string {
   return conceptIdentity(object)
 }
 
-/** 概念按完整定位去重；解析、范围合并与 linked 展开共用。 */
+/** 概念按完整定位去重；解析与读取范围合并共用。 */
 export function conceptIdentity(concept: ResolvedProseConcept): string {
   return `concept:${concept.file}\u0000${concept.headingPath.join('\u0000')}\u0000${concept.occurrence}\u0000${concept.term ?? ''}\u0000${concept.termOccurrence ?? 1}`
 }
@@ -651,15 +651,31 @@ export function resolveProseLinks(input: {
   return { links, bySection, issues }
 }
 
-/** 从真源装配关联索引：旁挂文件 + 小节目录 + raw 事实；缺文件或无标注时不装配后两者。 */
-export function buildProseLinkIndex(root = process.cwd(), corpusDir = 'knowledge'): ProseLinkIndex {
+/** 装配输入：可注入运行级快照，缺省时按语料根自行装配。 */
+export interface ProseLinkIndexInput {
+  root?: string
+  corpusDir?: string
+  /** 运行级小节目录快照（ADR-022 决策 6）；提供时不再重复构建。 */
+  directory?: SectionDirectory
+  /** 运行级 raw facts 快照或其惰性提供者（与卡片投影共用同一份）；提供时不再重复加载。 */
+  facts?: ReferenceFacts | (() => ReferenceFacts)
+}
+
+/**
+ * 从真源装配关联索引：旁挂文件 + 小节目录 + raw 事实；缺文件或无标注时不装配后两者。
+ * 传入 directory/facts 时使用调用方的同一运行快照，避免与卡片投影、read 各自重读源文件。
+ */
+export function buildProseLinkIndex(input: ProseLinkIndexInput = {}): ProseLinkIndex {
+  const root = input.root ?? process.cwd()
+  const corpusDir = input.corpusDir ?? 'knowledge'
   const corpusRoot = isAbsolute(corpusDir) ? corpusDir : join(root, corpusDir)
   const file = loadProseLinkFile(corpusRoot)
   if (file.links.length === 0) return { links: [], bySection: new Map(), issues: [] }
+  const provided = input.facts
   const index = resolveProseLinks({
     file,
-    directory: buildSectionDirectory(corpusRoot),
-    facts: loadReferenceFacts(root),
+    directory: input.directory ?? buildSectionDirectory(corpusRoot),
+    facts: (typeof provided === 'function' ? provided() : provided) ?? loadReferenceFacts(root),
   })
   assertResolvedIndex(index)
   return index

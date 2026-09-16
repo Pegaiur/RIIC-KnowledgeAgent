@@ -18,7 +18,7 @@ import { checkGold, loadGold, renderHitrate, runHitrate } from './hitrate.js'
 import { CATALOG_RELATIVE_PATH, catalogDifference, generateKeywordCatalogMarkdown } from './catalog.js'
 import { buildIndex } from './retriever.js'
 import { runBenchmark } from './runner.js'
-import { aggregate, aggregateSnapshot, renderCrossProvider, renderCsv, renderMarkdown, type BenchReport } from './report.js'
+import { aggregate, aggregateSnapshot, renderCrossProvider, renderCsv, renderMarkdown, runDeclarationFromMeta, type BenchReport, type ReportRunDeclaration } from './report.js'
 import type { BenchQuery, CostRecord } from './types.js'
 import { validateBenchmarkIntegrity } from './benchmark-integrity.js'
 import { ignoredHitrateFlags, parseArgs, retiredFlagError, unsupportedCatalogFlags } from './cli-args.js'
@@ -88,7 +88,19 @@ function loadReportInput(inputPath: string): BenchReport {
     const snapshot = readSnapshot(inputPath)
     return aggregateSnapshot(snapshot)
   }
-  return aggregate(loadRecords(inputPath))
+  // 运行目录：meta.json 声明该轮下发的工具，决定 read 观测是否可用（缺 meta 时同未观测处理）。
+  return aggregate(loadRecords(inputPath), [], loadRunDeclaration(inputPath))
+}
+
+/** 读取运行目录 meta.json 的观测声明；快照路径由 snapshot.meta 提供同一信息，缺失或非法时按无法证明处理。 */
+function loadRunDeclaration(runDir: string): ReportRunDeclaration {
+  const path = join(runDir, 'meta.json')
+  if (!existsSync(path)) return {}
+  try {
+    return runDeclarationFromMeta(JSON.parse(readFileSync(path, 'utf-8')))
+  } catch {
+    return {}
+  }
 }
 
 async function main(): Promise<void> {
@@ -151,7 +163,7 @@ async function main(): Promise<void> {
     process.stdout.write(`注入记录：${out.injectedPath}\n`)
     process.stdout.write(`执行记录：${out.tracePath}\n`)
 
-    const report = aggregate(out.records)
+    const report = aggregate(out.records, [], loadRunDeclaration(out.runDir))
     process.stdout.write(renderMarkdown(report))
     return
   }

@@ -6,7 +6,7 @@
 import { existsSync, readFileSync, mkdirSync, writeFileSync } from 'node:fs'
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import type { BenchQuery, CostRecord, HttpAttempt, LlmUsage, TerminationReason } from './types.js'
-import type { RagDeliveryRecord } from './delivery.js'
+import type { RagDeliveryRecord, ReadDeliveryRecord } from './delivery.js'
 
 export const SNAPSHOT_SCHEMA_VERSION = 1 as const
 
@@ -65,12 +65,13 @@ const RECORD_KEYS = [
   'ts', 'queryId', 'category', 'round', 'thinking', 'provider', 'model',
   'input', 'output', 'knownInput', 'knownOutput', 'cached', 'reasoning',
   'costIn', 'costOut', 'costTotal', 'usageCompleteness', 'usageAggregation',
-  'httpAttempts', 'truncated', 'tools', 'toolBatch', 'ragDelivery',
+  'httpAttempts', 'truncated', 'tools', 'toolBatch', 'ragDelivery', 'readDelivery',
 ]
 const TOOL_BATCH_KEYS = ['requested', 'granted', 'executed', 'denied', 'errors', 'attempts', 'successes', 'hitCount', 'hitUnknown', 'budgetBefore', 'budgetAfter', 'resultChars']
 const OPTIONAL_TOOL_BATCH_KEYS = new Set(['attempts', 'successes', 'hitCount', 'hitUnknown'])
 const META_SUMMARY_KEYS = new Set([
   'ragDeliveryStats',
+  'readDeliveryStats',
   'records', 'inputTokens', 'outputTokens', 'inputTokensExact', 'outputTokensExact',
   'totalCostIn', 'totalCostOut', 'totalCost', 'costComplete', 'incompleteUsageCalls',
   'unknownUsageCalls', 'failed', 'modelSteps', 'toolBatches', 'toolCallsRequested',
@@ -381,6 +382,8 @@ function pickRecord(record: CostRecord): CostRecord {
       out[key] = value.map((attempt) => pickAttempt(attempt as HttpAttempt))
     } else if (key === 'ragDelivery') {
       out[key] = pickRagDelivery(value)
+    } else if (key === 'readDelivery') {
+      out[key] = pickReadDelivery(value)
     } else if (key === 'tools' && Array.isArray(value)) {
       out[key] = value.filter((item): item is string => typeof item === 'string')
     } else if (key === 'toolBatch' && isRecord(value)) {
@@ -452,6 +455,141 @@ function pickRagDelivery(value: unknown): RagDeliveryRecord[] {
       }
     }) }),
   }))
+}
+
+/** read 台账白名单：只保留契约字段并逐层过滤未知字段，不保存正文、说明或密钥。 */
+function pickReadDelivery(value: unknown): ReadDeliveryRecord[] {
+  const object = (input: unknown, label: string): Record<string, unknown> => {
+    if (!isRecord(input)) throw new Error(`基准快照格式错误：${label} 必须是对象`)
+    return input
+  }
+  const text = (input: unknown, label: string): string => {
+    if (typeof input !== 'string') throw new Error(`基准快照格式错误：${label} 必须是字符串`)
+    return redactText(input)
+  }
+  const number = (input: unknown, label: string): number => positiveOrZero(input, label)
+  /** 出现序号与条目序号从 1 起：0 或负数不是合法序号。 */
+  const sequence = (input: unknown, label: string): number => {
+    if (!Number.isSafeInteger(input) || (input as number) < 1) {
+      throw new Error(`基准快照格式错误：${label} 必须是从 1 起的正整数`)
+    }
+    return input as number
+  }
+  const bool = (input: unknown, label: string): boolean => booleanValue(input, label)
+  const texts = (input: unknown, label: string): string[] => stringArray(input, label)
+  /** 行范围按左闭区间核对顺序，倒置范围属记录错误。 */
+  const lineRange = (startLine: number, endLine: number, label: string): void => {
+    if (endLine < startLine) throw new Error(`基准快照格式错误：${label} 行范围倒置`)
+  }
+  const origins = (input: unknown, label: string): Array<{ sectionId: string; objectIndex: number }> => {
+    if (!Array.isArray(input)) throw new Error(`基准快照格式错误：${label} 必须是数组`)
+    return input.map((item, index) => {
+      const origin = object(item, `${label}[${index}]`)
+      return { sectionId: text(origin.sectionId, `${label}[${index}].sectionId`), objectIndex: number(origin.objectIndex, `${label}[${index}].objectIndex`) }
+    })
+  }
+  if (!Array.isArray(value)) throw new Error('基准快照格式错误：readDelivery 必须是数组')
+  return value.map((callInput, callIndex) => {
+    const call = object(callInput, `readDelivery[${callIndex}]`)
+    const record: ReadDeliveryRecord = {
+      callId: text(call.callId, `readDelivery[${callIndex}].callId`),
+      status: text(call.status, `readDelivery[${callIndex}].status`),
+      sectionId: call.sectionId === null ? null : text(call.sectionId, `readDelivery[${callIndex}].sectionId`),
+      factsResultVersion: number(call.factsResultVersion, `readDelivery[${callIndex}].factsResultVersion`),
+      resultChars: number(call.resultChars, `readDelivery[${callIndex}].resultChars`),
+    }
+    if (call.bodyRange !== undefined) {
+      if (call.bodyRange === null) {
+        record.bodyRange = null
+      } else {
+        const range = object(call.bodyRange, `readDelivery[${callIndex}].bodyRange`)
+        const offset = number(range.offset, 'readDelivery.bodyRange.offset')
+        const endOffset = number(range.endOffset, 'readDelivery.bodyRange.endOffset')
+        const docOffset = number(range.docOffset, 'readDelivery.bodyRange.docOffset')
+        const docEndOffset = number(range.docEndOffset, 'readDelivery.bodyRange.docEndOffset')
+        if (endOffset < offset || docEndOffset < docOffset) {
+          throw new Error('基准快照格式错误：readDelivery 原文范围倒置')
+        }
+        const startLine = number(range.startLine, 'readDelivery.bodyRange.startLine')
+        const endLine = number(range.endLine, 'readDelivery.bodyRange.endLine')
+        lineRange(startLine, endLine, 'readDelivery.bodyRange')
+        record.bodyRange = {
+          file: text(range.file, 'readDelivery.bodyRange.file'),
+          sectionId: text(range.sectionId, 'readDelivery.bodyRange.sectionId'),
+          offset,
+          endOffset,
+          docOffset,
+          docEndOffset,
+          startLine,
+          endLine,
+          complete: bool(range.complete, 'readDelivery.bodyRange.complete'),
+        }
+      }
+    }
+    if (call.factsPage !== undefined) {
+      if (call.factsPage === null) {
+        record.factsPage = null
+      } else {
+        const page = object(call.factsPage, `readDelivery[${callIndex}].factsPage`)
+        const total = number(page.total, 'readDelivery.factsPage.total')
+        const returned = number(page.returned, 'readDelivery.factsPage.returned')
+        const offset = number(page.offset, 'readDelivery.factsPage.offset')
+        const complete = bool(page.complete, 'readDelivery.factsPage.complete')
+        const nextOffset = page.nextOffset === null ? null : number(page.nextOffset, 'readDelivery.factsPage.nextOffset')
+        if (returned > total || offset > total || offset + returned > total) {
+          throw new Error('基准快照格式错误：readDelivery 事实分页偏移与计数超出总数')
+        }
+        // 送达前失败按契约没有下一偏移；正常页完成时无续读位置，未完成时指向本页结束处。
+        const validContinuation = record.status === 'error'
+          ? returned === 0 && !complete && nextOffset === null
+          : complete ? nextOffset === null : nextOffset === offset + returned
+        if (!validContinuation) {
+          throw new Error('基准快照格式错误：readDelivery 事实分页完成状态与续读位置不一致')
+        }
+        record.factsPage = { offset, nextOffset, total, returned, complete }
+      }
+    }
+    if (call.deliveredObjects !== undefined) {
+      if (!Array.isArray(call.deliveredObjects)) throw new Error('基准快照格式错误：readDelivery.deliveredObjects 必须是数组')
+      record.deliveredObjects = call.deliveredObjects.map((item, index) => {
+        const label = `readDelivery[${callIndex}].deliveredObjects[${index}]`
+        const object_ = object(item, label)
+        const callOrigins = origins(object_.origins, `${label}.origins`)
+        if (object_.kind === 'card') {
+          const projection = object_.projection
+          if (projection !== 'full' && projection !== 'skills') throw new Error(`基准快照格式错误：${label}.projection 无效`)
+          return {
+            kind: 'card',
+            canonical: text(object_.canonical, `${label}.canonical`),
+            projection,
+            grantIds: texts(object_.grantIds, `${label}.grantIds`),
+            origins: callOrigins,
+          }
+        }
+        if (object_.kind === 'concept') {
+          if (object_.termOccurrence !== undefined && object_.term === undefined) {
+            throw new Error(`基准快照格式错误：${label}.termOccurrence 缺少 term`)
+          }
+          const startLine = number(object_.startLine, `${label}.startLine`)
+          const endLine = number(object_.endLine, `${label}.endLine`)
+          lineRange(startLine, endLine, label)
+          return {
+            kind: 'concept',
+            file: text(object_.file, `${label}.file`),
+            headingPath: texts(object_.headingPath, `${label}.headingPath`),
+            occurrence: sequence(object_.occurrence, `${label}.occurrence`),
+            ...(object_.term === undefined ? {} : { term: text(object_.term, `${label}.term`) }),
+            ...(object_.termOccurrence === undefined ? {} : { termOccurrence: sequence(object_.termOccurrence, `${label}.termOccurrence`) }),
+            startLine,
+            endLine,
+            origins: callOrigins,
+          }
+        }
+        throw new Error(`基准快照格式错误：${label}.kind 必须是 card 或 concept`)
+      })
+    }
+    return record
+  })
 }
 
 function pickAttempt(attempt: HttpAttempt): HttpAttempt {
@@ -855,8 +993,9 @@ function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.length > 0
 }
 
+/** 非负安全整数：超出安全整数范围的值不能精确表示，按无效记录拒绝而不是静默接受。 */
 function positiveOrZero(value: unknown, label: string): number {
-  if (!Number.isInteger(value) || (value as number) < 0) throw new Error(`基准快照格式错误：${label} 必须是非负整数`)
+  if (!Number.isSafeInteger(value) || (value as number) < 0) throw new Error(`基准快照格式错误：${label} 必须是非负安全整数`)
   return value as number
 }
 

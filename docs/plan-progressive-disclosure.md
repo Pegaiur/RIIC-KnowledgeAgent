@@ -348,8 +348,8 @@ node scripts/doc-check.mjs
 - [x] 技能注记与同描述依据按卡 v8 投影/渲染，名册边界声明送达，旧内容与查询语义逐字段核对。
 - [x] 11 份 raw、2 份 guides、数据源移除和 references 撤销完成，来源与缺口记录保留在文档轨道。
 - [x] 读取、生成、观测脚本、夹具、manifest、当前语料/spec/规则/导航同步；旧参数退役与新范围留档验证完成。
-- [ ] prose-links v2、必填 scope、概念定位、精确技能投影及当前 v1 标注迁移完成。
-- [ ] read 替代旧工具，双偏移、容量、next_call、错误与预算契约全覆盖，PLK-1 按规则收束。
+- [x] prose-links v2、必填 scope、概念定位、精确技能投影及当前 v1 标注迁移完成。
+- [x] read 替代旧工具，双偏移、容量、next_call、错误与预算契约全覆盖，PLK-1 按规则收束。
 - [ ] read/RAG 实际范围与对象送达接通 trace、records、meta/report、inputs、snapshot，历史缺字段和旧名称兼容通过。
 - [ ] expandFulltext 默认关闭及显式回退有效，必要 ID 优先，原有 query facts 附带契约保持。
 - [ ] injectKeywordCatalog 默认关闭，CLI/fallback/目录生成及三处配置留档同步，未应用压缩 stash。

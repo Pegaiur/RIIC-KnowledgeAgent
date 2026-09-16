@@ -1,7 +1,7 @@
 /**
  * 原文小节目录：从白名单 Markdown 原文建立 H1–H6 层级快照。
  *
- * 检索仍使用既有 chunks/index；本目录只服务 RAG 展示上下文与 read_section 阅读。
+ * 检索仍使用既有 chunks/index；本目录只服务 RAG 展示上下文与 read 阅读。
  * 构建时按 manifest 白名单读取一次原文，运行期不再按路径重新读盘，也不改动现有 chunk 分块。
  */
 import { createHash } from 'node:crypto'

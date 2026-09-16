@@ -515,15 +515,15 @@ describe('第一阶段 facts 结果 envelope', () => {
 })
 
 describe('agent：hybrid 独立工具 schema 与系统提示', () => {
-  it('hybrid 模式同时暴露 rag_search、facts_search 与 read_section', () => {
+  it('hybrid 模式同时暴露 rag_search、facts_search 与 read', () => {
     expect(toolsForRetriever('hybrid', 3).map((tool) => (tool.function as { name: string }).name))
-      .toEqual(['rag_search', 'facts_search', 'read_section'])
+      .toEqual(['rag_search', 'facts_search', 'read'])
   })
 
   it('系统提示描述 facts_search 与预算', () => {
     const prompt = buildSystemPrompt('hybrid')
     expect(prompt).toContain('facts_search')
-    expect(prompt).toContain('可用工具：rag_search、facts_search、read_section')
+    expect(prompt).toContain('可用工具：rag_search、facts_search、read')
     expect(prompt).toContain('5 点成功额度 + 10 次获准尝试上限')
   })
 })
@@ -905,7 +905,7 @@ describe('runQuery（hybrid 模式）', () => {
     )
 
     const exposed = (mockCall.mock.calls[0]?.[1] as Record<string, unknown>[]).map(toolName)
-    expect(exposed).toEqual(['rag_search', 'facts_search', 'read_section'])
+    expect(exposed).toEqual(['rag_search', 'facts_search', 'read'])
     expect(result.toolTrace).toEqual([['rag_search'], ['facts_search']])
     expect(result.injectedIds).toEqual(['base/机制-制造站.md#效率计算'])
     const afterRag = mockCall.mock.calls[1]?.[0] as Array<{ role: string; tool_call_id?: string; content: string }>

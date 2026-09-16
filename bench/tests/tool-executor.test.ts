@@ -53,8 +53,8 @@ const FACTS_LIMIT = 3
 
 describe('独立函数工具 schema', () => {
   it.each([
-    ['bm25', ['rag_search', 'read_section']],
-    ['hybrid', ['rag_search', 'facts_search', 'read_section']],
+    ['bm25', ['rag_search', 'read']],
+    ['hybrid', ['rag_search', 'facts_search', 'read']],
   ] as const)('%s 只暴露当前模式允许的函数工具', (retriever, names) => {
     const tools = toolsForRetriever(retriever, FACTS_LIMIT)
     expect(tools.map((tool) => (tool.function as { name: string }).name)).toEqual(names)
@@ -88,7 +88,7 @@ describe('独立函数工具 schema', () => {
     const definitions = toolsForRetriever('hybrid', FACTS_LIMIT)
       .map((tool) => tool.function as { name: string; description: string })
     expect(definitions.find((fn) => fn.name === 'rag_search')?.description).toContain('附带事实卡')
-    const read = definitions.find((fn) => fn.name === 'read_section')!.description
+    const read = definitions.find((fn) => fn.name === 'read')!.description
     expect(read).toContain('上级范围入口')
     expect(read).toContain('complete=false')
     expect(read).toContain('complete=true')
@@ -122,7 +122,7 @@ describe('独立函数工具 schema', () => {
     const { results } = await runSequential(executor, [
       call('facts-bad', 'facts_search', {}),
       call('rag-bad', 'rag_search', {}),
-      call('read-bad', 'read_section', {}),
+      call('read-bad', 'read', {}),
     ])
 
     expect(results[0]?.data).toContain('{"queries":["完整词条"]}')
@@ -132,7 +132,7 @@ describe('独立函数工具 schema', () => {
   })
 
   it('schema 指纹只由当前实际工具数组决定', () => {
-    expect(toolSchemaMetadata('bm25', FACTS_LIMIT)).toMatchObject({ toolSchemaVersion: 14, toolNames: ['rag_search', 'read_section'] })
+    expect(toolSchemaMetadata('bm25', FACTS_LIMIT)).toMatchObject({ toolSchemaVersion: 15, toolNames: ['rag_search', 'read'] })
     expect(toolSchemaMetadata('bm25', FACTS_LIMIT).toolSchemaSha256).toMatch(/^[a-f0-9]{64}$/)
     expect(toolSchemaMetadata('bm25', FACTS_LIMIT).toolSchemaSha256).not.toBe(toolSchemaMetadata('hybrid', FACTS_LIMIT).toolSchemaSha256)
   })
@@ -209,7 +209,7 @@ describe('单工具调用准入（每步只准入首项）', () => {
       call('first', 'rag_search', { query: '制造站效率' }),
       // 参数不是合法 JSON，若被解析应记 invalid_params；超量项应保持 protocol_rejected。
       { id: 'second', name: 'rag_search', arguments: '{ 不是 JSON' },
-      call('third', 'read_section', { section_id: '不存在的小节' }),
+      call('third', 'read', { section_id: '不存在的小节' }),
     ])
 
     expect(step.results.map((item) => item.status)).toEqual(['success', 'protocol_rejected', 'protocol_rejected'])
@@ -468,6 +468,20 @@ describe('独立函数 executor：逐步单调用结算双上限预算', () => {
     expect(results.every((item) => !item.executed)).toBe(true)
     expect(snapshot).toMatchObject({ successUsed: 0, attemptUsed: 4, executed: 0, denied: 0, remaining: 5 })
     expect(results[0]?.data).toContain('query')
+  })
+
+  it('参数字段名为空字符串时也按未知参数拒绝，不执行底层检索', async () => {
+    const config = loadConfig()
+    config.retriever = 'hybrid'
+    const executor = createKnowledgeToolExecutor({ config, query: { id: 'EMPTY-KEY', category: 'fact', question: '查询' }, chunks, index: buildIndex(chunks) }, 5)
+    const { results } = await runSequential(executor, [
+      call('a', 'rag_search', { query: '制造站', '': 'x' }),
+      call('b', 'facts_search', { queries: ['刻俄柏'], '': 'x' }),
+      call('c', 'read', { section_id: 'sec-x', '': 'x' }),
+    ])
+
+    expect(results.map((item) => item.status)).toEqual(['invalid_params', 'invalid_params', 'invalid_params'])
+    expect(results.every((item) => !item.executed)).toBe(true)
   })
 
   it('重复 call ID 作为协议失败，工具不执行且预算不变', async () => {

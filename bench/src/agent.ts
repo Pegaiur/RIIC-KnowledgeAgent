@@ -55,9 +55,11 @@ export interface AgentOptions {
   onFactsStoreUsed?: (store: CardStore) => void
   /** facts store 加载失败时的观测回调；工具仍返回原有错误。 */
   onFactsStoreLoadFailed?: (error: unknown) => void
+  /** 运行级 facts 卡片快照提供者；由 runner 装配，供 facts 工具与 read 共用同一份实例。 */
+  factsStore?: () => CardStore
   /** 运行级原文小节目录；由 runner 按开放阅读能力的模式提供。 */
   sections?: SectionDirectory
-  /** 运行级散文小节关联索引；由 runner 装配，供 RAG 提示入口与 read_section 显式展开。 */
+  /** 运行级散文小节关联索引；由 runner 装配，供 RAG 提示入口与 read 返回登记事实。 */
   links?: ProseLinkIndex
   /** 可选的单题执行记录。 */
   trace?: QueryTrace
@@ -141,6 +143,7 @@ export async function runQuery(
     injectedIds,
     onFactsStoreUsed: opts.onFactsStoreUsed,
     onFactsStoreLoadFailed: opts.onFactsStoreLoadFailed,
+    factsStore: opts.factsStore,
   }, config.toolBudget)
   const messages: ChatMessage[] = [
     { role: 'system', content: opts.systemPrompt ?? buildSystemPrompt(config.retriever, opts.agentInstructions ?? loadKnowledgeAgentInstructions(), config.toolBudget, config.toolAttemptLimit) },
@@ -316,6 +319,10 @@ export async function runQuery(
           // 关联事实入口提示：rag_search 每次都确定性给出（无提示为空数组），未执行也如实记空，避免一次参数错误令整轮指标不可用。
           linkedEntries: item.linkedEntries ?? [],
         }))
+        // read 台账按 callId 保存；只在识别到的新 read 调用上存在，同批超量拒绝不计。
+        record.readDelivery = batch.results
+          .filter((item) => item.operation === 'read' && item.status !== 'protocol_rejected')
+          .flatMap((item) => (item.readDelivery === undefined ? [] : [item.readDelivery]))
         if (llmEvent) llmEvent.toolBatch = toolBatch
 
         const pendingMessages: ChatMessage[] = []
@@ -344,7 +351,7 @@ export async function runQuery(
             toolEvent.fulltextRanges = item.fulltextRanges
             toolEvent.attachedFacts = item.attachedFacts
             toolEvent.linkedEntries = item.linkedEntries
-            toolEvent.linkedFacts = item.linkedFacts
+            toolEvent.readDelivery = item.readDelivery
             toolEvent.writtenContent = writtenContent
             toolEvent.reason = item.message
             if (isToolErrorStatus(item.status)) toolEvent.error = item.message

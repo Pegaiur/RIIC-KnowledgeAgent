@@ -132,7 +132,70 @@
 - **格式与标识修缮**：复审另确认空字符串字段名绕过未知字段校验，并建议保持 injectedIds 的既有标识口径。新增顶层/条目/对象的 3 条空键回归，更新两个概念送达用例验证概念名不进入 injectedIds，定向先观察 5 失败／49 通过；随后使用显式 undefined 判断未知键，injectedIds 仅保留 canonical。最终全套为 670 通过／2 条旧 gold 失败（共 672 项），类型检查、构建与差异空白检查通过；概念送达仍单独记录于 linkedFacts.deliveredConcepts，完整位置观测待后续 readDelivery。
 - **其余核对**：本轮 `catalog --check`、`check:reference-projection`（9 分片）、`check:prose-terms` 通过；文档检查仍只报告活动计划未勾选的 20 个 D1（8＋10＋1＋1）。旧 gold、validator 与 benchmark-integrity 断言未修改；未执行付费试验、合并或发版。事实出口已补齐，精确技能投影、read 本体/双偏移分页/观测及第 5–8 步仍待后续实施，本轮不勾选关联层整项。
 
+### 2026-09-16 — 第 4 步（分批之二）：read 本体、精确技能投影与 readDelivery
+
+- **范围**：本批实施 plan 4.2 剩余的精确技能投影、4.4 read 参数与旧工具退役、4.5 双偏移分页与容量契约、4.6 实际送达观测接通 trace/records/meta/report/inputs/snapshot。TOOL_SCHEMA_VERSION 14 → 15（facts 结果仍为 8、prose-links 仍为 2、小节目录结构与 ID 算法未改）；第 5 步（expandFulltext 默认、injectKeywordCatalog、RAG fragmentRanges）与第 6–8 步未实施。
+- **工具切换**：模型侧只暴露 `read`（bm25 与 hybrid 都保留），参数固定为 section_id、offset、facts_offset；`read_section`、`linked`、`offset` 与 linked 互斥等旧契约整体移除，`LinkedFactsObservation`、`linkedFacts` 字段一并删除。运行时收到 `read_section` 时按未知工具拒绝（status=unknown_operation、executed=false），文案为「read_section 已退役；请改用 read（参数：section_id、offset、facts_offset），原文与关联事实在同一次读取中返回；本次调用未执行。」，不静默改译；ToolId 与 isObservedTool 仍识别旧名，供历史记录与聚合读取。
+- **输出格式**：read 的 data 固定为「【阅读范围】→【分页】→【原文】→【关联事实】→【导航】」五个分区；【阅读范围】给出 file、标题路径、section_id 与本页原文行范围（无正文时写「无」）；【分页】为单行合法 JSON，字段与顺序固定为 section_id、offset、next_offset、body_complete、body_total_chars、facts_offset、next_facts_offset、facts_complete、facts_total、facts_returned、facts_result_version、complete、next_call；空分区显式写「（无本页内容）」。【导航】为可选分区，含直接父级范围入口与同级/子小节导航（最多 8 项），只用余量、整行保留 ID 并按行裁减后附「（省略 N 项）」。
+- **容量与偏移**：正文页不超过 6000 UTF-16 字符，优先完整行、超长单行按字符切且不拆代理对；offset 落在代理对中间、超出正文长度、facts_offset 超出对象数都按 invalid_params 拒绝（不计 executed）；未知 ID 返回 empty 并提示使用本次返回的 ID。事实按完整对象分页，容量不足时按顺序停止、不跳过前面的对象挑短卡；单个对象超过整页可用额度时报 error「关联对象超过阅读容量」，不给半张卡也不给不前进的 next_call。已读完的一侧在 next_call 中用总长度/总对象数（不传 null），两侧都读完时 next_call=null。
+- **readDelivery 口径**（plan 4.6 两种说法的落地）：`bodyRange`/`factsPage` 在无法取得时省略（参数级非法、容量错误、索引损坏等送达前失败），在已构成页面但无证据时写 null（bodyRange）或写实际分页计数（factsPage），`deliveredObjects` 在送达前失败时省略、已观察无证据时为 []；容量失败不写成空关联。`grantIds` 为实际展示的 grant：投影卡含明确引用与被替换链、完整卡列出卡内全部 grant；概念沿用文件+标题路径+条目序号定位，不新增散列 ID。
+- **旧运行不混用**：report 的 `readDeliveryStats` 在「任意记录使用过 read_section」或「请求过 read 却缺台账」时整体为 null（不可用），只在明确没有 read 调用的新运行记 0；`errors` 计未取得证据的非空结果（含容量错误与参数错误），`bodyChars` 取送达区间长度、跨调用重复计卡次。
+- **接口与留档**：`CostRecord.readDelivery` 为按 callId 的数组（与 ragDelivery 同形），trace 单个 tool_call 事件保存对应单条，snapshot 新增逐层类型白名单（未知字段被过滤，不保存正文），meta 增加 `readDeliveryStats`，inputs 新增顶层 `factsResultVersion` 与 `links.entries`（每条登记保留 sectionId/file/headingPath/occurrence/scope 与可读引用，概念带精确来源位置；定义原文与正文仍只在 trace/readDelivery 中按引用关联）。
+- **指令与示例**：knowledge/AGENTS.md 的阅读入口改为 `read`；rag_search 关联事实入口提示改为「用 read 读取该小节即可同时取得原文与登记事实」；全文扩展续读行改为可直接复制的 `续读：read(section_id="…", offset=…)｜complete false｜正文 N 字符`。
+- **容量预留的偏离说明**：plan 4.5 要求「先预留必要元数据、来源及完整 next_call」。实现按当前范围与最大数字位数预留含 next_call 的额度，并在「整段可能一次读完」时另算一份不含 next_call 的额度作为回退（该额度仍经页后序列化验证，若实际需要续读就回落收紧或报容量错误）。未预留 next_call 的额度只在页内没有续读调用时成立，因此不产生「预留不足却宣称成功」的页；这样可避免单页读完的短范围被无谓判为容量不足。
+- **TDD 与验证**：先写/改测试并观察失败：新增 bench/tests/read.test.ts 22 项（工具定义与旧名退役、参数校验、分区格式与分页元数据、双偏移与容量、精确投影、送达观测），迁移 11 个既有测试文件（prose-links-read、section-navigation、section-navigation-runner、tool-executor、facts-tools、agent、agent-auto-loop、fulltext-expansion、retrieval-range、runner、report）并新增 snapshot/inputs/report 的 read 台账用例；首轮定向运行读到 21 项失败，实现后全部转绿。全套 `pnpm run test` 为 690 通过／2 失败（共 692 项、50 文件），两条失败仍是第 6 步延后的 benchmark-integrity 旧 gold 锚点用例，本批无新增失败。`pnpm run typecheck`、`pnpm run build`、`check:reference-projection`（9 分片一致）、`check:prose-terms`、`catalog --check`、`git diff --check` 通过；`node dist/cli.js validate` 与 `bench:dry` 仍因同一批旧 gold 锚点失败（属已授权延后项）；`node scripts/doc-check.mjs` 报 18 条 D1（plan-corpus-supplement 8、plan-progressive-disclosure 8、plan-index-and-tags 1、plan-prose-linked-knowledge 1），无 D2–D5 与结构类错误，其中本计划由 10 条减为 8 条对应当前批次勾选的两项。
+- **新增覆盖要点**：read 参数四类非法与代理对边界；分区顺序与 13 个分页字段；长正文连续分页无中段丢失且每页不超过 maxContextChars；小预算下多页拼回原文（含非 BMP 字符）；事实按完整对象分页并在续读时不重复；两侧完成状态与 next_call 的两种形态；元数据放不下与单对象超容量两种容量错误；skill 引用只投影指定 grant 与被替换链并标注明确引用/替换依据、同卡合并与 operator 覆盖；概念只按精确位置去重且不进 injectedIds；首次/续读的 attempt 与 success 计量；runner 端 trace、records 的 read 台账与 inputs.links.entries/factsResultVersion。
+- **未闭合**：第 5 步的 expandFulltext 默认关闭与 injectKeywordCatalog 开关、RAG 的 fragmentRanges 与必要 ID 优先；第 6 步 gold 定位分离与 26 键迁移、白名单/完整性断言与两份基线处置；第 7–8 步散文试点与真实模型观测。上述两项验收条目（关联层格式与精确投影、read 替代旧工具）在本批完成，已在 plan 验收清单勾选；「read/RAG 实际范围与对象送达接通」因 RAG 片段范围属第 5 步，仍未勾选。
+- **观测脚本核对**：scripts/tasks/bench/facts-evidence-observation.mjs 只读 trace 的 facts_search 事件与 records.ragDelivery，两者字段形状未变，无需机械改动；其口径（显式 facts_search + RAG 附带）本就未包含阅读路径送达的卡片，本批 read 的送达另由 readDeliveryStats 观测。是否把 read 送达的卡片计入该脚本的正式名送达统计属口径变更，未自行修改，留待需要时另行决定。
+
+### 2026-09-16 — inputs.links.entries 用解析后可读引用而非登记原文
+
+- **背景**：plan 4.6 要求 inputs 保存「每条 v2 登记的 sectionId/file/headingPath/occurrence/scope/objects」，并「概念精确位置通过引用与送达记录关联」。
+- **实际做法**：`ProseLinkIndex` 只保留解析结果（可读 ref、canonical/grantId、概念精确位置），登记原文只存在于 knowledge/prose-links.json。为避免为留档再读一次旁挂文件或让索引携带原文，entries 记录解析后可读引用：卡片写 {kind, ref, canonical[, grantId]}，概念写 {kind, ref, name, file, headingPath, occurrence, term?, termOccurrence?, startLine, endLine}，解析失败引用写 {kind:'unresolved', ref, reason}；不含定义原文与正文。
+- **影响**：entries 与登记条目一一对应（真实语料中重复引用与失效引用都在装配期被拒绝，故不丢条），足以把 readDelivery 的送达对象按 ref/精确位置回溯到登记；若将来需要在留档中逐字保存登记原文，应改为直接留档 prose-links.json 内容，属独立议题。
+
+### 2026-09-16 — 第 4 步交付的验收审查修复（分页前进、来源送达与台账口径）
+
+- **审查发现**：独立审查对本批 read 交付提出 7 项阻塞与 3 项整理：①窄容量下可能返回「无证据且偏移不前进」的页，未知 ID 提示不受 maxContextChars 约束；②report 把缺失观测（历史/字段不完整台账）记为零送达，预算拒绝的 read 没有台账；③运行快照未统一（目录、关联解析、事实卡各自加载）；④参数含空字符串键时绕过未知字段校验；⑤明确引用标签受登记顺序影响；⑥登记来源只留在后台台账，没有随对象送入模型也未计入分页容量；⑦容量失败丢弃已取得的事实页信息；另加导航省略数量不完整、死代码与进度文档不一致。这些均属 plan 4.4–4.6 既定契约内的缺陷，不计入第 6 步的延后例外。
+- **分页前进（bench/src/read.ts）**：容量收缩循环内重新校验首个待送对象是否仍放得下（放不下即按「关联对象超过阅读容量」报错），成功页返回前再兜底拒绝「未完成且两侧偏移原地不动」的页。修复前复现：甲节＋5 张卡、maxChars=770 时原实现返回 empty、complete=false、两侧偏移仍为 0；对应用例已固化为窄容量扫描断言。
+- **来源送达（bench/src/read.ts）**：renderReadObject 为每个送达对象追加「登记来源：<file>#<标题路径>」（多来源按「；」连接，节点取不到时回退 section_id），来源文本位于【关联事实】分区并计入同一分页预算；此前 notes「容量预留的偏离说明」只预留元数据与 next_call，来源未预留，本批按 plan 4.5 补齐。
+- **失败台账（bench/src/read.ts）**：容量错误、记录卡缺失等送达前失败改为登记 factsPage（offset=factsOffset、nextOffset=null、returned=0、complete=false），仍不写实际范围与 deliveredObjects；预算拒绝的 read 也留下 status=budget_exhausted、sectionId=null 的台账（未解析参数，不上报范围，tool-executor.ts 的 exhaustedResult）。
+- **台账汇总（bench/src/report.ts）**：readDeliveryStats 改为逐字段判定可用性——任一调用缺 bodyRange 或 deliveredObjects 时对应字段为 null，只把已观察到的空值记 0；calls/successes/empty/errors 口径不变。此前的记录（「整体为 null 或 0」两档）随之细化为按字段不可用。
+- **未知字段校验（bench/src/tool-executor.ts）**：rag_search、facts_search、read 三处未知键判断由真值改为 `!== undefined`，空字符串字段名不再绕过校验，返回 invalid_params。
+- **技能投影（bench/src/facts/store.ts）**：skillProjection 改为两遍处理，先登记全部明确引用、再沿 replacesGrantId 补替换依据；先引用升级技能再引用其被替换技能时，后者仍标「明确引用」。
+- **导航与死代码（bench/src/read.ts）**：省略数量改为「导航上限截断数（navigationFor 的 omitted）＋预算裁减数」，尾部数字按实际保留条数计算；删除未被调用的 assemblePage。
+- **运行快照（bench/src/runner.ts、prose-links.ts、tool-executor.ts、agent.ts）**：buildProseLinkIndex 改为可选对象入参，可注入运行级小节目录与 raw facts；runner 只装配一次小节目录并注入关联解析，另以运行级惰性提供者（factsStore）注入 facts 卡片快照，供 facts 工具与 read 共用同一实例；模块级单例仍是缺省回退，无 runner 的调用方与测试替身路径不变。
+- **未知 ID 提示（bench/src/tool-executor.ts）**：新增 boundIdMessage，未知小节与无目录提示按 maxContextChars 截断回显的 ID（不拆代理对），empty 结果的 data 同样守住预算。
+- **进度文档**：docs/inbox.md 的渐进披露条目由「第 4 步部分实施」更正为「read 本体、精确技能投影与 readDelivery 已实施，第 5–8 步待实施」；sections.ts、delivery.ts、agent.ts、prose-links.ts 中指向已退役 read_section / linked 展开的过期注释同步更新。
+- **TDD 与验证**：先补/改用例并观察失败——read 8 条（未知 ID 预算、空键拒绝、导航省略数量、窄容量分页前进扫描、来源入预算、超容量 factsPage、投影顺序、预算拒绝台账）、report 2 条、tool-executor 1 条、prose-links 1 条（快照注入）；修复后定向 4 个文件 137 项全绿，全套 `pnpm run test` 为 701 通过／2 失败（共 703 项、50 文件），两条失败仍是第 6 步延后的 benchmark-integrity 旧 gold 锚点，本批无新增失败；`pnpm run typecheck` 通过。
+- **未闭合**：第 5 步（expandFulltext 默认、injectKeywordCatalog、RAG fragmentRanges 与必要 ID 优先）与第 6–8 步未开始；plan 验收清单第 7 项因 RAG 片段范围属第 5 步保持未勾选，read 侧范围与对象送达（含本批修复）已接通。
+
+### 2026-09-16 — 第 4 步遗漏项修复（复审）
+
+- **背景**：前一条「第 4 步交付的验收审查修复」声称已修的三项经复审仍不完整：report 只在记录里出现旧工具名 read_section 时判不可用，正式旧快照（下发过 read_section 但未调用）仍返回七项全零；运行快照只统一了小节目录，关联解析与卡片投影仍各自加载 facts，卡片继续走跨运行单例；skillProjection 对卡上不存在的 grant 仍静默跳过，read 会返回「成功但技能数为 0」的投影卡。另有三项边界与契约遗漏（快照边界、失败页完成状态、重复标题来源显示）。以下均属 plan 4.2–4.6 既定契约与冻结契约内的缺陷，不属第 6 步延后例外。
+- **report 汇总（bench/src/report.ts、cli.ts、runner.ts）**：新增 ReportRunDeclaration（toolNames）与 runDeclarationFromMeta；readDeliveryStats 只在运行明确下发 read 时才把「零次调用」记 0，未声明（无 meta 的裸 records、toolSchemaVersion 12 的旧快照）保持 null，不再把未调用与未观测混同；新增台账覆盖检查——请求过 read 却缺台账数组、或台账条目数与单调用规则下实际准入的调用不符（含未请求 read 却出现台账）都判整体不可用，同批超量拒绝的 read 仍不计。runner 以工具 schema 的 toolNames 声明，cli 的 run/report 从运行目录 meta.json 读取同一声明。
+- **运行级 facts 快照（bench/src/facts/final.ts、facts/store.ts、prose-links.ts、runner.ts）**：final.ts 拆出 loadValidatedFacts 与 projectValidatedRecordCards（loadValidatedRecordCards 保留为组合入口，行为不变）；buildProseLinkIndex 的 facts 入参支持惰性提供者；runner 只加载一次 raw facts，同时注入关联解析与卡片投影，并以新增的 createRunCardStore 从运行级卡片构建 store，不再回落模块级单例（单例仍是缺省回退，供无 runner 的调用方与测试替身使用）。
+- **技能投影（bench/src/facts/store.ts）**：skillProjection 对卡上不存在的明确引用、以及替换链中缺失的被替换 grant 直接报中文错误，read 由此得到 error 结果而不是静默丢弃该引用；环状关系与已入选项的稳定跳过保持。
+- **快照边界（bench/src/snapshot.ts）**：数值统一要求非负安全整数；factsPage 校验 offset 与 offset+returned 不越 total，并要求完成状态与 nextOffset 一致（complete 时为 null，未完成时等于本页结束偏移）；概念 occurrence/termOccurrence 必须从 1 起；概念条目与原文范围的倒置行范围（endLine < startLine）拒绝。
+- **read（bench/src/read.ts）**：送达前失败页的 factsPage 恒为 returned=0、complete=false（无事实或 facts_offset 已耗尽时不再标成完成）；登记来源在同文件同标题路径重复标题时附「（出现序号 N）」，按 sectionId 去重，显示不再把两处来源合并成一条。
+- **TDD 与验证**：先补/改用例并观察失败——report 4 项、snapshot 2 项、read 4 项、prose-links 1 项、runner 1 项、inputs 1 项（vi.doMock 改为在卡片投影阶段抛错，raw facts 快照仍正常加载），首轮定向读到 10 项失败（含 4 条既有断言的改造）；实现后定向 5 个文件 122 项全绿。全套 `pnpm run test` 为 711 通过／2 失败（共 713 项、50 文件），两条失败仍是第 6 步延后的 benchmark-integrity 旧 gold 锚点，本批无新增失败；`pnpm run typecheck`、`pnpm run build`、`check:reference-projection`（9 分片一致）、`check:prose-terms`、`catalog --check` 通过。
+- **实测复核**：`node dist/cli.js report` 两份已登记快照的 read 行由七项 0 改为七项「不可用」；本轮 dry 端到端（run → export 共享快照 → report）在明确下发 read 的运行下得到调用 0／成功 0，临时运行目录与快照已删除，未新增入库产物。
+- **未闭合**：第 5 步（expandFulltext 默认、injectKeywordCatalog、RAG fragmentRanges 与必要 ID 优先）与第 6–8 步未开始；旧 gold 及依赖它的 validate／bench:dry 红态不变。
+
+### 2026-09-16 — 提交验收中的失败记录衔接修缮
+
+- **范围**：按用户要求，只核对第 4 步冻结契约并使用现有测试入口；本轮未新增探针、基准、诊断框架或留档产物。独立审查指出失败事实页被快照校验拒绝、取得对象序列后的加载/投影异常丢失 factsPage，以及概念 termOccurrence 缺少 term 的校验遗漏。
+- **修缮**：快照按 error 状态接受 returned=0、complete=false、nextOffset=null 的失败页，正常续读校验保持；补齐概念字段依赖。读取层在已知对象序列与有效事实偏移时保留失败 factsPage，原有 fatal 语义保持，不写实际范围或送达对象；清除未使用的正文页常量导入。
+- **TDD**：在原有 snapshot 测试中补充失败页与字段依赖回归，先观察 2 失败／12 通过；测试夹具补齐对应 queries 条目。随后扩展原有缺失 grant 用例，观察 1 失败／47 通过；实现后 read/snapshot 两个文件共 48 项通过。未修改旧 gold、benchmark-integrity 或门禁脚本。
+- **复测**：全套 `pnpm run test` 为 712 通过／2 条旧 gold 失败（714 项、50 文件）；类型检查、构建与差异空白检查通过。文档检查仍仅 18 条活动计划 D1；本轮既有 reference-projection、prose-terms、catalog --check 通过。第 5–8 步及旧门禁延后范围保持。
+
 ## 债务记录
+
+### 2026-09-16 — PLK-1 关联载荷体积（已关闭）
+
+- **原债务**：bench/src/tool-executor.ts 的 `readLinkedFactsOperation` 首版不设分页或截断，一次展开全部登记对象，体积可能超过 maxContextChars（记录见 docs/plan-prose-linked-knowledge-notes.md「债务记录」）。
+- **关闭依据**：本批以 read 取代该入口，关联事实按完整对象分页（facts_offset/next_facts_offset），单对象放不下整页时显式报容量错误；`readLinkedFactsOperation` 与代码锚点 `TODO(tech-debt) PLK-1` 一并删除，不再存在无分页的关联展开路径。对应契约与用例见本笔记「第 4 步（分批之二）」。
+- **关闭记录**：同步记入 docs/plan-prose-linked-knowledge-notes.md 债务记录（该计划为债务原属记录）。
 
 ### 2026-09-15 — 关键词目录文本压缩（IDX-1）
 - **债务**：关键词目录约 1.75 万字符的重复说明文本压缩未纳入本计划；本计划只交付注入开关（默认关闭）并把压缩 stash 排除在外。代码锚点：bench/src/catalog.ts 顶部 `TODO(tech-debt) IDX-1`。

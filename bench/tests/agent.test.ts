@@ -20,7 +20,7 @@ vi.mock('../src/provider.js', () => ({ callLLM: mockCall }))
 describe('agent：独立函数工具 schema', () => {
   it('按模式直接暴露独立函数工具', () => {
     expect(toolsForRetriever('hybrid', 3).map((tool) => (tool.function as { name: string }).name))
-      .toEqual(['rag_search', 'facts_search', 'read_section'])
+      .toEqual(['rag_search', 'facts_search', 'read'])
   })
 
   it('所有模式注入同一份决策契约，工具名随检索器切换', () => {
@@ -68,8 +68,8 @@ describe('agent：独立函数工具 schema', () => {
   })
 
   it.each([
-    ['bm25', 'rag_search、read_section'],
-    ['hybrid', 'rag_search、facts_search、read_section'],
+    ['bm25', 'rag_search、read'],
+    ['hybrid', 'rag_search、facts_search、read'],
   ] as const)('%s 模式的能力块精确列出工具名', (retriever, expectedTools) => {
     const prompt = buildSystemPrompt(retriever, '唯一规则正文')
     const capabilityBlock = prompt.split('## 本次运行能力\n')[1]
@@ -82,7 +82,7 @@ describe('agent：独立函数工具 schema', () => {
     expect(prompt).toContain('保留原文条件与限定')
     expect(prompt).toContain('rag_search')
     expect(prompt).toContain('facts_search')
-    expect(prompt).toContain('可用工具：rag_search、facts_search、read_section')
+    expect(prompt).toContain('可用工具：rag_search、facts_search、read')
   })
 
   it('系统提示使用实际配置的成功额度与获准尝试上限', () => {
@@ -102,7 +102,7 @@ describe('agent：独立函数工具 schema', () => {
   it('人工规则只从调用方提供的 AGENTS 内容注入一次', () => {
     const prompt = buildSystemPrompt('hybrid', '唯一规则正文')
     expect(prompt.match(/唯一规则正文/g)).toHaveLength(1)
-    expect(prompt).toContain('可用工具：rag_search、facts_search、read_section')
+    expect(prompt).toContain('可用工具：rag_search、facts_search、read')
     expect(prompt).not.toContain('结构化排版')
   })
 
@@ -199,7 +199,7 @@ describe('runQuery：轮次耗尽兜底（末位强制作答轮）', () => {
     expect(result.rounds).toBe(4)
     const fallbackArgs = mockCall.mock.calls[3]?.[1] ?? null
     expect((fallbackArgs as Array<{ function: { name: string } }>).map((tool) => tool.function.name))
-      .toEqual(['rag_search', 'read_section'])
+      .toEqual(['rag_search', 'read'])
     expect(result.injectedIds).toEqual(['2-体系/红松林经验.md#制造站'])
   })
 
@@ -328,7 +328,7 @@ describe('runQuery：trace 事件记录', () => {
     expect(result.finalAnswer).toBe('最终答案')
     expect(trace.events.map((event) => event.type)).toEqual(['llm_call', 'tool_call', 'llm_call'])
     const llmEvent = trace.events[0]
-    expect(llmEvent).toMatchObject({ type: 'llm_call', round: 1, offeredTools: ['rag_search', 'read_section'], content: null })
+    expect(llmEvent).toMatchObject({ type: 'llm_call', round: 1, offeredTools: ['rag_search', 'read'], content: null })
     const toolEvent = trace.events[1]
     expect(toolEvent).toMatchObject({
       type: 'tool_call',

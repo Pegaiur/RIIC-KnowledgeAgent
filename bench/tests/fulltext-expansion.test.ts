@@ -61,12 +61,14 @@ function parseFulltext(data: string): { header: string; page: string; meta: stri
   return { header: lines[0] ?? '', page: lines.slice(1, bodyEnd).join('\n'), meta: metaIndex < 0 ? undefined : lines[metaIndex] }
 }
 
-/** 从 read_section 输出中取出正文页。 */
+/** 从 read 输出中取出本页原文。 */
 function parseReadSection(data: string): string {
-  const lines = data.split('\n')
-  const blank = lines.indexOf('')
-  if (blank < 0) throw new Error(`无法解析 read_section 输出：${data}`)
-  return lines.slice(blank + 1).join('\n')
+  const marker = '\n【原文】\n'
+  const start = data.indexOf(marker)
+  if (start < 0) throw new Error(`无法解析 read 输出：${data}`)
+  const rest = data.slice(start + marker.length)
+  const page = rest.split(/\n(?=【(?:关联事实|导航)】)/u)[0] ?? ''
+  return page === '（无本页内容）' ? '' : page
 }
 
 function longDocument(sections: number): string {
@@ -195,7 +197,7 @@ describe('原文扩展：命中文件扩展到文档范围（ADR-013 步骤 2）
       const doc = corpus.directory.documentRange(range.file)!
       expect(item.data).toContain(doc.body.slice(range.offset, range.endOffset))
     }
-    expect(item.data).toContain('续读：ID doc:guides/乙.md')
+    expect(item.data).toContain('续读：read(section_id="doc:guides/乙.md"')
     expect(item.data.length).toBeLessThanOrEqual(400)
   })
 })
@@ -213,7 +215,7 @@ describe('原文扩展：容量不足时按可续读连续原文送达（ADR-013
 
     expect(item.status).toBe('success')
     expect(item.data).toContain('原文扩展')
-    expect(parsed.meta).toContain('续读：ID doc:base/长.md')
+    expect(parsed.meta).toContain('续读：read(section_id="doc:base/长.md"')
     expect(parsed.meta).toContain('complete false')
     expect(range).toMatchObject({ file: 'base/长.md', docId: 'doc:base/长.md', offset: 0, complete: false })
     expect(range.nextOffset).toBeGreaterThan(0)
@@ -231,7 +233,7 @@ describe('原文扩展：容量不足时按可续读连续原文送达（ADR-013
     const range = item.fulltextRanges![0]!
     const firstPage = parseFulltext(item.data).page
 
-    const continued = await run(executorFor(corpus), 'read_section', { section_id: range.docId, offset: range.nextOffset })
+    const continued = await run(executorFor(corpus), 'read', { section_id: range.docId, offset: range.nextOffset })
     const readPage = parseReadSection(continued.data)
 
     expect(continued.status).toBe('success')
@@ -254,12 +256,12 @@ describe('原文扩展：容量不足时按可续读连续原文送达（ADR-013
     expect(item.fulltextRanges).toEqual([])
   })
 
-  it('read_section 从正文中段读到尾部，offset 与原文对应', async () => {
+  it('read 从正文中段读到尾部，offset 与原文对应', async () => {
     const corpus = buildCorpus({ 'base/长.md': longDocument(40) })
     const doc = corpus.directory.documentRange('base/长.md')!
     const mid = Math.floor(doc.body.length / 2)
 
-    const item = await run(executorFor(corpus), 'read_section', { section_id: doc.sectionId, offset: mid })
+    const item = await run(executorFor(corpus), 'read', { section_id: doc.sectionId, offset: mid })
 
     expect(item.status).toBe('success')
     const page = parseReadSection(item.data)
@@ -272,7 +274,7 @@ describe('原文扩展：容量不足时按可续读连续原文送达（ADR-013
     // 单行正文（无换行）才能让行边界截断落在非 BMP 字符中间，验证代理对保护。
     const corpus = buildCorpus({ 'base/表情.md': `关键词${'😀'.repeat(300)}\n` })
     const doc = corpus.directory.documentRange('base/表情.md')!
-    const metaReserve = `续读：ID doc:base/表情.md｜offset 0｜next_offset ${doc.body.length}｜complete false｜正文 ${doc.body.length} 字符`.length
+    const metaReserve = `续读：read(section_id="doc:base/表情.md", offset=${doc.body.length})｜complete false｜正文 ${doc.body.length} 字符`.length
     const header = `【base/表情.md｜原文扩展｜L${doc.startLine}-${doc.endLine}】`
     const maxChars = header.length + 1 + metaReserve + 1 + 40
 

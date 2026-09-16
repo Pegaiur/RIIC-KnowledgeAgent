@@ -7,7 +7,7 @@
  * lookup/queryOperators 仅供旧数据调用者和历史回归使用。
  * 不做落盘、不做自然语言解析、不做模糊兜底；子串仅按人工登记的短名做确定性展开，不做任意子串扫描。
  */
-import type { RecordCard } from './card.js'
+import type { RecordCard, RecordSkill } from './card.js'
 import { TERM_CURATIONS } from './curation/terms.js'
 import { loadValidatedRecordCards } from './final.js'
 import { REFERENCE_ROOMS } from './references.js'
@@ -142,6 +142,55 @@ export interface CardSerializationFilters {
   termQuery?: string
   /** 标记 query_operators 输出，以加入卡级属性与技能投影范围说明。 */
   queryOperators?: boolean
+  /**
+   * read 关联的精确技能投影（ADR-022 决策 5）：只渲染指定 grant 及其被替换链，
+   * 不加入同卡其它设施或无关技能；卡头标为干员全局属性，每条技能标明引用关系。
+   */
+  projectionGrantIds?: readonly string[]
+}
+
+/** 技能引用关系标签：登记对象本身为「明确引用」，沿 replacesGrantId 补齐的为「替换依据」。 */
+export type SkillReferenceLabel = '明确引用' | '替换依据'
+
+export interface SkillProjection {
+  /** 按卡内原始顺序排列的投影技能 */
+  skills: RecordSkill[]
+  /** grantId → 引用关系标签 */
+  labels: Map<string, SkillReferenceLabel>
+}
+
+/**
+ * read 关联的技能精确投影：登记引用的 grant（明确引用）＋沿 replacesGrantId 补齐的被替换链（替换依据）。
+ * 只做卡内查找，不跨卡扩张；环状关系与已入选项保持稳定跳过。
+ * 明确引用或被替换依据在卡内不存在时直接报错，不静默跳过该项（否则会返回技能数为 0 的「成功」投影）。
+ * 先登记全部明确引用再补替换链，使标签不受登记顺序影响（先引用的升级技能不会把后引用的被替换技能降级）。
+ */
+export function skillProjection(card: RecordCard, explicitGrantIds: readonly string[]): SkillProjection {
+  const byGrantId = new Map<string, RecordSkill>()
+  for (const skill of card.skills) {
+    if (skill.grantId !== undefined && !byGrantId.has(skill.grantId)) byGrantId.set(skill.grantId, skill)
+  }
+  const labels = new Map<string, SkillReferenceLabel>()
+  for (const grantId of explicitGrantIds) {
+    if (!byGrantId.has(grantId)) {
+      throw new Error(`记录卡缺少关联明确引用的技能 grant：${card.canonical}｜${grantId}；不会返回零技能的投影卡。`)
+    }
+    labels.set(grantId, '明确引用')
+  }
+  for (const grantId of explicitGrantIds) {
+    let current = byGrantId.get(grantId)!.replacesGrantId
+    while (current !== undefined && !labels.has(current)) {
+      if (!byGrantId.has(current)) {
+        throw new Error(`记录卡缺少关联技能的被替换依据 grant：${card.canonical}｜${current}；不会返回缺链的投影卡。`)
+      }
+      labels.set(current, '替换依据')
+      current = byGrantId.get(current)!.replacesGrantId
+    }
+  }
+  return {
+    skills: card.skills.filter((skill) => skill.grantId !== undefined && labels.has(skill.grantId)),
+    labels,
+  }
 }
 
 function addTerm(byTerm: Map<string, Set<string>>, term: string, canonical: string): void {
@@ -529,6 +578,9 @@ function operatorScopeNotice(): string {
   return '查询范围说明：卡头中的设施、阵营、职业，以及技能组和卡级备注属于干员全局属性，不代表当前设施专属；下方技能按本次查询条件投影，未必包含该卡全部技能。'
 }
 
+/** 投影卡说明：卡头属性仍是干员全局属性，只列出登记引用的技能及被替换依据。 */
+const PROJECTION_CARD_NOTICE = '关联投影说明：卡头设施、阵营、职业为干员全局属性，不代表本设施专属；下方只含登记引用的技能及其被替换依据，未列出的技能不属于本次明确引用。'
+
 /**
  * 技能注记片段：固定顺序为作用产物、作用职业、引用术语、原始注记、同描述说明。
  * 旧卡缺省新增字段仍合法；空注记与缺省字段都不产生占位片段。
@@ -547,9 +599,10 @@ function skillAnnotationSegments(skill: RecordCard['skills'][number], room: stri
   return segments
 }
 
-/** 渲染单张记录卡；独立 facts_search 与 RAG 内部附带共用同一卡片格式。 */
+/** 渲染单张记录卡；独立 facts_search、RAG 内部附带与 read 关联共用同一卡片格式。 */
 export function serializeCard(card: RecordCard, filters: CardSerializationFilters, matchCategories?: FactsMatchCategory[]): string {
-  const scopedSkills = skillsInRoom(card, filters.room)
+  const projection = filters.projectionGrantIds === undefined ? undefined : skillProjection(card, filters.projectionGrantIds)
+  const scopedSkills = projection ? projection.skills : skillsInRoom(card, filters.room)
   const q = (filters.termQuery ?? '').trim()
   const matchingSkills = q
     ? scopedSkills.filter((skill) => skillMatchesTerm(skill, q))
@@ -561,6 +614,8 @@ export function serializeCard(card: RecordCard, filters: CardSerializationFilter
   if (matchCategories && matchCategories.length > 0) {
     lines.push(`匹配类别：${matchCategories.map((category) => FACTS_MATCH_CATEGORY_LABEL[category]).join('、')}`)
   }
+  // 投影卡卡头仍是干员全局属性，不冒充技能专属属性；差别在此说明。
+  if (projection) lines.push(PROJECTION_CARD_NOTICE)
   for (const skill of skills) {
     const room = skill.room?.trim() || '未知设施'
     const note = skill.notes === undefined ? '' : `；备注：${skill.notes}`
@@ -570,7 +625,9 @@ export function serializeCard(card: RecordCard, filters: CardSerializationFilter
     const replacement = replaced === undefined ? '' : `；替换「${replaced.name}」`
     const annotations = skillAnnotationSegments(skill, room)
     const annotation = annotations.length === 0 ? '' : `；${annotations.join('；')}`
-    lines.push(`- 【设施：${room}】${skill.unlockType}「${skill.name}」：${skill.effectText}${replacement}${note}${annotation}`)
+    const label = projection && skill.grantId !== undefined ? projection.labels.get(skill.grantId) : undefined
+    const labelText = label === undefined ? '' : `；${label}`
+    lines.push(`- 【设施：${room}】${skill.unlockType}「${skill.name}」：${skill.effectText}${replacement}${note}${annotation}${labelText}`)
   }
   if (card.skillGroups.length > 0) lines.push(`技能组：${card.skillGroups.join('、')}`)
   if (card.notes) lines.push(`备注：${card.notes}`)
@@ -583,4 +640,12 @@ let singleton: CardStore | undefined
 export function getCardStore(): CardStore {
   if (!singleton) singleton = buildCardStore(loadValidatedRecordCards(process.cwd(), 'curated'), TERM_CURATIONS)
   return singleton
+}
+
+/**
+ * 以运行级已校验卡片构建 store：与模块级单例同源同装配，但不跨运行复用，
+ * 供 runner 与关联解析共用同一份运行快照（ADR-022 决策 6）。
+ */
+export function createRunCardStore(cards: readonly RecordCard[]): CardStore {
+  return buildCardStore([...cards], TERM_CURATIONS)
 }

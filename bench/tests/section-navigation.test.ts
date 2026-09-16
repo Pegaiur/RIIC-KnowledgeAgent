@@ -92,19 +92,27 @@ interface ParsedPage {
   offset: number
   nextOffset: number | null
   complete: boolean
+  nav?: string
 }
 
+/** 按固定分区解析 read 输出；分页元数据是「【分页】」下的单行合法 JSON。 */
 function parsePage(data: string): ParsedPage {
-  const lines = data.split('\n')
-  const blank = lines.indexOf('')
-  if (blank < 0) throw new Error(`无法解析 read_section 输出：${data}`)
-  const match = /offset：(\d+)｜next_offset：(\d+|null)｜complete：(true|false)/.exec(lines.slice(0, blank).join('\n'))
-  if (!match) throw new Error(`无法解析 read_section 输出：${data}`)
+  const segments = data.split(/\n(?=【(?:阅读范围|分页|原文|关联事实|导航)】)/u)
+  let meta: Record<string, unknown> | undefined
+  let page: string | undefined
+  let nav: string | undefined
+  for (const segment of segments) {
+    if (segment.startsWith('【分页】')) meta = JSON.parse(segment.slice('【分页】'.length)) as Record<string, unknown>
+    else if (segment.startsWith('【原文】\n')) page = segment.slice('【原文】\n'.length)
+    else if (segment.startsWith('【导航】\n')) nav = segment.slice('【导航】\n'.length)
+  }
+  if (meta === undefined || page === undefined) throw new Error(`无法解析 read 输出：${data}`)
   return {
-    page: lines.slice(blank + 1).join('\n'),
-    offset: Number(match[1]),
-    nextOffset: match[2] === 'null' ? null : Number(match[2]),
-    complete: match[3] === 'true',
+    page: page === '（无本页内容）' ? '' : page,
+    offset: Number(meta.offset),
+    nextOffset: meta.next_offset === null ? null : Number(meta.next_offset),
+    complete: meta.complete === true,
+    ...(nav === undefined ? {} : { nav }),
   }
 }
 
@@ -251,21 +259,22 @@ describe('RAG 展示：标题上下文与导航', () => {
   })
 })
 
-describe('read_section：按小节读取原文', () => {
+describe('read：按小节读取原文与关联事实', () => {
   function efficiencyId(): string {
     return directory.sections.find((section) => section.heading === '效率')!.sectionId
   }
 
-  it('返回固定格式的原文页，含小节标识、标题路径、行范围与分页元数据', async () => {
+  it('返回固定分区的原文页，含小节标识、标题路径、行范围与分页元数据', async () => {
     const sectionId = efficiencyId()
-    const result = await makeExecutor().executeStep([call('read', 'read_section', { section_id: sectionId })])
+    const result = await makeExecutor().executeStep([call('read', 'read', { section_id: sectionId })])
     const item = result.results[0]!
     expect(item.status).toBe('success')
-    expect(item.data).toContain(`【read_section】${sectionId}`)
-    expect(item.data).toContain('标题路径：制造体系 > 制造站 > 效率')
-    expect(item.data).toContain('行范围：L11-11')
-    expect(item.data).toContain('offset：0｜next_offset：null｜complete：true')
-    expect(item.data).toContain('制造站效率由干员技能决定，效率上限为 25%。')
+    expect(item.data).toContain('【阅读范围】base/制造.md｜标题路径：制造体系 > 制造站 > 效率')
+    expect(item.data).toContain(`section_id：${sectionId}`)
+    expect(item.data).toContain('原文行范围：L11-11')
+    expect(item.data).toContain('【原文】\n制造站效率由干员技能决定，效率上限为 25%。')
+    expect(item.data).toContain('【关联事实】\n（无本页内容）')
+    expect(parsePage(item.data)).toMatchObject({ page: '制造站效率由干员技能决定，效率上限为 25%。', offset: 0, nextOffset: null, complete: true })
     expect(item.hitIds).toEqual([])
     expect(item.injectedIds).toEqual([])
   })
@@ -274,12 +283,12 @@ describe('read_section：按小节读取原文', () => {
     const sectionId = efficiencyId()
     const bodyLength = directory.get(sectionId)!.body.length
     const endExecutor = makeExecutor()
-    const exact = await endExecutor.executeStep([call('end', 'read_section', { section_id: sectionId, offset: bodyLength })])
+    const exact = await endExecutor.executeStep([call('end', 'read', { section_id: sectionId, offset: bodyLength })])
     expect(exact.results[0]).toMatchObject({ status: 'empty', executed: true })
     expect(parsePage(exact.results[0]!.data)).toMatchObject({ page: '', nextOffset: null, complete: true })
     expect(endExecutor.snapshot()).toMatchObject({ successUsed: 0, attemptUsed: 1, remaining: 5 })
 
-    const overflow = await makeExecutor().executeStep([call('over', 'read_section', { section_id: sectionId, offset: bodyLength + 1 })])
+    const overflow = await makeExecutor().executeStep([call('over', 'read', { section_id: sectionId, offset: bodyLength + 1 })])
     expect(overflow.results[0]).toMatchObject({ status: 'invalid_params', executed: false })
   })
 
@@ -292,8 +301,8 @@ describe('read_section：按小节读取原文', () => {
     expect(emptySection.body).toBe('')
     const executor = makeExecutor()
     // 每步只准入一个调用，两次读取拆成两个独立模型步骤。
-    const first = await executor.executeStep([call('empty', 'read_section', { section_id: emptySection.sectionId })])
-    const second = await executor.executeStep([call('body', 'read_section', { section_id: bodySection.sectionId })])
+    const first = await executor.executeStep([call('empty', 'read', { section_id: emptySection.sectionId })])
+    const second = await executor.executeStep([call('body', 'read', { section_id: bodySection.sectionId })])
     expect(first.results[0]).toMatchObject({ status: 'empty', executed: true })
     expect(second.results[0]).toMatchObject({ status: 'success', executed: true })
     expect(executor.snapshot()).toMatchObject({ successUsed: 1, attemptUsed: 2, remaining: 4 })
@@ -301,13 +310,13 @@ describe('read_section：按小节读取原文', () => {
 
   it('maxContextChars 无法容纳分页元数据时明确返回错误，不静默放宽上限', async () => {
     const sectionId = efficiencyId()
-    const result = await makeExecutor({ maxContextChars: 80 }).executeStep([call('a', 'read_section', { section_id: sectionId })])
+    const result = await makeExecutor({ maxContextChars: 80 }).executeStep([call('a', 'read', { section_id: sectionId })])
     expect(result.results[0]).toMatchObject({ status: 'error' })
     expect(result.results[0]!.data).toContain('maxContextChars=80')
   })
 
   it('未知小节 ID 返回 empty，不退回模糊搜索', async () => {
-    const result = await makeExecutor().executeStep([call('missing', 'read_section', { section_id: 'sec-不存在' })])
+    const result = await makeExecutor().executeStep([call('missing', 'read', { section_id: 'sec-不存在' })])
     expect(result.results[0]).toMatchObject({ status: 'empty', executed: true })
     expect(result.results[0]!.data).toContain('没有该小节')
   })
@@ -316,11 +325,12 @@ describe('read_section：按小节读取原文', () => {
     const sectionId = efficiencyId()
     const executor = makeExecutor()
     const calls = [
-      call('a', 'read_section', {}),
-      call('b', 'read_section', { section_id: sectionId, extra: 1 }),
-      call('c', 'read_section', { section_id: sectionId, offset: -1 }),
-      call('d', 'read_section', { section_id: sectionId, offset: 1.5 }),
-      call('e', 'read_section', { section_id: sectionId, offset: '0' }),
+      call('a', 'read', {}),
+      call('b', 'read', { section_id: sectionId, extra: 1 }),
+      call('c', 'read', { section_id: sectionId, offset: -1 }),
+      call('d', 'read', { section_id: sectionId, offset: 1.5 }),
+      call('e', 'read', { section_id: sectionId, offset: '0' }),
+      call('f', 'read', { section_id: sectionId, facts_offset: -1 }),
     ]
     const statuses: string[] = []
     for (const single of calls) {
@@ -328,8 +338,8 @@ describe('read_section：按小节读取原文', () => {
       statuses.push(step.results[0]!.status)
       expect(step.results[0]!.executed).toBe(false)
     }
-    expect(statuses).toEqual(['invalid_params', 'invalid_params', 'invalid_params', 'invalid_params', 'invalid_params'])
-    expect(executor.snapshot()).toMatchObject({ successUsed: 0, attemptUsed: 5, executed: 0 })
+    expect(statuses).toEqual(['invalid_params', 'invalid_params', 'invalid_params', 'invalid_params', 'invalid_params', 'invalid_params'])
+    expect(executor.snapshot()).toMatchObject({ successUsed: 0, attemptUsed: 6, executed: 0 })
   })
 
   it('长小节连续分页无中段丢失，且每次续读占用共享预算', async () => {
@@ -342,7 +352,7 @@ describe('read_section：按小节读取原文', () => {
     let offset = 0
     let collected = ''
     for (let page = 0; page < 10; page++) {
-      const result = await executor.executeStep([call(`p${page}`, 'read_section', { section_id: section.sectionId, offset })])
+      const result = await executor.executeStep([call(`p${page}`, 'read', { section_id: section.sectionId, offset })])
       const item = result.results[0]!
       expect(item.status).toBe('success')
       const parsed = parsePage(item.data)
@@ -361,36 +371,39 @@ describe('read_section：按小节读取原文', () => {
   })
 
   it('无小节目录时明确返回本运行无法读取', async () => {
-    const result = await makeExecutor({}, false).executeStep([call('a', 'read_section', { section_id: 'sec-任意' })])
+    const result = await makeExecutor({}, false).executeStep([call('a', 'read', { section_id: 'sec-任意' })])
     expect(result.results[0]).toMatchObject({ status: 'empty', executed: true })
     expect(result.results[0]!.data).toContain('未启用小节阅读')
   })
 
-  it('读取结果附加直接父级 ID、标题路径与正文长度', async () => {
+  it('导航分区附加直接父级 ID、标题路径与正文长度', async () => {
     const efficiency = directory.sections.find((section) => section.heading === '效率')!
     const station = directory.sections.find((section) => section.heading === '制造站')!
-    const result = await makeExecutor().executeStep([call('a', 'read_section', { section_id: efficiency.sectionId })])
+    const result = await makeExecutor().executeStep([call('a', 'read', { section_id: efficiency.sectionId })])
     const data = result.results[0]!.data
 
+    expect(data).toContain('【导航】\n')
     expect(data).toContain(`父级范围：${station.sectionId}｜base/制造.md｜标题路径：制造体系 > 制造站｜正文 ${station.body.length} 字符（包含下级小节的原文范围）`)
     expect(parsePage(data)).toMatchObject({ page: efficiency.body, nextOffset: null, complete: true })
   })
 
-  it('父级行不改变原分页正文、next_offset 与工具计费', async () => {
+  it('导航只用余量：省略导航分区不改变正文页、next_offset 与工具计费', async () => {
     const efficiency = directory.sections.find((section) => section.heading === '效率')!
-    const withParent = await makeExecutor().executeStep([call('a', 'read_section', { section_id: efficiency.sectionId })])
+    const withParent = await makeExecutor().executeStep([call('a', 'read', { section_id: efficiency.sectionId })])
     const full = withParent.results[0]!.data
-    const parentLine = /^父级范围：.*$/m.exec(full)![0]!
-    const tightMax = full.length - 1
+    const navStart = full.indexOf('\n【导航】')
+    expect(navStart).toBeGreaterThan(0)
+    const withoutNav = full.slice(0, navStart)
 
-    const tight = await makeExecutor({ maxContextChars: tightMax }).executeStep([
-      call('b', 'read_section', { section_id: efficiency.sectionId }),
+    const tight = await makeExecutor({ maxContextChars: withoutNav.length }).executeStep([
+      call('b', 'read', { section_id: efficiency.sectionId }),
     ])
     const tightData = tight.results[0]!.data
 
-    expect(tightData).not.toContain('父级范围：')
-    expect(tightData).toBe(full.replace(`\n${parentLine}`, ''))
-    expect(parsePage(tightData)).toMatchObject(parsePage(full))
+    expect(tightData).not.toContain('【导航】')
+    expect(tightData).toBe(withoutNav)
+    const fullPage = parsePage(full)
+    expect(parsePage(tightData)).toMatchObject({ page: fullPage.page, offset: fullPage.offset, nextOffset: fullPage.nextOffset, complete: fullPage.complete })
     expect(parsePage(tightData).page).toBe(efficiency.body)
     expect(withParent.snapshot).toMatchObject({ successUsed: 1, attemptUsed: 1, executed: 1 })
     expect(tight.snapshot).toMatchObject({ successUsed: 1, attemptUsed: 1, executed: 1 })
@@ -432,7 +445,7 @@ describe('read_section：按小节读取原文', () => {
     let pages = 0
     for (let page = 0; page < 10; page++) {
       const result = await executor.executeStep([
-        call(`p${page}`, 'read_section', { section_id: entry![1], offset }),
+        call(`p${page}`, 'read', { section_id: entry![1], offset }),
       ])
       expect(result.results[0]!.status).toBe('success')
       const parsed = parsePage(result.results[0]!.data)

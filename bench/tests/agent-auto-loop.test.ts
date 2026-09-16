@@ -33,7 +33,7 @@ describe('Agent auto 主循环', () => {
   it('能力块只暴露当前独立工具，并描述双上限预算', () => {
     const prompt = buildSystemPrompt('hybrid', '规则', 2)
 
-    expect(prompt).toContain('可用工具：rag_search、facts_search、read_section')
+    expect(prompt).toContain('可用工具：rag_search、facts_search、read')
     expect(prompt).toContain('2 点成功额度 + 10 次获准尝试上限')
     expect(prompt).toContain('仅非空执行成功扣 1 点')
     // 单调用约束由人工契约承载，能力块只补充运行时事实。
@@ -52,7 +52,7 @@ describe('Agent auto 主循环', () => {
     mockCall
       .mockResolvedValueOnce(result({ toolCalls: [
         toolCall('a', 'rag_search'),
-        toolCall('b', 'read_section', { section_id: 'sec-不存在' }),
+        toolCall('b', 'read', { section_id: 'sec-不存在' }),
         toolCall('c', 'rag_search', { query: '制造站效率' }),
         toolCall('d', 'rag_search', { query: '超额' }),
       ] }))

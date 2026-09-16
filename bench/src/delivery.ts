@@ -25,7 +25,7 @@ export interface AttachedFactsObservation {
 /** 原文扩展的实际送达范围（ADR-013）：offset/行范围对应原文，用于观测与续读。 */
 export interface FulltextRange {
   file: string
-  /** 可调用续读的文档范围 ID（read_section 可解析）。 */
+  /** 可调用续读的文档范围 ID（read 可解析）。 */
   docId: string
   /** 已送达正文在文档正文中的起止 UTF-16 offset。 */
   offset: number
@@ -50,19 +50,6 @@ export interface LinkedEntryObservation {
   written: boolean
 }
 
-/** read_section 显式展开关联事实的实际送达观测（ADR-020 决策 4）：登记范围与返回对象分开记录。 */
-export interface LinkedFactsObservation {
-  sectionId: string
-  /** 人工登记的可读对象引用（解析成功者按登记顺序在前，解析失败者随后） */
-  requested: string[]
-  /** 实际送达的记录卡 canonical（按登记顺序去重） */
-  delivered: string[]
-  /** 实际送达概念的名称，按精确位置去重并保持登记顺序，名称可重复。 */
-  deliveredConcepts: string[]
-  /** 已登记但本次未返回的对象及原因 */
-  omitted: Array<{ ref: string; reason: string }>
-}
-
 /** 单次外部 RAG 的送达台账；数组缺失表示异常时不可用，空数组表示已观察为零。 */
 export interface RagDeliveryRecord {
   callId: string
@@ -71,4 +58,77 @@ export interface RagDeliveryRecord {
   attachedFacts?: Array<Omit<AttachedFactsObservation, 'paths'> & { paths: DeliveryPath[] }>
   /** 关联事实入口提示观测（ADR-020）：rag_search 每次确定性给出数组（无提示为空数组）；历史记录缺字段表示不可用。 */
   linkedEntries?: LinkedEntryObservation[]
+}
+
+/**
+ * read 单次正文送达范围（ADR-022 决策 6）：offset/endOffset 相对所读 section.body，
+ * docOffset/docEndOffset 相对同运行 documentRange.body，均为 UTF-16 半开区间。
+ */
+export interface ReadBodyRange {
+  file: string
+  sectionId: string
+  offset: number
+  endOffset: number
+  docOffset: number
+  docEndOffset: number
+  startLine: number
+  endLine: number
+  /** 该次读取的原文部分是否已读到范围末尾（只表示这一部分） */
+  complete: boolean
+}
+
+/** read 的关联事实分页计数：offset/nextOffset 为最终去重对象序列下标。 */
+export interface ReadFactsPage {
+  offset: number
+  nextOffset: number | null
+  total: number
+  returned: number
+  complete: boolean
+}
+
+/** 送达对象的登记来源：登记 entry.objects 的零基下标。 */
+export interface ReadDeliveryOrigin {
+  sectionId: string
+  objectIndex: number
+}
+
+export interface ReadDeliveredCard {
+  kind: 'card'
+  canonical: string
+  /** full 表示 operator 引用（完整卡），skills 表示精确技能投影 */
+  projection: 'full' | 'skills'
+  /** 实际展示的 grant（投影卡含替换依据）；完整卡列出该卡全部 grant */
+  grantIds: string[]
+  origins: ReadDeliveryOrigin[]
+}
+
+export interface ReadDeliveredConcept {
+  kind: 'concept'
+  file: string
+  headingPath: string[]
+  occurrence: number
+  term?: string
+  termOccurrence?: number
+  startLine: number
+  endLine: number
+  origins: ReadDeliveryOrigin[]
+}
+
+export type ReadDeliveredObject = ReadDeliveredCard | ReadDeliveredConcept
+
+/**
+ * read 的实际送达台账（ADR-022 决策 6）。字段固定为下列八项：
+ * bodyRange/factsPage 无法取得时省略；已观察无证据时 bodyRange=null、deliveredObjects=[]；
+ * 失败发生在送达前不得记实际范围，容量失败也不写成空关联。
+ */
+export interface ReadDeliveryRecord {
+  callId: string
+  status: string
+  /** 本次调用的 section_id；无法解析（参数级非法）时为 null */
+  sectionId: string | null
+  factsResultVersion: number
+  bodyRange?: ReadBodyRange | null
+  factsPage?: ReadFactsPage | null
+  deliveredObjects?: ReadDeliveredObject[]
+  resultChars: number
 }

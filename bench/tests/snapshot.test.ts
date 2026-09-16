@@ -67,6 +67,132 @@ describe('共享基准快照', () => {
     }
   })
 
+  it('read 台账按类型白名单写入快照，未知字段被过滤', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'rag-read-snapshot-'))
+    try {
+      const delivery = [{
+        callId: 'r1',
+        status: 'success',
+        sectionId: 'sec-1',
+        factsResultVersion: 8,
+        bodyRange: { file: 'base/甲.md', sectionId: 'sec-1', offset: 0, endOffset: 5, docOffset: 1, docEndOffset: 6, startLine: 1, endLine: 1, complete: true },
+        factsPage: { offset: 0, nextOffset: null, total: 2, returned: 2, complete: true },
+        deliveredObjects: [
+          { kind: 'card' as const, canonical: '干员甲', projection: 'skills' as const, grantIds: ['g-1'], origins: [{ sectionId: 'sec-1', objectIndex: 0 }], extra: 'must-drop' },
+          { kind: 'concept' as const, file: 'guides/类别.md', headingPath: ['甲'], occurrence: 1, term: '甲', termOccurrence: 1, startLine: 1, endLine: 1, origins: [{ sectionId: 'sec-1', objectIndex: 1 }] },
+        ],
+        resultChars: 300,
+        unexpected: 'must-drop',
+      }]
+      const input = {
+        runId: 'read-delivery',
+        topic: '送达',
+        meta: { toolSchemaVersion: 15, toolNames: ['rag_search', 'facts_search', 'read'] },
+        queries: [{
+          id: 'Q1', category: 'fact', question: '甲', answer: '甲', status: 'completed' as const, terminationReason: 'answer' as const,
+          rounds: 1, toolRounds: 1, toolTrace: ['read'], feedbackUsed: false, budgetUsed: 1, budgetRemaining: 4, injectedIds: [],
+        }],
+        records: [{ ...record(), tools: ['read' as const], readDelivery: delivery }],
+      }
+      const file = join(dir, 'snapshot.json')
+      writeSnapshot(file, createSnapshot(input))
+      const restored = readSnapshot(file)
+
+      expect(restored.records[0]?.readDelivery).toEqual([{
+        callId: 'r1',
+        status: 'success',
+        sectionId: 'sec-1',
+        factsResultVersion: 8,
+        bodyRange: { file: 'base/甲.md', sectionId: 'sec-1', offset: 0, endOffset: 5, docOffset: 1, docEndOffset: 6, startLine: 1, endLine: 1, complete: true },
+        factsPage: { offset: 0, nextOffset: null, total: 2, returned: 2, complete: true },
+        deliveredObjects: [
+          { kind: 'card', canonical: '干员甲', projection: 'skills', grantIds: ['g-1'], origins: [{ sectionId: 'sec-1', objectIndex: 0 }] },
+          { kind: 'concept', file: 'guides/类别.md', headingPath: ['甲'], occurrence: 1, term: '甲', termOccurrence: 1, startLine: 1, endLine: 1, origins: [{ sectionId: 'sec-1', objectIndex: 1 }] },
+        ],
+        resultChars: 300,
+      }])
+      expect(readFileSync(file, 'utf8')).not.toContain('must-drop')
+      expect(aggregateSnapshot(restored).readDeliveryStats).toEqual({
+        calls: 1, successes: 1, empty: 0, errors: 0, bodyChars: 5, deliveredCards: 1, deliveredConcepts: 1,
+      })
+      expect(createSnapshot({ ...input, records: [record()] }).records[0]).not.toHaveProperty('readDelivery')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('未声明下发 read 的历史快照不把缺观测记成 0', () => {
+    const historical = createSnapshot({
+      runId: 'legacy-read',
+      topic: '送达',
+      meta: { toolSchemaVersion: 12, toolNames: ['rag_search', 'read_section'] },
+      queries: [{
+        id: 'Q1', category: 'fact', question: '甲', answer: '甲', status: 'completed', terminationReason: 'answer',
+        rounds: 1, toolRounds: 1, toolTrace: ['rag_search'], feedbackUsed: false, budgetUsed: 1, budgetRemaining: 4, injectedIds: [],
+      }],
+      records: [{ ...record(), tools: ['rag_search'] }],
+    })
+
+    expect(aggregateSnapshot(historical).readDeliveryStats).toEqual({
+      calls: null, successes: null, empty: null, errors: null, bodyChars: null, deliveredCards: null, deliveredConcepts: null,
+    })
+  })
+
+  it('read 送达前失败的事实页可进入快照，不要求下一偏移', () => {
+    for (const [offset, total] of [[0, 0], [0, 2], [2, 2]]) {
+      const factsPage = { offset, nextOffset: null, total, returned: 0, complete: false }
+      const snapshot = createSnapshot({
+        runId: 'read-failure', topic: '失败送达', meta: { toolNames: ['read'] },
+        queries: [{
+          id: 'Q1', category: 'fact', question: '甲', answer: null, status: 'failed', terminationReason: 'tool_error',
+          rounds: 1, toolRounds: 1, toolTrace: ['read'], feedbackUsed: false, budgetUsed: 0, budgetRemaining: 4, injectedIds: [],
+        }],
+        records: [{
+          ...record(), tools: ['read'],
+          readDelivery: [{ callId: 'r1', status: 'error', sectionId: 'sec-1', factsResultVersion: 8, resultChars: 80, factsPage }],
+        }],
+      })
+      expect(snapshot.records[0]?.readDelivery?.[0]?.factsPage).toEqual(factsPage)
+      expect(aggregateSnapshot(snapshot).readDeliveryStats).toMatchObject({ calls: 1, errors: 1, bodyChars: null, deliveredCards: null })
+    }
+  })
+
+  it('read 台账拒绝超安全整数、越界分页偏移、零序号与倒置行范围', () => {
+    const conceptObject = (partial: Record<string, unknown> = {}) => ({
+      kind: 'concept', file: 'guides/类别.md', headingPath: ['甲'], occurrence: 1, startLine: 1, endLine: 1, origins: [], ...partial,
+    })
+    const build = (call: Record<string, unknown>) => createSnapshot({
+      runId: 'read-boundary',
+      topic: '边界',
+      meta: { toolSchemaVersion: 15, toolNames: ['read'] },
+      queries: [{
+        id: 'Q1', category: 'fact', question: '甲', answer: '甲', status: 'completed', terminationReason: 'answer',
+        rounds: 1, toolRounds: 1, toolTrace: ['read'], feedbackUsed: false, budgetUsed: 1, budgetRemaining: 4, injectedIds: [],
+      }],
+      records: [{
+        ...record(),
+        tools: ['read'],
+        readDelivery: [{ callId: 'r1', status: 'success', sectionId: 'sec-1', factsResultVersion: 8, resultChars: 10, ...call }],
+      } as CostRecord],
+    })
+
+    // 超安全整数：计数不再可精确表示，拒绝而不是静默接受。
+    expect(() => build({ factsResultVersion: Number.MAX_SAFE_INTEGER + 1 })).toThrowError('安全整数')
+    // 分页偏移越界：offset 与 offset + returned 都必须落在 total 内。
+    expect(() => build({ factsPage: { offset: 3, nextOffset: null, total: 2, returned: 0, complete: true } })).toThrowError('事实分页偏移')
+    expect(() => build({ factsPage: { offset: 0, nextOffset: null, total: 1, returned: 1, complete: false } })).toThrowError('事实分页完成状态')
+    expect(() => build({ factsPage: { offset: 0, nextOffset: 2, total: 2, returned: 1, complete: false } })).toThrowError('事实分页完成状态')
+    // 条目序号从 1 起：0 不是合法条目序号。
+    expect(() => build({ deliveredObjects: [conceptObject({ occurrence: 0 })] })).toThrowError('从 1 起的正整数')
+    expect(() => build({ deliveredObjects: [conceptObject({ term: '甲', termOccurrence: 0 })] })).toThrowError('从 1 起的正整数')
+    expect(() => build({ deliveredObjects: [conceptObject({ termOccurrence: 1 })] })).toThrowError('缺少 term')
+    // 倒置行范围：概念条目与正文范围都不能 endLine < startLine。
+    expect(() => build({ deliveredObjects: [conceptObject({ startLine: 5, endLine: 4 })] })).toThrowError('行范围倒置')
+    expect(() => build({
+      bodyRange: { file: 'base/甲.md', sectionId: 'sec-1', offset: 0, endOffset: 5, docOffset: 0, docEndOffset: 5, startLine: 4, endLine: 3, complete: true },
+    })).toThrowError('行范围倒置')
+  })
+
   it('只保留白名单字段并对文本脱敏，重复写入幂等且冲突拒绝覆盖', () => {
     const dir = mkdtempSync(join(tmpdir(), 'rag-snapshot-'))
     try {

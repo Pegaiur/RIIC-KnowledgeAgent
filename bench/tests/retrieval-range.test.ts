@@ -1,6 +1,6 @@
 /**
  * 检索范围契约（ADR-021）：RAG 检索面与模型原文阅读目录都等于 manifest 的 base/guides，
- * raw 目录既无技能表过滤、也不进入检索与 read_section。
+ * raw 目录既无技能表过滤、也不进入检索与 read。
  */
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -21,7 +21,7 @@ describe('检索范围：manifest 声明的 base/guides', () => {
     expect([...files].every((file) => file.startsWith('base/') || file.startsWith('guides/'))).toBe(true)
   })
 
-  it('模型原文阅读目录同样不含 raw，raw 不可由 read_section 定位', () => {
+  it('模型原文阅读目录同样不含 raw，raw 不可由 read 定位', () => {
     const directory = buildSectionDirectory(KNOWLEDGE_ROOT)
 
     expect(directory.sections.length).toBeGreaterThan(0)

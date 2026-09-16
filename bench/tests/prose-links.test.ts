@@ -522,7 +522,7 @@ describe('prose-links：旁挂文件读取', () => {
     ])],
   ])('%s 必须在真实装配入口失败', (_label, file) => {
     writeFileSync(join(corpusDir, 'prose-links.json'), JSON.stringify(file), 'utf-8')
-    expect(() => buildProseLinkIndex(process.cwd(), corpusDir)).toThrowError('关联元数据')
+    expect(() => buildProseLinkIndex({ root: process.cwd(), corpusDir })).toThrowError('关联元数据')
   })
 
   it('缺失文件表示无标注，空关联合法', () => {
@@ -541,9 +541,56 @@ describe('prose-links：旁挂文件读取', () => {
   })
 })
 
+describe('prose-links：运行快照注入', () => {
+  it('装配复用注入的 sections/facts 快照，不回落到重新读盘', () => {
+    writeFileSync(join(corpusDir, 'prose-links.json'), JSON.stringify(linkFile([{ kind: 'operator', canonical: '干员甲' }])), 'utf-8')
+
+    // 注入的 facts 缺名册干员：按注入快照报错，而不是读盘取到完整名册。
+    expect(() => buildProseLinkIndex({
+      root: process.cwd(),
+      corpusDir,
+      directory,
+      facts: { ...factsFixture(), operators: [] },
+    })).toThrowError('关联干员不在名册')
+
+    // 注入的小节目录不含目标小节：同样按注入快照报错。
+    const otherRoot = join(root, 'other')
+    mkdirSync(join(otherRoot, 'base'), { recursive: true })
+    writeFileSync(join(otherRoot, 'base', '其它.md'), '# 其它\n\n## 其它节\n\n正文。\n', 'utf-8')
+    writeFileSync(join(otherRoot, 'corpus-manifest.json'), JSON.stringify({ files: ['base/其它.md'] }), 'utf-8')
+    expect(() => buildProseLinkIndex({
+      root: process.cwd(),
+      corpusDir,
+      directory: buildSectionDirectory(otherRoot),
+      facts: factsFixture(),
+    })).toThrowError('未找到小节')
+
+    const index = buildProseLinkIndex({ root: process.cwd(), corpusDir, directory, facts: factsFixture() })
+    expect(index.links[0]!.sectionId).toBe(sectionId('甲节'))
+  })
+
+  it('facts 提供者惰性取用运行级快照，直接返回时不再自行读盘', () => {
+    writeFileSync(join(corpusDir, 'prose-links.json'), JSON.stringify(linkFile([{ kind: 'operator', canonical: '干员甲' }])), 'utf-8')
+
+    let provided = 0
+    const index = buildProseLinkIndex({
+      root: process.cwd(),
+      corpusDir,
+      directory,
+      facts: () => {
+        provided += 1
+        return factsFixture()
+      },
+    })
+
+    expect(provided).toBe(1)
+    expect(index.links[0]!.sectionId).toBe(sectionId('甲节'))
+  })
+})
+
 describe('prose-links：真实语料核对', () => {
   it('knowledge/prose-links.json 机械检查零问题且目标小节可解析', () => {
-    const index = buildProseLinkIndex(process.cwd())
+    const index = buildProseLinkIndex({ root: process.cwd() })
 
     expect(index.issues).toEqual([])
     const headings = index.links.map((link) => `${link.file}#${link.headingPath.join(' > ')}`)
