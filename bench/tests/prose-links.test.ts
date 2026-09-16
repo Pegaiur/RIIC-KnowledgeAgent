@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { OperatorSkillGrant, OperatorDefinition, SkillFact } from '../src/facts/normalized.js'
 import type { ReferenceFacts } from '../src/facts/references.js'
+import { getCardStore, skillProjection } from '../src/facts/store.js'
 import { buildSectionDirectory, type SectionDirectory } from '../src/sections.js'
 import {
   buildProseLinkIndex,
@@ -589,23 +590,90 @@ describe('prose-links：运行快照注入', () => {
 })
 
 describe('prose-links：真实语料核对', () => {
+  // 依据组合正文与 raw 真源核对职责、启动候选与代价；并存技能不会沿替换链自动进入精确投影。
+  it.each([
+    ['水月标准化组', ['水月｜意识协议', '香草｜标准化·β', '杰西卡｜标准化·β', '史都华德｜标准化·β', '海沫｜标准化·β', '罗比菈塔｜标准化·β', '调香师｜标准化·β']],
+    ['红云组', ['红云｜拾荒者', 'Miss.Christine｜午休好去处', '稀音｜剪辑·α', '帕拉斯｜智慧之境', '刻俄柏｜“都想要”']],
+    ['感知信息组', ['迷迭香｜超感', '黑键｜乐感', '絮雨｜巡游', '爱丽丝｜睡前故事', '车尔尼｜慢板行歌', '塑心｜无声共鸣', '塑心｜无词颂歌', '琴柳｜感染力', '琴柳｜维多利亚文学']],
+    ['龙舌兰组', ['柏喙｜裁缝·β', '明椒｜裁缝·β', '折光｜鉴定师的手段', '卡夫卡｜手工艺品·β']],
+    ['鸿雪杜林组', ['鸿雪｜销路宣发']],
+    ['赤金工艺组', ['苍苔｜金属工艺·α', '引星棘刺｜金属工艺·α', '砾｜金属工艺·β', '斑点｜金属工艺·α', '夜烟｜金属工艺·α', '温米｜金属工艺·α']],
+    ['莱茵科技', ['娜斯提｜莱茵科技·β']],
+    ['喀兰贸易组', ['孑｜摊贩经济']],
+    ['泡泡组', ['泡泡｜囤积者']],
+    ['自动化组', ['森蚺｜我寻思能行']],
+    ['深海猎人组', ['歌蕾蒂娅｜潮汐守望']],
+  ])('%s 的关联投影保留组合实际依赖的技能', (heading, requiredSkills) => {
+    const directory = buildSectionDirectory(join(process.cwd(), 'knowledge'))
+    const index = buildProseLinkIndex({ root: process.cwd() })
+    const link = index.links.find((candidate) => candidate.headingPath.at(-1) === heading)
+    expect(link, `未找到标注小节：${heading}`).toBeTruthy()
+    const store = getCardStore()
+    const projectedSkills = readObjectsFor(link!.sectionId, directory, index).flatMap((object) => {
+      if (object.kind !== 'card') return []
+      expect(object.projection).toBe('skills')
+      const card = store.byCanonical.get(object.canonical)!
+      return skillProjection(card, object.explicitGrantIds).skills.map((skill) => `${card.canonical}｜${skill.name}`)
+    })
+    expect(projectedSkills).toEqual(expect.arrayContaining(requiredSkills))
+  })
+
+  it('深海猎人组的同名规则分别定位原文，不合并定义或推断技能档位', () => {
+    const directory = buildSectionDirectory(join(process.cwd(), 'knowledge'))
+    const index = buildProseLinkIndex({ root: process.cwd() })
+    const link = index.links.find((candidate) => candidate.headingPath.at(-1) === '深海猎人组')!
+    const concepts = readObjectsFor(link.sectionId, directory, index)
+      .flatMap((object) => object.kind === 'concept' ? [object.concept] : [])
+    const bonuses = concepts.filter((concept) => concept.term === '特殊加成')
+    expect(bonuses.map((concept) => concept.termOccurrence)).toEqual([1, 2])
+    expect(bonuses[0]!.definition).toContain('提供5%生产力，最多给单个制造站提供45%生产力')
+    expect(bonuses[1]!.definition).toContain('提供10%生产力，最多给单个制造站提供90%生产力')
+    const stacking = concepts.filter((concept) => concept.term === '特殊叠加规则')
+    expect(stacking.map((concept) => concept.termOccurrence)).toEqual([1, 2])
+    expect(stacking[0]!.definition).toContain('无法与配合意识进行叠加')
+    expect(stacking[1]!.definition).toContain('无法单独与天道酬勤·α、天道酬勤·β进行叠加')
+  })
+
   it('knowledge/prose-links.json 机械检查零问题且目标小节可解析', () => {
     const index = buildProseLinkIndex({ root: process.cwd() })
 
     expect(index.issues).toEqual([])
     const headings = index.links.map((link) => `${link.file}#${link.headingPath.join(' > ')}`)
     expect(headings).toContain('guides/高效率散件.md#高效率散件 > 办公室联络散件')
+    expect(headings).toContain('guides/高效率散件.md#高效率散件 > 办公室联络散件 > 有额外条件或代价的办公室选择')
     expect(headings).toContain('guides/高效率散件.md#高效率散件 > 源石碎片制造（搓玉）')
     for (const link of index.links) {
       expect(link.objects.length, `${link.sectionId} 的关联对象为空`).toBeGreaterThan(0)
       for (const object of link.objects) {
-        expect(object.kind).toBe('card')
-        if (object.kind === 'card') expect(object.canonical.trim()).not.toBe('')
+        // 卡片与概念都可以登记；概念必须解析出名称与定义原文，卡片必须有非空 canonical。
+        if (object.kind === 'card') {
+          expect(object.canonical.trim()).not.toBe('')
+        } else {
+          expect(object.name.trim()).not.toBe('')
+          expect(object.definition.trim()).not.toBe('')
+        }
       }
     }
     const replacement = index.links
       .flatMap((link) => link.objects)
       .find((object) => object.kind === 'card' && object.grantId !== undefined)
     expect(replacement).toBeTruthy()
+  })
+
+  it('办公室两个小节各自登记本节候选，不靠父节 scope=section 继承', () => {
+    const index = buildProseLinkIndex({ root: process.cwd() })
+    const canonicalsOf = (path: string): string[] => {
+      const link = index.links.find((candidate) => candidate.headingPath.join(' > ') === path)
+      expect(link, `未找到标注小节：${path}`).toBeTruthy()
+      expect(link!.scope).toBe('section')
+      return link!.objects.flatMap((object) => (object.kind === 'card' ? [object.canonical] : []))
+    }
+
+    const office = canonicalsOf('高效率散件 > 办公室联络散件')
+    const conditional = canonicalsOf('高效率散件 > 办公室联络散件 > 有额外条件或代价的办公室选择')
+    expect(office).toEqual(expect.arrayContaining(['珊比', '艾雅法拉', '遥', '普罗旺斯']))
+    expect(office).not.toContain('斥罪')
+    expect(conditional).not.toContain('珊比')
+    expect(conditional).toEqual(expect.arrayContaining(['斥罪', '凯尔希·思衡托', '水灯心', '地灵', '絮雨']))
   })
 })
