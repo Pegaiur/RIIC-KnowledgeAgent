@@ -88,7 +88,8 @@
 - **退役参数实测**：`node dist/cli.js run --include-skill-tables 0 --dry` 输出「错误：--include-skill-tables 已退役；RAG 仅检索 base/guides，精确事实请使用 facts 能力」并以退出码 1 结束。
 - **新增行为覆盖**：manifest 拒绝 raw／references 条目、检索块与模型原文阅读目录不含 raw、CLI 退役参数四形态与退出码 1、facts 从 raw 正常加载、snapshot 历史字段与新 retrievalScope 并存、prose-terms 两文件精确例外未被放宽（新增 scripts/tests/prose-terms-check.test.mjs 与 facts-evidence-observation 默认名册路径用例）。
 - **语料侧非路径改动**：13 份真源的生成头注改为真实维护信息（历史由上游生成、当前以版本控制内文本为输入、本仓库无该生成脚本）；base 35 行＋guides 3 行 references 回指改为能力表述；knowledge/guides/歧义.md 的「推王」条按本 plan 第 2 步与 ADR-010 的全部返回契约修订说明文字（不设默认目标、登记条目与成员未改）。
-- **未闭合的已知遗留**：①bench/gold.json 26 条锚点与 validate/bench:dry 的解除属第 6 步；②docs/spec 证据块现引用白名单外的 raw 真源，「可定位不可检索」的完整口径同样待第 6 步闭合；③knowledge/base/机制-心情与工休.md 首部仍有一处指向 knowledge/raw/ 的既有来源标注（预先存在、非 references 回指，本批未改）；④历史试验、归档计划、基线表与本机 bench-runs 保持原貌。
+- **未闭合的已知遗留**：①bench/gold.json 26 条锚点与 validate/bench:dry 的解除属第 6 步；②docs/spec 证据块现引用白名单外的 raw 真源，「可定位不可检索」的完整口径同样待第 6 步闭合；③knowledge/base/机制-心情与工休.md 首部仍有一处指向 knowledge/raw/ 的既有来源标注（本批只把同行的 references 子句改为能力表述，raw 那半句与「等 raw 案例」措辞未改，属预先存在、非 references 回指）；④历史试验、归档计划、基线表与本机 bench-runs 保持原貌；⑤docs/adr/ADR-020 正文仍写 canonical 出自 knowledge/references/名册.md（ADR 正文按维护口径不在迁移批改写，留待后续文档清理或第 6 步一并处理）。
+- **清理批验证**：补覆盖与注释同步后 `pnpm run typecheck` 通过、定向 fulltext-expansion 16/16、全套 `pnpm run test` 632 通过 / 2 失败——2 条仍为上述 gold 锚点用例，无新增失败；`node scripts/doc-check.mjs` 仍为 21 条 D1（8＋11＋1＋1），无 D2/D3/D4/D5/S。
 
 ### 2026-09-16 — 验收审查修复与复测
 
