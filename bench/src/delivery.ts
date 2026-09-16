@@ -57,6 +57,8 @@ export interface LinkedFactsObservation {
   requested: string[]
   /** 实际送达的记录卡 canonical（按登记顺序去重） */
   delivered: string[]
+  /** 实际送达概念的名称，按精确位置去重并保持登记顺序，名称可重复。 */
+  deliveredConcepts: string[]
   /** 已登记但本次未返回的对象及原因 */
   omitted: Array<{ ref: string; reason: string }>
 }

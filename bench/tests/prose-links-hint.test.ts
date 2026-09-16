@@ -40,7 +40,7 @@ let chunks: DocChunk[]
 let directory: SectionDirectory
 
 function objectFor(canonical: string): ResolvedProseObject {
-  return { ref: `operator:${canonical}`, canonical }
+  return { kind: 'card', ref: `operator:${canonical}`, canonical }
 }
 
 /** 用真实小节目录构造关联索引，避免直接依赖解析器实现。 */
@@ -51,6 +51,8 @@ function linkIndexFor(heading: string, objects: ResolvedProseObject[]): ProseLin
     file: section.file,
     headingPath: [...section.ancestors, section.heading],
     occurrence: section.occurrence,
+    scope: 'section' as const,
+    documentRoot: false,
     objects,
     unresolved: [],
   }
@@ -121,8 +123,8 @@ describe('RAG 关联事实入口提示', () => {
     const other = directory.sections.find((item) => item.heading === '乙节')!
     const index: ProseLinkIndex = {
       links: [
-        { sectionId: section.sectionId, file: 'base/甲.md', headingPath: ['甲文档', '甲节'], occurrence: 1, objects: [objectFor('干员甲')], unresolved: [] },
-        { sectionId: other.sectionId, file: 'base/乙.md', headingPath: ['乙文档', '乙节'], occurrence: 1, objects: [objectFor('干员乙')], unresolved: [] },
+        { sectionId: section.sectionId, file: 'base/甲.md', headingPath: ['甲文档', '甲节'], occurrence: 1, scope: 'section', documentRoot: false, objects: [objectFor('干员甲')], unresolved: [] },
+        { sectionId: other.sectionId, file: 'base/乙.md', headingPath: ['乙文档', '乙节'], occurrence: 1, scope: 'section', documentRoot: false, objects: [objectFor('干员乙')], unresolved: [] },
       ],
       bySection: new Map(),
       issues: [],

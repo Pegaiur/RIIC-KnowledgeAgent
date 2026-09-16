@@ -1,9 +1,10 @@
 {
-  "version": 1,
+  "version": 2,
   "links": [
     {
       "file": "guides/高效率散件.md",
       "headingPath": ["高效率散件", "办公室联络散件"],
+      "scope": "section",
       "objects": [
         { "kind": "operator", "canonical": "凯尔希·思衡托" },
         { "kind": "operator", "canonical": "斥罪" },
@@ -16,6 +17,7 @@
     {
       "file": "guides/高效率散件.md",
       "headingPath": ["高效率散件", "源石碎片制造（搓玉）"],
+      "scope": "section",
       "objects": [
         { "kind": "operator", "canonical": "褐果" },
         { "kind": "operator", "canonical": "炎熔" },

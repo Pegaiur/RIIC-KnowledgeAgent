@@ -186,9 +186,11 @@ describe('运行输入记录', () => {
         file: 'base/a.md',
         headingPath: ['总览', '制造站'],
         occurrence: 1,
+        scope: 'section' as const,
+        documentRoot: false,
         objects: [
-          { ref: 'operator:甲', canonical: '甲' },
-          { ref: '制造站｜「技能」｜乙', canonical: '乙', grantId: 'g-1', skillId: 's-1' },
+          { kind: 'card' as const, ref: 'operator:甲', canonical: '甲' },
+          { kind: 'card' as const, ref: '制造站｜「技能」｜乙', canonical: '乙', grantId: 'g-1', skillId: 's-1' },
         ],
         unresolved: [],
       }],
@@ -197,7 +199,7 @@ describe('运行输入记录', () => {
     }
 
     expect(createRunInputs({ ...base, links }).links).toEqual({
-      version: 1,
+      version: 2,
       linkCount: 1,
       objectCount: 2,
       issues: ['第 1 条标注：未找到小节'],

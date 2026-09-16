@@ -8,10 +8,9 @@ import { createHash } from 'node:crypto'
 import { effectiveAttachFacts, loadConfig, type BenchConfig, type RetrieverId } from './config.js'
 import { isFulltextFile } from './corpus.js'
 import { search, type IndexEntry } from './retriever.js'
-import type { ProseLinkIndex, ResolvedProseLink } from './prose-links.js'
+import { conceptIdentity, serializeConceptCard, type ProseLinkIndex, type ResolvedProseLink } from './prose-links.js'
 import type { SectionDirectory, SectionEntry } from './sections.js'
 import { isFactTool, type BenchQuery, type DocChunk, type ToolCall } from './types.js'
-import type { RecordCard } from './facts/card.js'
 import {
   getCardStore,
   serializeCard,
@@ -1524,6 +1523,9 @@ function readLinkedFactsOperation(
   section: SectionEntry,
   context: KnowledgeToolContext,
 ): { data: string; hitIds: string[]; injectedIds: string[]; status: ToolResultStatus; linkedFacts: LinkedFactsObservation } {
+  if (context.links && context.links.issues.length > 0) {
+    throw new Error(`关联元数据无法读取：${context.links.issues.join('\n')}`)
+  }
   const link = context.links?.bySection.get(section.sectionId)
   if (!link || (link.objects.length === 0 && link.unresolved.length === 0)) {
     return {
@@ -1531,19 +1533,33 @@ function readLinkedFactsOperation(
       hitIds: [],
       injectedIds: [],
       status: 'empty',
-      linkedFacts: { sectionId: section.sectionId, requested: [], delivered: [], omitted: [] },
+      linkedFacts: { sectionId: section.sectionId, requested: [], delivered: [], deliveredConcepts: [], omitted: [] },
     }
   }
 
   const store = loadFactsStore(context)
   const requested: string[] = []
   const delivered: string[] = []
+  const deliveredConcepts: string[] = []
   const omitted: Array<{ ref: string; reason: string }> = []
-  const cards: RecordCard[] = []
+  const bodies: string[] = []
   const seen = new Set<string>()
+  const seenConcepts = new Set<string>()
   const refLines: string[] = []
   for (const object of link.objects) {
     requested.push(object.ref)
+    if (object.kind === 'concept') {
+      const key = conceptIdentity(object)
+      if (seenConcepts.has(key)) {
+        refLines.push(`- ${object.ref}（与已返回概念同一定位，去重）`)
+        continue
+      }
+      seenConcepts.add(key)
+      deliveredConcepts.push(object.name)
+      bodies.push(serializeConceptCard(object))
+      refLines.push(`- ${object.ref} → 概念：${object.name}`)
+      continue
+    }
     if (seen.has(object.canonical)) {
       refLines.push(`- ${object.ref}（与已返回卡同卡，去重）`)
       continue
@@ -1555,7 +1571,7 @@ function readLinkedFactsOperation(
     }
     seen.add(object.canonical)
     delivered.push(object.canonical)
-    cards.push(card)
+    bodies.push(serializeCard(card, {}))
     refLines.push(`- ${object.ref} → ${object.canonical}`)
   }
   // 解析失败的登记引用同样计入 requested，并在 omitted 中说明原因，不静默丢弃。
@@ -1568,18 +1584,18 @@ function readLinkedFactsOperation(
   const lines = [
     `【read_section｜关联事实】${section.sectionId}`,
     `标题路径：${path}`,
-    `关联对象：${requested.length} 个｜已返回记录卡：${delivered.length} 张`,
+    `关联对象：${requested.length} 个｜已返回记录卡：${delivered.length} 张｜已返回概念：${deliveredConcepts.length} 条`,
     '说明：直接按人工登记引用读取，不经过别名、子串或同名集合扩展；范围即登记对象。',
     ...refLines,
   ]
   if (omitted.length > 0) lines.push(`未返回：${omitted.map((item) => `${item.ref}（${item.reason}）`).join('；')}`)
-  const body = cards.map((card) => serializeCard(card, {})).join('\n\n')
+  const body = bodies.join('\n\n')
   return {
     data: body ? `${lines.join('\n')}\n\n${body}` : lines.join('\n'),
     hitIds: delivered,
     injectedIds: [...delivered],
-    status: delivered.length > 0 ? 'success' : 'empty',
-    linkedFacts: { sectionId: section.sectionId, requested, delivered, omitted },
+    status: omitted.length > 0 ? 'error' : delivered.length + deliveredConcepts.length > 0 ? 'success' : 'empty',
+    linkedFacts: { sectionId: section.sectionId, requested, delivered, deliveredConcepts, omitted },
   }
 }
 

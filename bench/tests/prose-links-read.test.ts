@@ -30,7 +30,7 @@ let chunks: DocChunk[]
 let directory: SectionDirectory
 
 function objectFor(canonical: string): ResolvedProseObject {
-  return { ref: `operator:${canonical}`, canonical }
+  return { kind: 'card', ref: `operator:${canonical}`, canonical }
 }
 
 /** 用真实小节目录构造关联索引；canonical 取仓库真实记录卡，便于复用真实 facts store。 */
@@ -41,6 +41,8 @@ function linkIndexFor(heading: string, objects: ResolvedProseObject[], unresolve
     file: section.file,
     headingPath: [...section.ancestors, section.heading],
     occurrence: section.occurrence,
+    scope: 'section' as const,
+    documentRoot: false,
     objects,
     unresolved,
   }
@@ -84,6 +86,31 @@ function sectionId(heading: string): string {
 }
 
 describe('read_section 显式展开关联事实', () => {
+  it('损坏索引的失效定位不能在 linked 中伪装成未登记', async () => {
+    const index: ProseLinkIndex = { links: [], bySection: new Map(), issues: ['未找到登记小节'] }
+    const item = (await makeExecutor(index).executeStep([call('a', { section_id: sectionId('甲节'), linked: true })])).results[0]!
+    expect(item.status).toBe('error')
+    expect(item.data).toContain('未找到登记小节')
+    expect(item.data).not.toContain('没有登记')
+  })
+
+  it('不同标题出现序号的同名概念分别送达，同一精确位置只送一次', async () => {
+    const concept = {
+      kind: 'concept' as const, ref: 'concept:guides/类别.md#重复｜同名词', name: '同名词',
+      file: 'guides/类别.md', headingPath: ['重复'], occurrence: 1, term: '同名词', termOccurrence: 1,
+      startLine: 2, endLine: 2, definition: '- **同名词**：第一份定义。',
+    }
+    const second = { ...concept, occurrence: 2, startLine: 6, endLine: 6, definition: '- **同名词**：第二份定义。' }
+    const index = linkIndexFor('甲节', [concept, second, second])
+    const item = (await makeExecutor(index).executeStep([call('a', { section_id: sectionId('甲节'), linked: true })])).results[0]!
+    expect(item.status).toBe('success')
+    expect(item.data).toContain('第一份定义。')
+    expect(item.data).toContain('第二份定义。')
+    expect(item.data.match(/【概念：同名词】/gu)).toHaveLength(2)
+    expect(item.linkedFacts?.deliveredConcepts).toEqual(['同名词', '同名词'])
+    expect(item.injectedIds).toEqual([])
+  })
+
   it('linked=true 只返回登记对象的记录卡，区分原文与关联事实且标明返回对象', async () => {
     const index = linkIndexFor('甲节', [objectFor('凯尔希·思衡托'), objectFor('斥罪')])
     const item = (await makeExecutor(index).executeStep([call('a', { section_id: sectionId('甲节'), linked: true })])).results[0]!
@@ -103,13 +130,14 @@ describe('read_section 显式展开关联事实', () => {
       sectionId: sectionId('甲节'),
       requested: ['operator:凯尔希·思衡托', 'operator:斥罪'],
       delivered: ['凯尔希·思衡托', '斥罪'],
+      deliveredConcepts: [],
       omitted: [],
     })
   })
 
   it('skill 引用经 linked 展开返回持有者整卡并保留设施/解锁/替换，同卡引用去重', async () => {
     const index = linkIndexFor('甲节', [
-      { ref: '办公室｜「天灾信使·β」｜普罗旺斯', canonical: '普罗旺斯', grantId: 'g-x', skillId: 's-x' },
+      { kind: 'card', ref: '办公室｜「天灾信使·β」｜普罗旺斯', canonical: '普罗旺斯', grantId: 'g-x', skillId: 's-x' },
       objectFor('普罗旺斯'),
     ])
     const item = (await makeExecutor(index).executeStep([call('a', { section_id: sectionId('甲节'), linked: true })])).results[0]!
@@ -120,6 +148,34 @@ describe('read_section 显式展开关联事实', () => {
     expect(item.data).toContain('设施：办公室')
     expect(item.data).toContain('替换「天灾信使·α」')
     expect(item.data).toContain('- operator:普罗旺斯（与已返回卡同卡，去重）')
+  })
+
+  it('概念引用按固定格式返回名称、来源与定义，并计入概念送达', async () => {
+    const index = linkIndexFor('甲节', [
+      objectFor('凯尔希·思衡托'),
+      {
+        kind: 'concept',
+        ref: 'concept:guides/类别.md#官方术语与类别｜心情落差',
+        name: '心情落差',
+        file: 'guides/类别.md',
+        headingPath: ['官方术语与类别'],
+        occurrence: 1,
+        term: '心情落差',
+        termOccurrence: 1,
+        startLine: 12,
+        endLine: 13,
+        definition: '- **心情落差**：示例定义原文。',
+      },
+    ])
+    const item = (await makeExecutor(index).executeStep([call('a', { section_id: sectionId('甲节'), linked: true })])).results[0]!
+
+    expect(item.status).toBe('success')
+    expect(item.data).toContain('【概念：心情落差】')
+    expect(item.data).toContain('来源：guides/类别.md#官方术语与类别（条目序号 1）｜L12-13')
+    expect(item.data).toContain('定义：- **心情落差**：示例定义原文。')
+    expect(item.hitIds).toEqual(['凯尔希·思衡托'])
+    expect(item.injectedIds).toEqual(['凯尔希·思衡托'])
+    expect(item.linkedFacts).toMatchObject({ delivered: ['凯尔希·思衡托'], deliveredConcepts: ['心情落差'] })
   })
 
   it('默认（不带 linked）保持读取原文行为且不产生关联观测', async () => {
@@ -141,7 +197,7 @@ describe('read_section 显式展开关联事实', () => {
     expect(item.status).toBe('empty')
     expect(item.data).toContain('没有登记可展开的关联事实')
     expect(item.hitIds).toEqual([])
-    expect(item.linkedFacts).toEqual({ sectionId: sectionId('空关联节'), requested: [], delivered: [], omitted: [] })
+    expect(item.linkedFacts).toEqual({ sectionId: sectionId('空关联节'), requested: [], delivered: [], deliveredConcepts: [], omitted: [] })
     expect(executor.snapshot()).toMatchObject({ successUsed: 0, attemptUsed: 1 })
   })
 
@@ -153,7 +209,7 @@ describe('read_section 显式展开关联事实', () => {
     const index = linkIndexFor('甲节', [objectFor('凯尔希·思衡托'), objectFor('斥罪')])
     const item = (await makeExecutor(index).executeStep([call('a', { section_id: sectionId('甲节'), linked: true })])).results[0]!
 
-    expect(item.status).toBe('success')
+    expect(item.status).toBe('error')
     expect(item.hitIds).toEqual(['凯尔希·思衡托'])
     expect(item.linkedFacts?.omitted).toEqual([{ ref: 'operator:斥罪', reason: '记录卡未找到' }])
     expect(item.data).toContain('未返回：operator:斥罪（记录卡未找到）')
@@ -165,7 +221,7 @@ describe('read_section 显式展开关联事实', () => {
     ])
     const item = (await makeExecutor(index).executeStep([call('a', { section_id: sectionId('甲节'), linked: true })])).results[0]!
 
-    expect(item.status).toBe('success')
+    expect(item.status).toBe('error')
     expect(item.hitIds).toEqual(['凯尔希·思衡托'])
     expect(item.data).toContain('关联对象：2 个｜已返回记录卡：1 张')
     expect(item.data).toContain('未返回：办公室｜「不存在技能」｜凯尔希·思衡托（未找到关联技能）')
@@ -173,6 +229,7 @@ describe('read_section 显式展开关联事实', () => {
       sectionId: sectionId('甲节'),
       requested: ['operator:凯尔希·思衡托', '办公室｜「不存在技能」｜凯尔希·思衡托'],
       delivered: ['凯尔希·思衡托'],
+      deliveredConcepts: [],
       omitted: [{ ref: '办公室｜「不存在技能」｜凯尔希·思衡托', reason: '未找到关联技能' }],
     })
   })
@@ -181,7 +238,7 @@ describe('read_section 显式展开关联事实', () => {
     const index = linkIndexFor('甲节', [], [{ ref: 'operator:不存在的干员', reason: '关联干员不在名册' }])
     const item = (await makeExecutor(index).executeStep([call('a', { section_id: sectionId('甲节'), linked: true })])).results[0]!
 
-    expect(item.status).toBe('empty')
+    expect(item.status).toBe('error')
     expect(item.data).not.toContain('没有登记可展开的关联事实')
     expect(item.data).toContain('未返回：operator:不存在的干员（关联干员不在名册）')
     expect(item.linkedFacts?.requested).toEqual(['operator:不存在的干员'])
