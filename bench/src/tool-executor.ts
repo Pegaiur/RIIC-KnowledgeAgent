@@ -57,7 +57,8 @@ export type ToolResultStatus =
   /** 同一步骤中首项之外的超量调用：未执行、不计额度。 */
   | 'protocol_rejected'
 
-export const FACTS_RESULT_VERSION = 7 as const
+/** facts 结果卡版本：v8 起卡面渲染作用产物/作用职业/引用术语、原始注记与同描述依据（ADR-021 决策 3、4）。 */
+export const FACTS_RESULT_VERSION = 8 as const
 
 /**
  * 单次 tags 反查的固定页上限（记录卡张数）。

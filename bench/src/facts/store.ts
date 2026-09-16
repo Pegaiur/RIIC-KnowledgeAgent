@@ -529,6 +529,24 @@ function operatorScopeNotice(): string {
   return '查询范围说明：卡头中的设施、阵营、职业，以及技能组和卡级备注属于干员全局属性，不代表当前设施专属；下方技能按本次查询条件投影，未必包含该卡全部技能。'
 }
 
+/**
+ * 技能注记片段：固定顺序为作用产物、作用职业、引用术语、原始注记、同描述说明。
+ * 旧卡缺省新增字段仍合法；空注记与缺省字段都不产生占位片段。
+ */
+function skillAnnotationSegments(skill: RecordCard['skills'][number], room: string): string[] {
+  const segments: string[] = []
+  if (skill.products && skill.products.length > 0) segments.push(`作用产物：${skill.products.join('、')}`)
+  if (skill.professions && skill.professions.length > 0) segments.push(`作用职业：${skill.professions.join('、')}`)
+  if (skill.referencedTerms && skill.referencedTerms.length > 0) segments.push(`引用术语：${skill.referencedTerms.join('、')}`)
+  if (skill.target) segments.push(`原始注记：${skill.target}`)
+  if (skill.equivalenceSkillNames && skill.equivalenceSkillNames.length > 0) {
+    segments.push(`同描述技能：${skill.equivalenceSkillNames.join('、')}（设施：${room}）`)
+    if (skill.equivalenceEffectText !== undefined) segments.push(`共同描述（原文）：${skill.equivalenceEffectText}`)
+    segments.push('仅描述相同；解锁、替换、作用对象与完整效果须分别核对')
+  }
+  return segments
+}
+
 /** 渲染单张记录卡；独立 facts_search 与 RAG 内部附带共用同一卡片格式。 */
 export function serializeCard(card: RecordCard, filters: CardSerializationFilters, matchCategories?: FactsMatchCategory[]): string {
   const scopedSkills = skillsInRoom(card, filters.room)
@@ -550,7 +568,9 @@ export function serializeCard(card: RecordCard, filters: CardSerializationFilter
       ? undefined
       : card.skills.find((candidate) => candidate.grantId === skill.replacesGrantId)
     const replacement = replaced === undefined ? '' : `；替换「${replaced.name}」`
-    lines.push(`- 【设施：${room}】${skill.unlockType}「${skill.name}」：${skill.effectText}${replacement}${note}`)
+    const annotations = skillAnnotationSegments(skill, room)
+    const annotation = annotations.length === 0 ? '' : `；${annotations.join('；')}`
+    lines.push(`- 【设施：${room}】${skill.unlockType}「${skill.name}」：${skill.effectText}${replacement}${note}${annotation}`)
   }
   if (card.skillGroups.length > 0) lines.push(`技能组：${card.skillGroups.join('、')}`)
   if (card.notes) lines.push(`备注：${card.notes}`)

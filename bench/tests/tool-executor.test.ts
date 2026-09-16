@@ -415,7 +415,7 @@ describe('独立函数 executor：逐步单调用结算双上限预算', () => {
     expect(item).toMatchObject({
       status: 'success',
       factsResult: {
-        factsResultVersion: 7,
+        factsResultVersion: 8,
         matchedCount: 1,
         returnedCount: 1,
         complete: true,
@@ -423,7 +423,7 @@ describe('独立函数 executor：逐步单调用结算双上限预算', () => {
       },
     })
     const envelope = JSON.parse(serializeToolResult(item)) as Record<string, any>
-    expect(envelope).toMatchObject({ factsResultVersion: 7, resolution: { items: [{ index: 0, status: 'success', paths: [{ kind: 'alias', term: '维娜' }] }] } })
+    expect(envelope).toMatchObject({ factsResultVersion: 8, resolution: { items: [{ index: 0, status: 'success', paths: [{ kind: 'alias', term: '维娜' }] }] } })
     expect(envelope.data).toContain('别名：维娜 → 维娜·维多利亚')
   })
 
@@ -549,7 +549,7 @@ describe('facts_search 多词分段、去重与原子性', () => {
     const item = batch.results[0]!
     expect(item.status).toBe('success')
     expect(item.factsResult?.scope).toEqual({ queries: ['刻俄柏', '刻俄柏'] })
-    expect(item.factsResult).toMatchObject({ factsResultVersion: 7, matchedCount: 1, returnedCount: 1, complete: true })
+    expect(item.factsResult).toMatchObject({ factsResultVersion: 8, matchedCount: 1, returnedCount: 1, complete: true })
     expect(item.factsResult?.resolution.items).toEqual([
       { index: 0, query: '刻俄柏', status: 'success', paths: expect.any(Array), canonicals: ['刻俄柏'], message: null },
       { index: 1, query: '刻俄柏', status: 'success', paths: expect.any(Array), canonicals: ['刻俄柏'], message: null },
@@ -647,10 +647,10 @@ describe('facts_search 多词分段、去重与原子性', () => {
     expect(item.data).toContain('刻俄柏（已在第 1 段返回，此处仅列名）')
   })
 
-  it('v7 输出只携带 resolution.items，不同时携带 v5 的 resolution.paths', async () => {
+  it('v8 输出只携带 resolution.items，不同时携带 v5 的 resolution.paths', async () => {
     const batch = await multiExecutor().executeStep([call('shape', 'facts_search', { queries: ['刻俄柏'] })])
     const envelope = JSON.parse(serializeToolResult(batch.results[0]!)) as { factsResultVersion: number; resolution: Record<string, unknown> }
-    expect(envelope.factsResultVersion).toBe(7)
+    expect(envelope.factsResultVersion).toBe(8)
     expect(envelope.resolution).toHaveProperty('items')
     expect(envelope.resolution).not.toHaveProperty('paths')
   })

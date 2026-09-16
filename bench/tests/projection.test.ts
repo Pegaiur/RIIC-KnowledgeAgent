@@ -45,6 +45,55 @@ describe('projection：规范化事实投影 RecordCard', () => {
     }
   })
 
+  it('raw 与 curated 模式都把注记数组投影进 RecordSkill，且与 SkillFact 同源', () => {
+    const inputs = loadInputs()
+    const fact = inputs.facts.skillFacts.find((item) => item.name === '源石技艺理论应用' && item.room === '制造站')!
+    expect(fact.products).toEqual(['赤金', '作战记录', '源石碎片'])
+    expect(fact.referencedTerms).toEqual(['莱茵科技类技能'])
+    const grant = inputs.facts.grants.find((item) => item.skillId === fact.id)!
+
+    for (const mode of ['raw', 'curated'] as const) {
+      const skills = projectRecordCards({ ...inputs, mode }).flatMap((card) => card.skills)
+      const skill = skills.find((item) => item.grantId === grant.id)!
+      expect(skill.target).toBe(fact.rawAnnotationText)
+      expect(skill.products).toEqual(fact.products)
+      expect(skill.professions).toEqual(fact.professions)
+      expect(skill.referencedTerms).toEqual(fact.referencedTerms)
+    }
+  })
+
+  it('全量投影的注记数组总是存在（空为 []），命中等价组时投影共同描述原文', () => {
+    const inputs = loadInputs()
+    const cards = projectRecordCards({ ...inputs, mode: 'raw' })
+    const skills = cards.flatMap((card) => card.skills)
+
+    for (const skill of skills) {
+      expect(Array.isArray(skill.products)).toBe(true)
+      expect(Array.isArray(skill.professions)).toBe(true)
+      expect(Array.isArray(skill.referencedTerms)).toBe(true)
+    }
+
+    const grouped = skills.filter((skill) => skill.equivalenceGroupId !== undefined)
+    expect(grouped.length).toBeGreaterThan(0)
+    for (const skill of grouped) {
+      const group = inputs.equivalenceGroups.find((item) => item.id === skill.equivalenceGroupId)!
+      expect(skill.equivalenceSkillNames).toEqual(group.skillNames)
+      expect(skill.equivalenceEffectText).toBe(group.effectText)
+    }
+    expect(skills.filter((skill) => skill.equivalenceGroupId === undefined)
+      .every((skill) => skill.equivalenceEffectText === undefined)).toBe(true)
+  })
+
+  it('professions 仅在注记声明时非空（训练室样本）', () => {
+    const inputs = loadInputs()
+    const fact = inputs.facts.skillFacts.find((item) => item.room === '训练室' && item.professions.length > 0)!
+    const grant = inputs.facts.grants.find((item) => item.skillId === fact.id)!
+    const skill = projectRecordCards({ ...inputs, mode: 'raw' })
+      .flatMap((card) => card.skills)
+      .find((item) => item.grantId === grant.id)!
+    expect(skill.professions).toEqual(fact.professions)
+  })
+
   it('同名升级和等价组均按 SkillFact/grant 精确分开', () => {
     const inputs = loadInputs()
     const cards = projectRecordCards({ ...inputs, mode: 'raw' })

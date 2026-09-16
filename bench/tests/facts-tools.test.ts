@@ -7,7 +7,7 @@ import { buildCardStore, getCardStore, serializeCards, serializeFactsMatches } f
 import { FACTS_FIXTURES } from '../src/facts/fixtures.js'
 import type { ProviderResult } from '../src/types.js'
 import type { DocChunk } from '../src/types.js'
-import type { RecordCard } from '../src/facts/card.js'
+import type { RecordCard, RecordSkill } from '../src/facts/card.js'
 import { createQueryTrace } from '../src/trace.js'
 
 const { mockCall } = vi.hoisted(() => ({ mockCall: vi.fn() }))
@@ -218,6 +218,17 @@ describe('store：queryOperators 分类过滤', () => {
     expect(serializeCards(getCardStore().lookup('巫恋'))).toContain('「低语」与初始「裁缝·α」并存')
     expect(serializeCards(getCardStore().lookup('孑'))).toContain('精英1并不必然优于精英0')
   })
+  it('真实卡面按 v8 渲染注记与同描述依据', () => {
+    const annotated = serializeCards(getCardStore().lookup('多萝西'))
+    expect(annotated).toContain('作用产物：赤金、作战记录、源石碎片')
+    expect(annotated).toContain('引用术语：莱茵科技类技能')
+    expect(annotated).toContain('原始注记：作用产物：赤金/作战记录/源石碎片；引用术语：莱茵科技类技能')
+
+    const equivalent = serializeCards(getCardStore().lookup('巫恋'))
+    expect(equivalent).toContain('同描述技能：千金的眼光、懂行、手工艺品·α、裁缝·α、鉴定师的眼光（设施：贸易站）')
+    expect(equivalent).toContain('共同描述（原文）：进驻贸易站时，小幅提升当前贸易站高品质贵金属订单的出现概率（工作时长影响概率），心情每小时消耗-0.25')
+    expect(equivalent).toContain('仅描述相同；解锁、替换、作用对象与完整效果须分别核对')
+  })
 })
 
 describe('第一阶段合成卡契约', () => {
@@ -398,6 +409,60 @@ describe('单词条 facts_search 精确索引', () => {
   })
 })
 
+describe('卡 v8 注记与同描述依据渲染', () => {
+  function render(skill: Partial<RecordSkill>): string {
+    const { target = '', ...rest } = skill
+    const entry: RecordSkill = {
+      grantId: 'g1',
+      room: '贸易站',
+      name: '样本技能',
+      unlockType: '初始解锁',
+      effectText: '进驻贸易站时，订单获取效率+35%',
+      ...rest,
+      target,
+    }
+    const card: RecordCard = {
+      canonical: '样本干员',
+      aliases: [],
+      rarity: '5',
+      class: '近卫',
+      rooms: ['贸易站'],
+      factionGroups: [],
+      skillGroups: [],
+      skills: [entry],
+      notes: '',
+    }
+    return serializeCards([card])
+  }
+
+  it('按作用产物、作用职业、引用术语、原始注记的固定顺序渲染，空数组不产生片段', () => {
+    const text = render({
+      target: '标签：贸易；作用产物：赤金/作战记录',
+      products: ['赤金', '作战记录'],
+      professions: [],
+      referencedTerms: ['莱茵科技类技能'],
+    })
+    expect(text).toContain('「样本技能」：进驻贸易站时，订单获取效率+35%；作用产物：赤金、作战记录；引用术语：莱茵科技类技能；原始注记：标签：贸易；作用产物：赤金/作战记录')
+    expect(text).not.toContain('作用职业：')
+  })
+
+  it('同描述依据含技能名、设施、共同原文，并限定仅描述相同', () => {
+    const text = render({
+      equivalenceSkillNames: ['样本技能', '同效甲'],
+      equivalenceEffectText: '进驻贸易站时，订单获取效率+35%',
+    })
+    expect(text).toContain('同描述技能：样本技能、同效甲（设施：贸易站）；共同描述（原文）：进驻贸易站时，订单获取效率+35%；仅描述相同；解锁、替换、作用对象与完整效果须分别核对')
+  })
+
+  it('缺少 v8 字段的旧卡不补占位片段', () => {
+    const text = render({})
+    expect(text).toContain('「样本技能」：进驻贸易站时，订单获取效率+35%')
+    expect(text).not.toContain('作用产物：')
+    expect(text).not.toContain('原始注记：')
+    expect(text).not.toContain('同描述技能：')
+  })
+})
+
 describe('第一阶段 facts 结果 envelope', () => {
   it('T01 合法空查按 hitIds 判定 empty，并返回完整范围元数据', async () => {
     const config = loadConfig()
@@ -417,12 +482,12 @@ describe('第一阶段 facts 结果 envelope', () => {
     expect(results).toHaveLength(2)
     for (const item of results) {
       expect(item).toMatchObject({ status: 'empty', executed: true, hitIds: [], injectedIds: [], factsResult: {
-        factsResultVersion: 7, matchedCount: 0, returnedCount: 0, complete: true,
+        factsResultVersion: 8, matchedCount: 0, returnedCount: 0, complete: true,
         resolution: { items: [{ index: 0, status: 'empty', paths: [], canonicals: [], message: null }] },
       } })
       expect(item.factsResult?.scope).toEqual(item.actualParams)
       const envelope = JSON.parse(serializeToolResult(item)) as Record<string, unknown>
-       expect(envelope).toMatchObject({ status: 'empty', executed: true, factsResultVersion: 7, matchedCount: 0, returnedCount: 0, complete: true, resolution: { items: [{ index: 0, status: 'empty' }] } })
+       expect(envelope).toMatchObject({ status: 'empty', executed: true, factsResultVersion: 8, matchedCount: 0, returnedCount: 0, complete: true, resolution: { items: [{ index: 0, status: 'empty' }] } })
        expect(envelope.data).toContain('未收录精确词条')
     }
     expect(JSON.parse(serializeToolResult(results[0]!)).scope).toEqual({ queries: ['__不存在的规范名_核查__'] })
@@ -445,7 +510,7 @@ describe('第一阶段 facts 结果 envelope', () => {
     expect(invalid.results[0]).toMatchObject({ status: 'invalid_params', executed: false })
     expect(invalid.results[0]?.factsResult).toBeUndefined()
     expect(JSON.parse(serializeToolResult(invalid.results[0]!))).not.toHaveProperty('factsResultVersion')
-    expect(valid.results[0]).toMatchObject({ status: 'empty', executed: true, factsResult: { factsResultVersion: 7, matchedCount: 0, complete: true, resolution: { items: [{ index: 0, status: 'empty' }] } } })
+    expect(valid.results[0]).toMatchObject({ status: 'empty', executed: true, factsResult: { factsResultVersion: 8, matchedCount: 0, complete: true, resolution: { items: [{ index: 0, status: 'empty' }] } } })
   })
 })
 
@@ -686,7 +751,7 @@ describe('runQuery（facts_search 派发）', () => {
     })
     const writtenContent = (trace.events[1] as { writtenContent: string }).writtenContent
     expect(writtenContent).toContain('【刻俄柏】')
-    expect(JSON.parse(writtenContent)).toMatchObject({ factsResultVersion: 7, matchedCount: 1, returnedCount: 1, complete: true, scope: { queries: ['刻俄柏'] }, resolution: { items: [{ index: 0, query: '刻俄柏', status: 'success', canonicals: ['刻俄柏'], message: null, paths: [{ kind: 'exact', term: '刻俄柏' }] }] } })
+    expect(JSON.parse(writtenContent)).toMatchObject({ factsResultVersion: 8, matchedCount: 1, returnedCount: 1, complete: true, scope: { queries: ['刻俄柏'] }, resolution: { items: [{ index: 0, query: '刻俄柏', status: 'success', canonicals: ['刻俄柏'], message: null, paths: [{ kind: 'exact', term: '刻俄柏' }] }] } })
     const secondMessages = mockCall.mock.calls[1]?.[0] as Array<{ role: string; content: string }>
     expect(secondMessages.find((message) => message.role === 'tool')?.content).toBe(writtenContent)
   })

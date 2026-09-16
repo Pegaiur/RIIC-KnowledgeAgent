@@ -186,7 +186,7 @@ describe('facts_search tags 执行与分页', () => {
     const item = batch.results[0]!
     expect(item.status).toBe('success')
     expect(item.factsResult).toMatchObject({
-      factsResultVersion: 7,
+      factsResultVersion: 8,
       scope: { tags: ['通用生产'], offset: 0 },
       tagPage: { offset: 0, limit: FACTS_TAG_PAGE_CARDS },
       resolution: { items: [expect.objectContaining({ index: 0, query: '通用生产', status: 'success', paths: [] })] },
@@ -319,7 +319,7 @@ describe('facts_search queries 路径回归', () => {
     const batch = await factsExecutor().executeStep([call('queries', { queries: ['刻俄柏'] })])
     const item = batch.results[0]!
     expect(item.status).toBe('success')
-    expect(item.factsResult).toMatchObject({ factsResultVersion: 7, complete: true, scope: { queries: ['刻俄柏'] } })
+    expect(item.factsResult).toMatchObject({ factsResultVersion: 8, complete: true, scope: { queries: ['刻俄柏'] } })
     expect(item.factsResult).not.toHaveProperty('tagPage')
   })
 })
