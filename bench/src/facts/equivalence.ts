@@ -8,7 +8,7 @@ import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { FactsParseError, type OperatorSkillGrant, type SkillFact } from './normalized.js'
-import { REFERENCE_ROOMS } from './references.js'
+import { EQUIVALENCE_RAW_FILE, REFERENCE_ROOMS } from './references.js'
 import type { ReferenceFacts } from './references.js'
 
 export interface SkillEquivalenceGroup {
@@ -140,10 +140,10 @@ export function parseEquivalenceGroups(text: string, facts: ReferenceFacts): Ski
 /** 从仓库真源读取技能等价组（knowledge/raw 下的机械真源）。 */
 export function loadEquivalenceGroups(root: string, facts: ReferenceFacts): SkillEquivalenceGroup[] {
   try {
-    const text = readFileSync(join(root, 'knowledge', 'raw', '技能等价组.md'), 'utf-8')
+    const text = readFileSync(join(root, 'knowledge', 'raw', EQUIVALENCE_RAW_FILE), 'utf-8')
     return parseEquivalenceGroups(text, facts)
   } catch (error) {
     if (error instanceof FactsParseError) throw error
-    throw new FactsParseError('无法读取真源技能等价组：knowledge/raw/技能等价组.md')
+    throw new FactsParseError(`无法读取真源技能等价组：knowledge/raw/${EQUIVALENCE_RAW_FILE}`)
   }
 }

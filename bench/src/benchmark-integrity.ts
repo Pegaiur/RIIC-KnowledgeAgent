@@ -1,12 +1,14 @@
 /**
  * RAG + facts 20 题基准的跨文件完整性校验。
  *
- * questions、gold、spec 是同一份评测定义的三个投影：题号必须一一对应，
- * gold 只能引用 manifest 白名单中的真实切块，避免检索指标因漂移静默失真。
+ * questions、gold、spec 是同一份评测定义的三个投影：题号必须一一对应。
+ * gold 在「完整定位目录」解析——manifest 登记的 base/guides 原文分块 + facts 加载器声明的 raw 机械真源（ADR-021 步骤 6）；
+ * 命中文档不再等价于属于 manifest：raw 真源可定位但被检索范围排除，检索指标按 hitrate 的 excluded 口径保留分母。
  */
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
-import { loadCorpus, loadCorpusManifest } from './corpus.js'
+import { loadCorpus, loadCorpusManifest, loadGoldAnchorChunks } from './corpus.js'
+import { RAW_MACHINE_SOURCE_DOC_IDS } from './facts/references.js'
 import { checkGold, loadGold, type GoldMap } from './hitrate.js'
 import type { BenchQuery } from './types.js'
 import { readSnapshot } from './snapshot.js'
@@ -19,8 +21,14 @@ export interface BenchmarkIntegritySummary {
   questionCount: number
   goldCount: number
   specCount: number
+  /** manifest 白名单文件数（检索范围） */
   corpusFileCount: number
+  /** manifest 原文分块数（检索范围） */
   chunkCount: number
+  /** gold 完整定位目录文件数（manifest + raw 机械真源） */
+  anchorFileCount: number
+  /** gold 完整定位目录分块数 */
+  anchorChunkCount: number
   snapshotCount: number
   snapshotBytes: number
   baselineResults: number
@@ -105,7 +113,11 @@ export function validateBenchmarkIntegrity(root: string): BenchmarkIntegritySumm
   const corpusRoot = join(root, 'knowledge')
   const manifest = new Set(loadCorpusManifest(corpusRoot))
   const chunks = loadCorpus(corpusRoot)
-  const chunkIds = new Set(chunks.map((chunk) => `${chunk.file}#${chunk.heading}`))
+  // gold 先在完整定位目录解析：manifest 原文分块 + facts 声明的 raw 机械真源（ADR-021 步骤 6）。
+  // raw 真源可定位但不在检索范围内，其命中由 hitrate 的 excluded 口径保留 recall 分母。
+  const anchorChunks = loadGoldAnchorChunks(corpusRoot, RAW_MACHINE_SOURCE_DOC_IDS)
+  const anchorFiles = new Set(anchorChunks.map((chunk) => chunk.file))
+  const anchorKeys = new Set(anchorChunks.map((chunk) => `${chunk.file}#${chunk.heading}`))
   for (const [queryId, entry] of Object.entries(gold)) {
     const goldenKeys = new Set<string>()
     for (const key of entry.golden) {
@@ -113,11 +125,11 @@ export function validateBenchmarkIntegrity(root: string): BenchmarkIntegritySumm
       goldenKeys.add(key)
       const separator = key.indexOf('#')
       const file = separator < 0 ? '' : key.slice(0, separator)
-      if (!manifest.has(file)) errors.push(`gold ${queryId} 引用不在 manifest 的文档：${file || key}`)
-      if (!chunkIds.has(key)) errors.push(`gold ${queryId} 引用不存在的切块锚点：${key}`)
+      if (!anchorFiles.has(file)) errors.push(`gold ${queryId} 引用不在定位目录的文档：${file || key}`)
+      if (!anchorKeys.has(key)) errors.push(`gold ${queryId} 引用不存在的切块锚点：${key}`)
     }
   }
-  const unresolved = checkGold(gold, chunks).missing
+  const unresolved = checkGold(gold, anchorChunks).missing
   for (const item of unresolved) errors.push(`gold ${item.queryId} 无法解析：${item.key}`)
 
   const specPath = join(root, 'docs', 'spec', 'rag-answer-baseline.md')
@@ -143,6 +155,8 @@ export function validateBenchmarkIntegrity(root: string): BenchmarkIntegritySumm
     specCount: specIds.length,
     corpusFileCount: manifest.size,
     chunkCount: chunks.length,
+    anchorFileCount: anchorFiles.size,
+    anchorChunkCount: anchorChunks.length,
     snapshotCount: snapshots.count,
     snapshotBytes: snapshots.bytes,
     baselineResults: baseline?.resultCount ?? 0,

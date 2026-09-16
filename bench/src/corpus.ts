@@ -2,6 +2,7 @@
  * 语料加载与分块
  *
  * 输入：corpusDir/corpus-manifest.json 显式登记的 Markdown（仅接受 base/ 与 guides/ 前缀）；未登记文件默认不进入检索。
+ * gold 定位目录（loadGoldAnchorChunks）另行叠加显式声明的 raw 机械真源，与检索范围分离。
  * 散文语料已废弃（2026-09-03，见 docs/notes-corpus-purge.md），facts-first 重建后 facts 模式由 facts_search 取代
  * 输出：按 ## / ### 标题切分的 DocChunk 数组；超长标题节按段落二次切分。
  */
@@ -259,6 +260,74 @@ export function loadCorpus(corpusRoot: string, maxChars?: number): DocChunk[] {
   const files = collectMarkdownFiles(corpusRoot)
   const chunks = files.flatMap((f) => splitChunks(f, corpusRoot))
   return maxChars !== undefined ? clampTexts(chunks, maxChars) : chunks
+}
+
+/**
+ * gold 完整定位目录（ADR-021 步骤 6）：manifest 原文分块 + 显式传入的 raw 机械真源分块。
+ * 与检索范围分离：只用于解析 gold 定位，不参与排序，也不进入模型原文阅读目录。
+ * 只读调用方给出的显式清单，不递归扫描 raw；路径越界、非 raw/、符号链接或缺失都直接失败。
+ */
+export function loadGoldAnchorChunks(corpusRoot: string, rawDocIds: readonly string[]): DocChunk[] {
+  const root = resolve(corpusRoot)
+  const rawFiles = resolveRawSourceFiles(root, rawDocIds)
+  return [...loadCorpus(root), ...rawFiles.flatMap((file) => splitChunks(file, root))]
+}
+
+/** 校验并解析 raw 真源清单为绝对路径；与 manifest 白名单共用同样的越界与链接检查。 */
+function resolveRawSourceFiles(corpusRoot: string, docIds: readonly string[]): string[] {
+  let physicalRoot: string
+  try {
+    physicalRoot = realpathSync(corpusRoot)
+  } catch {
+    throw new Error(`无法解析语料根目录：${corpusRoot}`)
+  }
+
+  return docIds.map((docId, index) => {
+    if (typeof docId !== 'string' || docId.trim().length === 0) {
+      throw new Error(`gold 定位真源第 ${index + 1} 项必须是非空字符串`)
+    }
+    const normalizedPath = docId.trim().replaceAll('\\', '/')
+    if (!normalizedPath.toLowerCase().endsWith('.md')) {
+      throw new Error(`gold 定位真源只接受 Markdown 文件：${docId}`)
+    }
+    if (isAbsolute(docId) || posix.isAbsolute(normalizedPath) || win32.isAbsolute(normalizedPath)) {
+      throw new Error(`gold 定位真源必须是相对语料根目录的路径：${docId}`)
+    }
+    if (!normalizedPath.startsWith('raw/')) {
+      throw new Error(`gold 定位真源只接受 raw/ 下的文件：${docId}`)
+    }
+
+    const fullPath = resolve(corpusRoot, ...normalizedPath.split('/'))
+    if (isOutsideRoot(relative(corpusRoot, fullPath))) {
+      throw new Error(`gold 定位真源路径越出语料根目录：${docId}`)
+    }
+
+    let fileStat: ReturnType<typeof lstatSync>
+    try {
+      fileStat = lstatSync(fullPath)
+    } catch {
+      throw new Error(`gold 定位真源不存在：${docId}`)
+    }
+    if (fileStat.isSymbolicLink()) {
+      throw new Error(`gold 定位真源不允许符号链接：${docId}`)
+    }
+    if (!fileStat.isFile()) {
+      throw new Error(`gold 定位真源不是普通文件：${docId}`)
+    }
+
+    let physicalFilePath: string
+    try {
+      physicalFilePath = realpathSync(fullPath)
+    } catch {
+      throw new Error(`gold 定位真源不存在：${docId}`)
+    }
+    const physicalDocId = toDocumentId(relative(physicalRoot, physicalFilePath))
+    if (isOutsideRoot(relative(physicalRoot, physicalFilePath)) || !physicalDocId.startsWith('raw/')) {
+      throw new Error(`gold 定位真源路径越出 raw/ 目录：${docId}`)
+    }
+
+    return fullPath
+  })
 }
 
 /** 语料统计（白名单文件存在性检查） */

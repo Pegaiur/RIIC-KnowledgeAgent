@@ -1,7 +1,10 @@
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { dirname, join, relative, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { collectMarkdownFiles, loadCorpus, loadCorpusManifest } from '../src/corpus.js'
+import { collectMarkdownFiles, loadCorpus, loadCorpusManifest, loadGoldAnchorChunks } from '../src/corpus.js'
+import { RAW_MACHINE_SOURCE_DOC_IDS } from '../src/facts/references.js'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '../..')
 const KNOWLEDGE_ROOT = join(ROOT, 'knowledge')
@@ -49,5 +52,42 @@ describe('真实 knowledge 语料白名单', () => {
       'raw/心情消耗恢复与工休时间.md',
     ]
     expect(pollutedDocuments.filter((file) => actual.has(file))).toEqual([])
+  })
+})
+
+describe('gold 完整定位目录（ADR-021 步骤 6）', () => {
+  it('等于 manifest 原文分块加声明的 11 份 raw 真源，且 raw 仍不进检索', () => {
+    const manifest = new Set(loadCorpusManifest(KNOWLEDGE_ROOT))
+    const manifestChunks = loadCorpus(KNOWLEDGE_ROOT)
+    const anchors = loadGoldAnchorChunks(KNOWLEDGE_ROOT, RAW_MACHINE_SOURCE_DOC_IDS)
+    const anchorFiles = new Set(anchors.map((chunk) => chunk.file))
+    const declaredRaw = [...anchorFiles].filter((file) => file.startsWith('raw/'))
+
+    expect(RAW_MACHINE_SOURCE_DOC_IDS).toHaveLength(11)
+    expect(declaredRaw).toHaveLength(11)
+    expect(new Set(manifestChunks.map((chunk) => chunk.file))).toEqual(manifest)
+    expect(anchors.length).toBe(manifestChunks.length + 621)
+    expect(anchorFiles.size).toBe(manifest.size + 11)
+    expect(manifestChunks.filter((chunk) => chunk.file.startsWith('raw/'))).toEqual([])
+  })
+
+  it('声明的真源缺失或越界即失败，不静默降级为空库', () => {
+    const root = mkdtempSync(join(tmpdir(), 'gold-anchor-'))
+    try {
+      mkdirSync(join(root, 'base'), { recursive: true })
+      mkdirSync(join(root, 'raw'), { recursive: true })
+      writeFileSync(join(root, 'corpus-manifest.json'), JSON.stringify({ files: ['base/机制-甲.md'] }), 'utf8')
+      writeFileSync(join(root, 'base', '机制-甲.md'), '# 甲\n\n## 小节\n\n正文', 'utf8')
+      writeFileSync(join(root, 'raw', '名册.md'), '# 名册\n\n- 甲 | ☆1 | 近卫', 'utf8')
+
+      expect(() => loadGoldAnchorChunks(root, ['raw/名册.md', 'raw/技能-制造站.md'])).toThrow(/技能-制造站/)
+      expect(() => loadGoldAnchorChunks(root, ['../越界.md'])).toThrow(/raw\//)
+      expect(() => loadGoldAnchorChunks(root, ['guides/类别.md'])).toThrow(/raw\//)
+
+      const anchors = loadGoldAnchorChunks(root, ['raw/名册.md'])
+      expect(new Set(anchors.map((chunk) => chunk.file))).toEqual(new Set(['base/机制-甲.md', 'raw/名册.md']))
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
   })
 })

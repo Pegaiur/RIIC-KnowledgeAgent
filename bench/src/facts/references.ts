@@ -21,6 +21,22 @@ export const REFERENCE_ROOMS = [
   '制造站',
 ] as const
 
+/** 名册真源文件名（相对 knowledge/raw）。 */
+export const ROSTER_RAW_FILE = '名册.md'
+
+/** 技能等价组真源文件名（相对 knowledge/raw）；等价组加载器与 gold 定位目录共用。 */
+export const EQUIVALENCE_RAW_FILE = '技能等价组.md'
+
+/**
+ * raw 下作为机械真源的文档（相对 knowledge 根，ADR-021 迁移清单：名册、技能等价组、9 个设施分片）。
+ * 只在 facts 加载与 gold 完整定位目录中使用，不进入检索白名单与模型原文阅读目录。
+ */
+export const RAW_MACHINE_SOURCE_DOC_IDS: readonly string[] = [
+  `raw/${ROSTER_RAW_FILE}`,
+  `raw/${EQUIVALENCE_RAW_FILE}`,
+  ...REFERENCE_ROOMS.map((room) => `raw/技能-${room}.md`),
+]
+
 /** 加载后的设施分片，保留源文本用于原文回渲染核对。 */
 export interface ReferenceFragment extends ParsedSkillFragment {
   sourceText: string
@@ -129,9 +145,9 @@ export function loadReferenceFacts(root: string): ReferenceFacts {
   const rawDir = join(root, 'knowledge', 'raw')
   let nameListText: string
   try {
-    nameListText = readFileSync(join(rawDir, '名册.md'), 'utf-8')
+    nameListText = readFileSync(join(rawDir, ROSTER_RAW_FILE), 'utf-8')
   } catch {
-    throw new FactsParseError('无法读取真源名册：knowledge/raw/名册.md')
+    throw new FactsParseError(`无法读取真源名册：knowledge/raw/${ROSTER_RAW_FILE}`)
   }
 
   const sources: FragmentSource[] = []
