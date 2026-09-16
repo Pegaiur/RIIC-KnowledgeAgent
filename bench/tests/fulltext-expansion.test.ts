@@ -134,6 +134,26 @@ describe('原文扩展：命中文件扩展到文档范围（ADR-013 步骤 2）
     expect(item.data).toContain('制造站引言，关键词甲。')
   })
 
+  it('目录缺少该文档范围时退回原块按行送达，不伪造原文扩展', async () => {
+    const corpus = buildCorpus({ 'base/制造.md': DOC })
+    // 目录与检索块来自不同装配：命中文件不在目录中，覆盖「无文档范围」的防御分支。
+    const otherDirectory = buildCorpus({ 'guides/别的.md': '# 别的\n\n别的正文。\n' })
+    const exec = createKnowledgeToolExecutor({
+      config: { ...loadConfig(), retriever: 'bm25' as const, corpusDir: corpus.dir, expandFulltext: true },
+      query: { id: 'FULLTEXT', category: 'fact', question: '关键词' },
+      chunks: corpus.chunks,
+      index: buildIndex(corpus.chunks),
+      sections: otherDirectory.directory,
+    }, 5)
+
+    const item = await run(exec, 'rag_search', { query: '制造站' })
+
+    expect(item.status).toBe('success')
+    expect(item.fulltextRanges).toEqual([])
+    expect(item.data).not.toContain('原文扩展')
+    expect(item.data).toContain('制造站引言，关键词甲。')
+  })
+
   it('恰好容纳整篇原文时判 complete，不产生续读元数据', async () => {
     const corpus = buildCorpus({ 'base/制造.md': DOC })
     const doc = corpus.directory.documentRange('base/制造.md')!

@@ -2,9 +2,9 @@
  * 记录卡标杆条目（fixture）：首批 5 个干员，作为转录/核对的基准值。
  *
  * 条目本体为 RecordCard，不携带 source 字段（plan 非目标「不做来源标注」）；
- * 程序化 0 差异核对时，由调用方按 canonical 从真源名册（knowledge/references/名册.md）
+ * 程序化 0 差异核对时，由调用方按 canonical 从真源名册（knowledge/raw/名册.md）
  * 解析出该行（见 mechanical.findNameRow），再行比对，避免条目自带出处造成自证。
- * 语义字段（aliases/skillGroups/skills/notes）为人工从 references 转录的兼容基准值，供回归对照；
+ * 语义字段（aliases/skillGroups/skills/notes）为人工从机械真源转录的兼容基准值，供回归对照；
  * 运行时全量卡的技能名、解锁文本和机械字段由 parseSkillFragment 等解析器确定性生成，fixture 不作为运行时事实源。
  */
 import type { RecordCard } from './card.js'

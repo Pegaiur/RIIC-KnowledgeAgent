@@ -976,7 +976,7 @@ interface BuiltRagData {
 /**
  * 组装 RAG 命中正文（ADR-013）：
  *   - 关闭原文扩展或没有小节目录时，沿用既有「按命中块拼接 + 硬截断」行为；
- *   - 开启扩展时，base/guides 命中按文件去重并扩展到原文文档范围（运行级快照），references 仍按块返回；
+ *   - 开启扩展时，base/guides 命中按文件去重并扩展到原文文档范围（运行级快照），无文档范围的块仍按块返回；
  *     容量不足时按可续读的连续原文范围送达并给出元数据，极小上限放不下必要元数据时报容量错误。
  */
 function buildRagData(
@@ -1062,7 +1062,7 @@ function buildExpandedRagData(blocks: RagBlock[], maxChars: number, sections: Se
       if (addition.kind === 'partial') stopped = true
       continue
     }
-    // references（或无文档范围）：沿用原块，按行边界送达；放不下即停止，不伪造后续证据。
+    // 目录中无该文件文档范围的块（当前语料不含，防御分支）：沿用原块，按行边界送达；放不下即停止，不伪造后续证据。
     const header = renderRagHeader(block)
     const room = maxChars - body.length - separator.length - header.length - 1
     if (room <= 0) { stopped = true; break }
