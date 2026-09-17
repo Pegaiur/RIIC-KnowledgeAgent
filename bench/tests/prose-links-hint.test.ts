@@ -111,33 +111,36 @@ function makeExecutor(links?: ProseLinkIndex, overrides: Partial<BenchConfig> = 
 }
 
 describe('RAG 关联事实入口提示', () => {
-  it('面向实际显示的命中节点与导航项给出可复制入口与 read 示例', async () => {
+  it('关联对象数并入命中行，其余节点只有标题也不标关联', async () => {
     const hit = sectionFor('甲子节')
     const nav = sectionFor('甲另子节')
     const index = indexFor(linkFor('甲子节', [objectFor('干员甲'), objectFor('干员乙')]), linkFor('甲另子节', [objectFor('干员丙')]))
     const item = (await makeExecutor(index).executeStep([call('a', { query: HIT_QUERY })])).results[0]!
 
     expect(item.status).toBe('success')
-    expect(item.data).toContain('【关联事实入口】')
-    expect(item.data).toContain(`- ${hit.sectionId}｜base/甲.md｜标题路径：甲文档 > 甲节 > 甲子节｜关联 2 个对象｜示例：read(section_id="${hit.sectionId}")`)
-    expect(item.data).toContain(`- ${nav.sectionId}｜base/甲.md｜标题路径：甲文档 > 甲节 > 甲另子节｜关联 1 个对象｜示例：read(section_id="${nav.sectionId}")`)
+    expect(item.data).toContain('【文件目录】')
+    expect(item.data).toContain(`- ${hit.sectionId}｜甲子节 ◆｜关联 2 个对象`)
+    // 未命中节点只给标题：不带可调用 ID，也不列其登记对象数。
+    expect(item.data).toContain(`    - ${nav.heading}`)
+    expect(item.data).not.toContain(nav.sectionId)
+    expect(item.data).not.toContain('｜关联 1 个对象')
+    expect(item.data).not.toContain('示例：read(')
     expect(item.linkedEntries).toEqual([
       { sectionId: hit.sectionId, file: 'base/甲.md', objectCount: 2, written: true },
-      { sectionId: nav.sectionId, file: 'base/甲.md', objectCount: 1, written: true },
     ])
     // 提示只做导航，不进入 chunk 注入记录，也不改变成功判定之外的口径。
     expect(item.injectedIds?.every((id) => !id.startsWith('sec-'))).toBe(true)
     expect(item.hitIds?.some((id) => id.includes('甲.md'))).toBe(true)
   })
 
-  it('无关联索引或空关联时不出现提示，也不产生观测', async () => {
+  it('无关联索引或空关联时不出现关联列，也不产生观测', async () => {
     const withoutLinks = (await makeExecutor().executeStep([call('a', { query: HIT_QUERY })])).results[0]!
-    expect(withoutLinks.data).not.toContain('【关联事实入口】')
+    expect(withoutLinks.data).not.toContain('｜关联 ')
     expect(withoutLinks.linkedEntries).toBeUndefined()
 
     const emptyObjects = indexFor(linkFor('甲子节', []))
     const empty = (await makeExecutor(emptyObjects).executeStep([call('b', { query: HIT_QUERY })])).results[0]!
-    expect(empty.data).not.toContain('【关联事实入口】')
+    expect(empty.data).not.toContain('｜关联 ')
     expect(empty.linkedEntries).toBeUndefined()
   })
 
@@ -168,14 +171,13 @@ describe('RAG 关联事实入口提示', () => {
     const item = (await makeExecutor(index, { expandFulltext: true }).executeStep([call('a', { query: HIT_QUERY })])).results[0]!
 
     expect(item.data).toContain('原文扩展')
-    expect(item.data).toContain(`- ${hit.sectionId}｜base/甲.md｜标题路径：甲文档 > 甲节 > 甲子节｜关联 1 个对象｜示例：read(section_id="${hit.sectionId}")`)
+    expect(item.data).toContain(`- ${hit.sectionId}｜甲子节 ◆｜关联 1 个对象`)
     expect(item.linkedEntries).toEqual([
       { sectionId: hit.sectionId, file: 'base/甲.md', objectCount: 1, written: true },
     ])
   })
 
-  it('预算不足时含 ID 的提示行整行省略，观测标记未写入且不挤占正文', async () => {
-    const hit = sectionFor('甲子节')
+  it('预算放不下命中行时整体按容量错误返回，不产生未写入的关联观测', async () => {
     const index = indexFor(linkFor('甲子节', [objectFor('干员甲'), objectFor('干员乙')]))
     const full = (await makeExecutor(index).executeStep([call('a', { query: HIT_QUERY })])).results[0]!.data
     const marker = '关联 2 个对象'
@@ -186,11 +188,9 @@ describe('RAG 关联事实入口提示', () => {
       call('b', { query: HIT_QUERY }),
     ])).results[0]!
 
+    expect(tight.status).toBe('error')
     expect(tight.data).not.toContain(marker)
-    expect(tight.data).not.toContain('…（截断）')
-    expect(tight.linkedEntries).toEqual([
-      { sectionId: hit.sectionId, file: 'base/甲.md', objectCount: 2, written: false },
-    ])
+    expect(tight.linkedEntries).toBeUndefined()
   })
 })
 

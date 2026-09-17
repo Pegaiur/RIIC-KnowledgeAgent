@@ -167,7 +167,7 @@ describe('read：工具定义与旧名退役', () => {
     expect(fn.parameters.required).toEqual(['section_id'])
     expect(fn.description).toContain('facts_offset')
     expect(fn.description).not.toContain('linked')
-    expect(TOOL_SCHEMA_VERSION).toBe(15)
+    expect(TOOL_SCHEMA_VERSION).toBe(16)
   })
 
   it('bm25 也保留 read', () => {
@@ -802,7 +802,7 @@ describe('read：登记来源显示', () => {
 
     // 读文档根：两处登记的同一张卡按 canonical 合并为一张，但来源定位必须保持可区分。
     const item = (await makeExecutor(index).executeStep([
-      call('a', { section_id: 'doc:base/丙.md' }),
+      call('a', { section_id: 'doc:丙.md' }),
     ])).results[0]!
 
     expect(item.status).toBe('success')

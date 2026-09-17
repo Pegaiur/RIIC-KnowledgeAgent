@@ -1,7 +1,8 @@
 /**
- * RAG 默认送达契约（ADR-022 决策 7）：只送达命中小节所在块，块头带小节 ID、来源与原文范围；
- * 必要元数据优先于正文，超预算时连续截取并给出可复制的 read 续读入口；
- * 片段范围按同一次装配快照的文档正文坐标登记，覆盖命中的命中片段与父级引导。
+ * RAG 默认送达契约（ADR-022 决策 7 + 目录树第二轮）：按命中文件给出 Markdown 目录树，
+ * 命中行带小节 ID 与 ◆ 并就地展开前 100 个字符的正文预览，文件根行给整篇入口与全文规模；
+ * 非命中节点只给标题；预览按同一次装配快照的文档正文坐标登记为命中片段；
+ * 只有命中行带关联事实入口，不再输出上级范围入口和父级引导。
  */
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -58,12 +59,13 @@ async function run(exec: ReturnType<typeof executorFor>, name: string, params: u
   return batch.results[0]!
 }
 
-/** 从默认送达的命中块输出中取出块头、连续正文页与续读元数据。 */
-function parseHitBlock(data: string): { header: string; page: string; continuation: string | undefined } {
-  const lines = data.split('\n')
-  const metaIndex = lines.findIndex((line) => line.startsWith('续读：'))
-  const bodyEnd = metaIndex < 0 ? lines.length : metaIndex
-  return { header: lines[0] ?? '', page: lines.slice(1, bodyEnd).join('\n'), continuation: metaIndex < 0 ? undefined : lines[metaIndex] }
+/** 从目录树输出里取出命中预览行（`> ` 前缀）拼接的原文。 */
+function previewText(data: string): string {
+  return data
+    .split('\n')
+    .filter((line) => /^\s*> /.test(line))
+    .map((line) => line.replace(/^\s*> ?/, ''))
+    .join('\n')
 }
 
 /** 从 read 输出中取出本页原文。 */
@@ -114,21 +116,6 @@ const DOC = [
   '',
 ].join('\n')
 
-const PARENT_DOC = [
-  '# 甲体系',
-  '',
-  '甲体系前言。',
-  '',
-  '## 甲节',
-  '',
-  '甲节正文。',
-  '',
-  '### 甲子节',
-  '',
-  '甲子节正文。',
-  '',
-].join('\n')
-
 const LONG_DOC = [
   '# 长体系',
   '',
@@ -138,8 +125,8 @@ const LONG_DOC = [
   '',
 ].join('\n')
 
-describe('RAG 默认送达：命中小节块（ADR-022 决策 7）', () => {
-  it('块头含小节 ID、来源与原文范围，正文止于下一个 H2/H3 边界', async () => {
+describe('RAG 默认送达：同文件目录树（ADR-022 决策 7）', () => {
+  it('目录树给根行与命中行，命中就地展开预览并登记连续片段', async () => {
     const corpus = buildCorpus({ 'base/制造.md': DOC })
     const chunk = chunkFor(corpus, '站点甲')
     const section = sectionFor(corpus, '站点甲')
@@ -148,9 +135,12 @@ describe('RAG 默认送达：命中小节块（ADR-022 决策 7）', () => {
     const item = await run(executorFor(corpus), 'rag_search', { query: '站点说明' })
 
     expect(item.status).toBe('success')
-    expect(item.data).toContain(`【base/制造.md | 站点甲 | L${chunk.startLine}-${chunk.endLine} | ${section.sectionId}】`)
-    expect(item.data).toContain('站点说明一段。')
-    // 未命中的下级小节不随命中块送达，也不把整篇原文标成送达。
+    expect(item.data).toContain(`- 体系丙｜${doc.sectionId}｜全文 ${doc.body.length} 字符`)
+    expect(item.data).toContain(`  - ${section.sectionId}｜站点甲 ◆`)
+    expect(item.data).toContain('    > 站点说明一段。')
+    // 未命中的下级与同级小节只列标题，正文与整篇原文都不送达。
+    expect(item.data).toContain('    - 效率乙')
+    expect(item.data).toContain('  - 贸易丁')
     expect(item.data).not.toContain('效率数值一段。')
     expect(item.data).not.toContain('原文扩展')
     expect(item.fulltextRanges).toEqual([])
@@ -171,18 +161,20 @@ describe('RAG 默认送达：命中小节块（ADR-022 决策 7）', () => {
     expect(doc.body.slice(range.docOffset, range.docEndOffset)).toBe('站点说明一段。')
   })
 
-  it('末尾上下文装不下时命中小节 ID 仍随块送达', async () => {
+  it('预算不足时命中行与预览优先，未命中结构行整行省略', async () => {
     const corpus = buildCorpus({ 'base/制造.md': DOC })
-    const chunk = chunkFor(corpus, '站点甲')
     const section = sectionFor(corpus, '站点甲')
-    const block = `【base/制造.md | 站点甲 | L${chunk.startLine}-${chunk.endLine} | ${section.sectionId}】\n站点说明一段。`
+    const full = await run(executorFor(corpus), 'rag_search', { query: '站点说明' })
+    const preview = '    > 站点说明一段。'
+    const maxChars = full.data.indexOf(preview) + preview.length
 
-    const item = await run(executorFor(corpus, { maxContextChars: block.length + 1 }), 'rag_search', { query: '站点说明' })
+    const item = await run(executorFor(corpus, { maxContextChars: maxChars }), 'rag_search', { query: '站点说明' })
 
     expect(item.status).toBe('success')
-    expect(item.data).toContain(`| ${section.sectionId}】`)
-    expect(item.data).toContain('站点说明一段。')
-    expect(item.data).not.toContain('【小节导航】')
+    expect(item.data).toBe(full.data.slice(0, maxChars))
+    expect(item.data).toContain(`  - ${section.sectionId}｜站点甲 ◆`)
+    expect(item.data).not.toContain('效率乙')
+    expect(item.data).not.toContain('贸易丁')
   })
 
   it('容量连必要元数据加正文都放不下时不发送该块，也不输出被截断的 ID', async () => {
@@ -198,79 +190,88 @@ describe('RAG 默认送达：命中小节块（ADR-022 决策 7）', () => {
     expect(item.fragmentRanges).toEqual([])
   })
 
-  it('超过预算时连续截取并给出可复制的 read 续读入口，续读拼接覆盖整块', async () => {
-    const corpus = buildCorpus({ 'base/长.md': LONG_DOC })
-    const section = sectionFor(corpus, '长节')
-    const doc = corpus.directory.documentRange('base/长.md')!
+  it('命中前的结构子树让出预算，保留后续命中与预览', async () => {
+    const corpus = buildCorpus({
+      'base/预算.md': '# 预算\n\n## 前节\n\n### 前子节\n\n无关。\n\n## 命中\n\n独有词正文。\n',
+    })
+    const full = await run(executorFor(corpus), 'rag_search', { query: '独有词' })
+    const expected = full.data.replace('  - 前节\n    - 前子节\n', '')
 
-    const item = await run(executorFor(corpus, { maxContextChars: 200 }), 'rag_search', { query: '关键词正文内容' })
-    const parsed = parseHitBlock(item.data)
-    const range = item.fragmentRanges![0]!
-    const continuation = /^续读：read\(section_id="([^"]+)", offset=(\d+)\)｜complete false｜正文 (\d+) 字符$/.exec(parsed.continuation ?? '')
+    const item = await run(executorFor(corpus, { maxContextChars: expected.length }), 'rag_search', { query: '独有词' })
 
     expect(item.status).toBe('success')
-    expect(parsed.page.length).toBeGreaterThan(0)
-    expect(parsed.page.length).toBeLessThan(section.body.length)
-    // 连续截取：送达页是块正文的前缀，不做首尾压缩。
-    expect(section.body.startsWith(parsed.page)).toBe(true)
-    expect(continuation?.[1]).toBe(section.sectionId)
-    expect(continuation?.[3]).toBe(String(section.body.length))
+    expect(item.data).toBe(expected)
+    expect(item.injectedIds).toEqual([chunkFor(corpus, '命中').id])
+  })
+
+  it('先保留所有命中 ID，再用余量送达完整预览', async () => {
+    const corpus = buildCorpus({
+      'base/双节.md': `# 双节\n\n## 甲节\n\n独有词${'甲'.repeat(90)}\n\n## 乙节\n\n独有词乙。\n`,
+    })
+    const full = await run(executorFor(corpus), 'rag_search', { query: '独有词' })
+    const expected = full.data.replace(/\n    > 独有词甲+/, '')
+
+    const item = await run(executorFor(corpus, { maxContextChars: expected.length }), 'rag_search', { query: '独有词' })
+
+    expect(item.status).toBe('success')
+    expect(item.data).toBe(expected)
+    expect(item.injectedIds).toEqual([chunkFor(corpus, '乙节').id])
+    expect(item.fragmentRanges?.map((range) => range.chunkId)).toEqual(item.injectedIds)
+  })
+
+  it('预览取原文切片，保留首行缩进并与片段坐标一致', async () => {
+    const corpus = buildCorpus({ 'base/缩进.md': '# 缩进\n\n## 命中\n\n  独有词正文。\n' })
+    const item = await run(executorFor(corpus), 'rag_search', { query: '独有词' })
+    const range = item.fragmentRanges![0]!
+    const source = corpus.directory.documentRange(range.file)!.body.slice(range.docOffset, range.docEndOffset)
+
+    expect(item.status).toBe('success')
+    expect(source).toBe('  独有词正文。')
+    expect(previewText(item.data)).toBe(source)
+  })
+
+  it('检索块经过压缩时预览仍来自连续原文，长度标记取原文块', async () => {
+    const corpus = buildCorpus({ 'base/压缩.md': `# 压缩\n\n## 命中\n\n独有词${'甲'.repeat(120)}尾段。\n` })
+    corpus.chunks = corpus.chunks.map((chunk) => chunk.heading === '命中'
+      ? { ...chunk, text: '独有词…（中段省略）…尾段。' }
+      : chunk)
+    const item = await run(executorFor(corpus), 'rag_search', { query: '独有词' })
+    const section = sectionFor(corpus, '命中')
+    const range = item.fragmentRanges![0]!
+    const source = corpus.directory.documentRange(range.file)!.body.slice(range.docOffset, range.docEndOffset)
+
+    expect(item.status).toBe('success')
+    expect(source).toBe(section.body.slice(0, 100))
+    expect(previewText(item.data)).toBe(`${source}…（截断，全文 ${section.body.length} 字符）`)
+  })
+
+  it('预览超过 100 个字符时截断并标全文长度，命中行 ID 可续读整块', async () => {
+    const corpus = buildCorpus({ 'base/长.md': LONG_DOC })
+    const section = sectionFor(corpus, '长节')
+    const chunk = chunkFor(corpus, '长节')
+    const doc = corpus.directory.documentRange('base/长.md')!
+
+    const item = await run(executorFor(corpus), 'rag_search', { query: '关键词正文内容' })
+    const head = chunk.text.slice(0, 100)
+    const range = item.fragmentRanges![0]!
+
+    expect(item.status).toBe('success')
+    expect(head.length).toBe(100)
+    expect(previewText(item.data)).toBe(`${head}…（截断，全文 ${chunk.text.length} 字符）`)
     expect(range).toMatchObject({
       kind: 'hit',
       file: 'base/长.md',
       sectionId: section.sectionId,
+      chunkId: chunk.id,
       startLine: section.startLine,
-      endLine: section.startLine + (parsed.page.match(/\n/g)?.length ?? 0),
+      endLine: section.startLine + (head.match(/\n/g)?.length ?? 0),
     })
-    expect(doc.body.slice(range.docOffset, range.docEndOffset)).toBe(parsed.page)
+    expect(doc.body.slice(range.docOffset, range.docEndOffset)).toBe(head)
 
-    // 用返回的 ID 与 offset 续读：两页拼接覆盖整块且无缺口。
-    const offset = Number(continuation?.[2])
-    const continued = await run(executorFor(corpus), 'read', { section_id: section.sectionId, offset })
-
+    // 用命中行给出的 ID 读取整块：一次读取覆盖完整正文。
+    const continued = await run(executorFor(corpus), 'read', { section_id: section.sectionId })
     expect(continued.status).toBe('success')
-    expect(`${parsed.page}${parseReadSection(continued.data)}`).toBe(section.body)
-  })
-
-  it('父级引导按实际送达登记连续范围，不漏算为新证据', async () => {
-    const corpus = buildCorpus({ 'base/甲.md': PARENT_DOC })
-    const child = sectionFor(corpus, '甲子节')
-    const parent = sectionFor(corpus, '甲节')
-    const doc = corpus.directory.documentRange('base/甲.md')!
-    const lead = corpus.directory.contextFor(child.sectionId)!.parentLead!
-
-    const item = await run(executorFor(corpus), 'rag_search', { query: '甲子节正文' })
-    const parentRange = item.fragmentRanges!.find((entry) => entry.kind === 'parent_lead' && entry.sectionId === parent.sectionId)!
-
-    expect(item.data).toContain(`父级引导（L${lead.startLine}-${lead.endLine}）：${lead.text}`)
-    expect(parentRange).toMatchObject({
-      kind: 'parent_lead',
-      file: 'base/甲.md',
-      sectionId: parent.sectionId,
-      startLine: lead.startLine,
-      endLine: lead.endLine,
-    })
-    expect(doc.body.slice(parentRange.docOffset, parentRange.docEndOffset)).toBe(lead.text)
-  })
-
-  it('长父级引导只登记实际显示的连续前缀，余量不足时整条省略', async () => {
-    const lead = `${'前'.repeat(298)}😀${'后'.repeat(80)}\n未送达的尾行。`
-    const corpus = buildCorpus({ 'base/甲.md': PARENT_DOC.replace('甲节正文。', lead) })
-    const parent = sectionFor(corpus, '甲节')
-    const doc = corpus.directory.documentRange('base/甲.md')!
-    const full = await run(executorFor(corpus, { topK: 1 }), 'rag_search', { query: '甲子节正文' })
-    const range = full.fragmentRanges!.find((entry) => entry.kind === 'parent_lead')!
-    const delivered = `${'前'.repeat(298)}😀`
-
-    expect(full.data).toContain(`父级引导（L${parent.startLine}-${parent.startLine}）：${delivered}…（截断）`)
-    expect(doc.body.slice(range.docOffset, range.docEndOffset)).toBe(delivered)
-    expect(range.endLine).toBe(parent.startLine)
-    expect(full.data).not.toContain('未送达的尾行')
-
-    const leadStart = full.data.indexOf('  父级引导')
-    const tight = await run(executorFor(corpus, { topK: 1, maxContextChars: leadStart + 80 }), 'rag_search', { query: '甲子节正文' })
-    expect(tight.data).not.toContain('父级引导')
-    expect(tight.fragmentRanges!.filter((entry) => entry.kind === 'parent_lead')).toEqual([])
+    expect(parseReadSection(continued.data)).toBe(section.body)
   })
 
   it('RAG 容量不足但独立 facts 额度送达卡片时仍计一次成功', async () => {

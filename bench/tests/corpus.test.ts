@@ -80,6 +80,14 @@ describe('corpus：语料收集与分块', () => {
     expect(() => collectMarkdownFiles(docsDir)).toThrowError('语料白名单存在重复条目：base/重复.md')
   })
 
+  it('跨目录同名文件被拒绝：文档范围 ID 只保留文件名', () => {
+    writeDoc('base/同名.md', '# 甲体系\n正文甲\n')
+    writeDoc('guides/同名.md', '# 乙体系\n正文乙\n')
+    writeManifest(['base/同名.md', 'guides/同名.md'])
+    expect(() => collectMarkdownFiles(docsDir))
+      .toThrowError('语料白名单存在跨目录同名文件：base/同名.md 与 guides/同名.md；文档范围 ID 只保留文件名，请重命名其中一个')
+  })
+
   it('白名单路径越出语料根目录时快速失败', () => {
     writeManifest(['../越界.md'])
     expect(() => collectMarkdownFiles(docsDir)).toThrowError('语料白名单路径越出语料根目录：../越界.md')

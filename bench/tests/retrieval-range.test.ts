@@ -28,6 +28,6 @@ describe('检索范围：manifest 声明的 base/guides', () => {
     expect(directory.sections.every((section) => section.file.startsWith('base/') || section.file.startsWith('guides/'))).toBe(true)
     expect(directory.documentRange('raw/名册.md')).toBeUndefined()
     expect(directory.documentRange('raw/技能-制造站.md')).toBeUndefined()
-    expect(directory.get('doc:raw/名册.md')).toBeUndefined()
+    expect(directory.get('doc:名册.md')).toBeUndefined()
   })
 })

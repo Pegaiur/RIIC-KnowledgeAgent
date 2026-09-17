@@ -302,7 +302,7 @@ describe('prose-links：小节定位与机械检查', () => {
   it('文档根用空标题路径定位文档范围，出现序号只能为 1', () => {
     const index = resolve(linkFile([{ kind: 'operator', canonical: '干员甲' }], []))
     expect(index.issues).toEqual([])
-    expect(index.links[0]!.sectionId).toBe(`doc:guides/示例.md`)
+    expect(index.links[0]!.sectionId).toBe(`doc:示例.md`)
     expect(index.links[0]!.documentRoot).toBe(true)
     expect(index.links[0]!.headingPath).toEqual([])
 
@@ -455,7 +455,7 @@ describe('prose-links：读取范围合并', () => {
     expect(readObjectsFor(sectionId('甲节子节'), directory, index).map((object) => object.kind === 'card' ? object.canonical : ''))
       .toEqual(['干员乙', '干员甲'])
 
-    const docRead = readObjectsFor('doc:guides/示例.md', directory, index)
+    const docRead = readObjectsFor('doc:示例.md', directory, index)
     expect(docRead.map((object) => object.kind === 'card' ? object.canonical : '')).toEqual(['干员乙', '干员甲'])
 
     const siblingRead = readObjectsFor(sectionId('乙节'), directory, index)

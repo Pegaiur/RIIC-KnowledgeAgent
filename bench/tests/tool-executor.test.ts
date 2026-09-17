@@ -89,9 +89,13 @@ describe('独立函数工具 schema', () => {
   it('RAG 与原文读取 schema 说明实际送达能力和分页字段边界', () => {
     const definitions = toolsForRetriever('hybrid', FACTS_LIMIT)
       .map((tool) => tool.function as { name: string; description: string })
-    expect(definitions.find((fn) => fn.name === 'rag_search')?.description).toContain('附带事实卡')
+    const rag = definitions.find((fn) => fn.name === 'rag_search')!.description
+    expect(rag).toContain('目录树')
+    expect(rag).toContain('前 100 个字符')
+    expect(rag).toContain('附带事实卡')
     const read = definitions.find((fn) => fn.name === 'read')!.description
-    expect(read).toContain('上级范围入口')
+    expect(read).toContain('按已返回的 ID')
+    expect(read).not.toContain('上级范围入口')
     expect(read).toContain('complete=false')
     expect(read).toContain('complete=true')
     expect(read).toContain('不表示问题已完整解决')
@@ -134,7 +138,7 @@ describe('独立函数工具 schema', () => {
   })
 
   it('schema 指纹只由当前实际工具数组决定', () => {
-    expect(toolSchemaMetadata('bm25', FACTS_LIMIT)).toMatchObject({ toolSchemaVersion: 15, toolNames: ['rag_search', 'read'] })
+    expect(toolSchemaMetadata('bm25', FACTS_LIMIT)).toMatchObject({ toolSchemaVersion: 16, toolNames: ['rag_search', 'read'] })
     expect(toolSchemaMetadata('bm25', FACTS_LIMIT).toolSchemaSha256).toMatch(/^[a-f0-9]{64}$/)
     expect(toolSchemaMetadata('bm25', FACTS_LIMIT).toolSchemaSha256).not.toBe(toolSchemaMetadata('hybrid', FACTS_LIMIT).toolSchemaSha256)
   })

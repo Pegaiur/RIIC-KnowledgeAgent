@@ -103,13 +103,13 @@ describe('原文扩展：命中文件扩展到文档范围（ADR-013 步骤 2）
     const item = await run(executorFor(corpus), 'rag_search', { query: '制造站' })
 
     expect(item.status).toBe('success')
-    expect(item.data).toContain(`【base/制造.md｜原文扩展｜L${doc.startLine}-${doc.endLine}】`)
+    expect(item.data).toContain(`【制造.md｜原文扩展｜L${doc.startLine}-${doc.endLine}】`)
     expect(item.data).toContain('制造体系前言。')
     expect(item.data).toContain('效率关键词乙。')
     expect(item.data).toContain('贸易关键词丙。')
     expect(item.injectedIds?.every((id) => !id.startsWith('doc:'))).toBe(true)
     expect(item.fulltextRanges).toEqual([
-      expect.objectContaining({ file: 'base/制造.md', docId: 'doc:base/制造.md', offset: 0, complete: true, nextOffset: null }),
+      expect.objectContaining({ file: 'base/制造.md', docId: 'doc:制造.md', offset: 0, complete: true, nextOffset: null }),
     ])
   })
 
@@ -118,7 +118,7 @@ describe('原文扩展：命中文件扩展到文档范围（ADR-013 步骤 2）
     const item = await run(executorFor(corpus), 'rag_search', { query: '关键词' })
 
     expect(item.fulltextRanges).toHaveLength(1)
-    expect(item.data.split('【base/制造.md｜原文扩展').length - 1).toBe(1)
+    expect(item.data.split('【制造.md｜原文扩展').length - 1).toBe(1)
     expect(item.injectedIds).toHaveLength(1)
   })
 
@@ -159,7 +159,7 @@ describe('原文扩展：命中文件扩展到文档范围（ADR-013 步骤 2）
   it('恰好容纳整篇原文时判 complete，不产生续读元数据', async () => {
     const corpus = buildCorpus({ 'base/制造.md': DOC })
     const doc = corpus.directory.documentRange('base/制造.md')!
-    const header = `【base/制造.md｜原文扩展｜L${doc.startLine}-${doc.endLine}】`
+    const header = `【制造.md｜原文扩展｜L${doc.startLine}-${doc.endLine}】`
     const maxChars = header.length + 1 + doc.body.length
 
     const item = await run(executorFor(corpus, { maxContextChars: maxChars }), 'rag_search', { query: '制造站' })
@@ -197,7 +197,7 @@ describe('原文扩展：命中文件扩展到文档范围（ADR-013 步骤 2）
       const doc = corpus.directory.documentRange(range.file)!
       expect(item.data).toContain(doc.body.slice(range.offset, range.endOffset))
     }
-    expect(item.data).toContain('续读：read(section_id="doc:guides/乙.md"')
+    expect(item.data).toContain('续读：read(section_id="doc:乙.md"')
     expect(item.data.length).toBeLessThanOrEqual(400)
   })
 })
@@ -206,7 +206,7 @@ describe('原文扩展：容量不足时按可续读连续原文送达（ADR-013
   it('整篇放不下时元数据先留位，记录 offset/行范围/complete/next_offset', async () => {
     const corpus = buildCorpus({ 'base/长.md': longDocument(40) })
     const doc = corpus.directory.documentRange('base/长.md')!
-    const maxChars = `【base/长.md｜原文扩展｜L${doc.startLine}-${doc.endLine}】`.length + 1 + 200
+    const maxChars = `【长.md｜原文扩展｜L${doc.startLine}-${doc.endLine}】`.length + 1 + 200
     expect(doc.body.length).toBeGreaterThan(maxChars)
 
     const item = await run(executorFor(corpus, { maxContextChars: maxChars }), 'rag_search', { query: '小节1' })
@@ -215,9 +215,9 @@ describe('原文扩展：容量不足时按可续读连续原文送达（ADR-013
 
     expect(item.status).toBe('success')
     expect(item.data).toContain('原文扩展')
-    expect(parsed.meta).toContain('续读：read(section_id="doc:base/长.md"')
+    expect(parsed.meta).toContain('续读：read(section_id="doc:长.md"')
     expect(parsed.meta).toContain('complete false')
-    expect(range).toMatchObject({ file: 'base/长.md', docId: 'doc:base/长.md', offset: 0, complete: false })
+    expect(range).toMatchObject({ file: 'base/长.md', docId: 'doc:长.md', offset: 0, complete: false })
     expect(range.nextOffset).toBeGreaterThan(0)
     expect(range.endOffset).toBe(parsed.page.length)
     expect(doc.body.startsWith(parsed.page)).toBe(true)
@@ -227,7 +227,7 @@ describe('原文扩展：容量不足时按可续读连续原文送达（ADR-013
   it('用文档范围 ID 续读，首段与续读页拼接覆盖整篇且无缺口', async () => {
     const corpus = buildCorpus({ 'base/长.md': longDocument(40) })
     const doc = corpus.directory.documentRange('base/长.md')!
-    const maxChars = `【base/长.md｜原文扩展｜L${doc.startLine}-${doc.endLine}】`.length + 1 + 200
+    const maxChars = `【长.md｜原文扩展｜L${doc.startLine}-${doc.endLine}】`.length + 1 + 200
     const exec = executorFor(corpus, { maxContextChars: maxChars })
     const item = await run(exec, 'rag_search', { query: '小节1' })
     const range = item.fulltextRanges![0]!
@@ -243,7 +243,7 @@ describe('原文扩展：容量不足时按可续读连续原文送达（ADR-013
   it('极小上限连必要元数据都放不下时返回明确容量错误，不伪装 empty', async () => {
     const corpus = buildCorpus({ 'base/长.md': longDocument(40) })
     const doc = corpus.directory.documentRange('base/长.md')!
-    const maxChars = `【base/长.md｜原文扩展｜L${doc.startLine}-${doc.endLine}】`.length + 11
+    const maxChars = `【长.md｜原文扩展｜L${doc.startLine}-${doc.endLine}】`.length + 11
 
     const item = await run(executorFor(corpus, { maxContextChars: maxChars }), 'rag_search', { query: '小节1' })
 
@@ -274,8 +274,8 @@ describe('原文扩展：容量不足时按可续读连续原文送达（ADR-013
     // 单行正文（无换行）才能让行边界截断落在非 BMP 字符中间，验证代理对保护。
     const corpus = buildCorpus({ 'base/表情.md': `关键词${'😀'.repeat(300)}\n` })
     const doc = corpus.directory.documentRange('base/表情.md')!
-    const metaReserve = `续读：read(section_id="doc:base/表情.md", offset=${doc.body.length})｜complete false｜正文 ${doc.body.length} 字符`.length
-    const header = `【base/表情.md｜原文扩展｜L${doc.startLine}-${doc.endLine}】`
+    const metaReserve = `续读：read(section_id="doc:表情.md", offset=${doc.body.length})｜complete false｜正文 ${doc.body.length} 字符`.length
+    const header = `【表情.md｜原文扩展｜L${doc.startLine}-${doc.endLine}】`
     const maxChars = header.length + 1 + metaReserve + 1 + 40
 
     expect(doc.body).not.toContain('\n')
@@ -297,7 +297,7 @@ describe('文档范围：覆盖整篇正文（ADR-013 步骤 2）', () => {
     const corpus = buildCorpus({ 'base/无标题.md': '标题前首部正文。\n\n## 第一节\n\n第一节正文。\n' })
     const doc = corpus.directory.documentRange('base/无标题.md')!
 
-    expect(doc.sectionId).toBe('doc:base/无标题.md')
+    expect(doc.sectionId).toBe('doc:无标题.md')
     expect(corpus.directory.get(doc.sectionId)).toBe(doc)
     expect(doc.body).toContain('标题前首部正文。')
     expect(doc.body).toContain('第一节正文。')

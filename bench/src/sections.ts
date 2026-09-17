@@ -38,18 +38,6 @@ export interface SectionEntry {
   firstChildHeadingLine: number | null
 }
 
-export interface SectionParentLead {
-  text: string
-  startLine: number
-  endLine: number
-}
-
-export interface SectionContext {
-  /** H1→当前标题；根节点为空数组 */
-  headingPath: string[]
-  parentLead?: SectionParentLead
-}
-
 export interface SectionRef {
   sectionId: string
   heading: string
@@ -60,6 +48,17 @@ export interface SectionNavigation {
   omitted: number
 }
 
+/**
+ * 文件目录：一个文件全部小节的原文顺序快照与展示用标题。
+ * 展示标题取首个一级标题；无一级标题（含无标题文件）时回退为不含扩展名的文件名。
+ * nodes 只含二级及以下的小节；一级标题由根行承载，文档范围条目与无标题节点不进入。
+ */
+export interface FileOutline {
+  file: string
+  title: string
+  nodes: SectionEntry[]
+}
+
 export interface SectionDirectory {
   version: typeof SECTION_DIRECTORY_VERSION
   /** 按原文顺序排列的小节。 */
@@ -67,11 +66,12 @@ export interface SectionDirectory {
   get(sectionId: string): SectionEntry | undefined
   /** 把检索命中的 chunk 映射回小节（按文件、标题与来源行）。 */
   findByChunk(file: string, heading: string, startLine: number): SectionEntry | undefined
-  contextFor(sectionId: string): SectionContext | undefined
   /** 直接兄弟＋子小节，按原文顺序去重后截断。 */
   navigationFor(sectionId: string, limit?: number): SectionNavigation
   /** 覆盖整个正文（不含 frontmatter，含标题前首部）的文档范围；其 ID 可被 get 解析以续读。 */
   documentRange(file: string): SectionEntry | undefined
+  /** 文件目录：全部小节（含未命中）按原文顺序，供送达展示整篇结构。 */
+  outlineFor(file: string): FileOutline | undefined
 }
 
 interface ParsedHeading {
@@ -144,22 +144,47 @@ export function buildSectionDirectory(corpusRoot: string): SectionDirectory {
 
   const byId = new Map(sections.map((section) => [section.sectionId, section]))
   const documentsById = new Map([...documentEntries.values()].map((entry) => [entry.sectionId, entry]))
+  const outlinesByFile = new Map<string, FileOutline>(
+    [...documentEntries.keys()].map((file) => {
+      const own = sections.filter((section) => section.file === file)
+      // 一级标题由根行承载，不再作为树节点；二级起按原文顺序进入树。
+      const nodes = own.filter((section) => section.level >= 2)
+      const title = own.find((section) => section.level === 1)?.heading ?? fileTitleFallback(file)
+      return [file, { file, title, nodes }]
+    }),
+  )
 
   return {
     version: SECTION_DIRECTORY_VERSION,
     sections,
     get: (sectionId) => byId.get(sectionId) ?? documentsById.get(sectionId),
     findByChunk: (file, heading, startLine) => findByChunk(sections, file, heading, startLine),
-    contextFor: (sectionId) => contextFor(byId, sectionId),
     navigationFor: (sectionId, limit = 8) => navigationFor(sections, sectionId, limit),
     documentRange: (file) => documentEntries.get(file),
+    outlineFor: (file) => outlinesByFile.get(file),
   }
+}
+
+/** 相对路径的文件名部分（不含目录）；展示层只用文件名，跨目录重名由语料白名单机械校验拦住。 */
+function fileBaseName(file: string): string {
+  return file.slice(file.lastIndexOf('/') + 1)
+}
+
+/** 文档范围 ID：只带文件名，调用方原样复制即可读取整篇。 */
+function documentIdFor(file: string): string {
+  return `doc:${fileBaseName(file)}`
+}
+
+/** 展示用标题回退：不含扩展名的文件名。 */
+function fileTitleFallback(file: string): string {
+  const base = fileBaseName(file)
+  return base.toLowerCase().endsWith('.md') ? base.slice(0, -3) : base
 }
 
 /** 文档范围条目：level 0、无标题，正文覆盖整个文件（含标题前首部），ID 可被 get 解析以续读。 */
 function createDocumentEntry(file: string, body: BodySlice): SectionEntry {
   return {
-    sectionId: `doc:${file}`,
+    sectionId: documentIdFor(file),
     file,
     heading: '',
     level: 0,
@@ -270,32 +295,6 @@ function findByChunk(sections: SectionEntry[], file: string, heading: string, st
     if (item.level === best.level && item.headingLine > best.headingLine) return item
     return best
   })
-}
-
-function contextFor(byId: Map<string, SectionEntry>, sectionId: string): SectionContext | undefined {
-  const entry = byId.get(sectionId)
-  if (!entry) return undefined
-  const headingPath = entry.level === 0 ? [] : [...entry.ancestors, entry.heading]
-  const parent = entry.parentId ? byId.get(entry.parentId) : undefined
-  if (!parent) return { headingPath }
-
-  const parentLines = parent.body.split('\n')
-  const take = parent.firstChildHeadingLine === null
-    ? parentLines.length
-    : Math.min(parentLines.length, parent.firstChildHeadingLine - parent.startLine)
-  let first = 0
-  while (first < take && (parentLines[first] ?? '').trim() === '') first++
-  let last = take - 1
-  while (last >= first && (parentLines[last] ?? '').trim() === '') last--
-  if (first > last) return { headingPath }
-  return {
-    headingPath,
-    parentLead: {
-      text: parentLines.slice(first, last + 1).join('\n'),
-      startLine: parent.startLine + first,
-      endLine: parent.startLine + last,
-    },
-  }
 }
 
 function navigationFor(sections: SectionEntry[], sectionId: string, limit: number): SectionNavigation {

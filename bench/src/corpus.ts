@@ -74,6 +74,7 @@ function resolveManifestFiles(corpusRoot: string, entries: readonly string[]): R
     throw new Error(`无法解析语料根目录：${root}`)
   }
   const seen = new Set<string>()
+  const baseNames = new Map<string, string>()
   const result: ResolvedManifestFile[] = []
 
   entries.forEach((entry, index) => {
@@ -101,6 +102,15 @@ function resolveManifestFiles(corpusRoot: string, entries: readonly string[]): R
       throw new Error(`语料白名单存在重复条目：${entry}`)
     }
     seen.add(duplicateKey)
+
+    // 文档范围 ID 只保留文件名，跨目录同名会让整篇入口指向不明来源。
+    const baseName = docId.slice(docId.lastIndexOf('/') + 1)
+    const baseKey = process.platform === 'win32' ? baseName.toLowerCase() : baseName
+    const previousPath = baseNames.get(baseKey)
+    if (previousPath !== undefined) {
+      throw new Error(`语料白名单存在跨目录同名文件：${previousPath} 与 ${docId}；文档范围 ID 只保留文件名，请重命名其中一个`)
+    }
+    baseNames.set(baseKey, docId)
 
     const lowerDocId = docId.toLowerCase()
     if (lowerDocId === 'skill.md' || lowerDocId.endsWith('/skill.md')) {

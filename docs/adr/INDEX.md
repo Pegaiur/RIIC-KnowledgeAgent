@@ -28,3 +28,4 @@
 | [020](ADR-020-prose-linked-knowledge.md) | 已实施 | 散文小节关联事实的引用、提示与显式展开契约 | 2026-09-13 |
 | [021](ADR-021-facts-source-layout.md) | 已决策 | facts 真源目录归并与事实出口 | 2026-09-15 |
 | [022](ADR-022-progressive-disclosure.md) | 已决策 | 渐进披露的阅读、关联与默认送达契约 | 2026-09-15 |
+| [023](ADR-023-rag-directory-preview.md) | 已实施 | RAG 采用文件目录树与命中预览 | 2026-09-17 |

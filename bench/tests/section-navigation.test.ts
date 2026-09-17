@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { loadConfig, type BenchConfig } from '../src/config.js'
 import { collectMarkdownFiles, splitChunks } from '../src/corpus.js'
-import { buildIndex, search } from '../src/retriever.js'
+import { buildIndex } from '../src/retriever.js'
 import { buildSectionDirectory, type SectionDirectory } from '../src/sections.js'
 import { createKnowledgeToolExecutor } from '../src/tool-executor.js'
 import type { DocChunk, ToolCall } from '../src/types.js'
@@ -63,17 +63,19 @@ function makeExecutor(overrides: Partial<BenchConfig> = {}, withSections = true)
   }, 5)
 }
 
-/** 默认送达基线：块头含小节 ID、来源与原文范围，正文来自同一原文快照的块行范围。 */
-function blockFor(chunk: DocChunk): string {
-  // 无对应小节的标题前首部以同文件文档范围为阅读入口，与运行时的映射一致。
-  const target = directory.findByChunk(chunk.file, chunk.heading, chunk.startLine) ?? directory.documentRange(chunk.file)
-  const id = target ? ` | ${target.sectionId}` : ''
-  return `【${chunk.file} | ${chunk.heading} | L${chunk.startLine}-${chunk.endLine}${id}】\n${chunk.text}`
+/** 目录树表头：说明缩进、命中标记与带 ID 的行。 */
+const TREE_HEADER = '【文件目录】缩进=标题层级；◆=检索命中；带 ID 的行可 read'
+
+/** 文件根行：H1 标题、整篇入口 ID 与全文规模；命中标题前首部时追加命中标记。 */
+function rootRowFor(file: string, hit = false): string {
+  const doc = directory.documentRange(file)!
+  const title = directory.outlineFor(file)!.title
+  return `- ${title}｜${doc.sectionId}｜全文 ${doc.body.length} 字符${hit ? ' ◆' : ''}`
 }
 
-function baselineFor(query: string): string {
-  const hits = search(buildIndex(chunks), query, 5)
-  return hits.map((index) => blockFor(chunks[index]!)).join('\n\n')
+/** 命中节点行：可复制 ID、标题与命中标记。 */
+function hitRowFor(section: { sectionId: string; heading: string }): string {
+  return `- ${section.sectionId}｜${section.heading} ◆`
 }
 
 /** 用自定义文档重建同一临时语料，供分页与边界用例使用。 */
@@ -119,23 +121,98 @@ function parsePage(data: string): ParsedPage {
   }
 }
 
-describe('RAG 展示：标题上下文与导航', () => {
-  it('命中片段带 sectionId，并附标题路径、父级引导与导航', async () => {
-    const result = await makeExecutor().executeStep([call('a', 'rag_search', { query: '制造站效率' })])
+describe('RAG 展示：同文件目录树', () => {
+  it('命中节点就地展开预览，非命中节点只给标题并按层级缩进', async () => {
+    rebuildCorpus({
+      'base/树.md': [
+        '# 树体系',
+        '',
+        '## 甲节',
+        '',
+        '甲节引言。',
+        '',
+        '### 甲子节',
+        '',
+        '独有词汇正文。',
+        '',
+        '### 甲另子节',
+        '',
+        '无关正文一。',
+        '',
+        '## 乙节',
+        '',
+        '无关正文二。',
+        '',
+      ].join('\n'),
+    })
+    const parent = directory.sections.find((section) => section.heading === '甲节')!
+    const hit = directory.sections.find((section) => section.heading === '甲子节')!
+    const sibling = directory.sections.find((section) => section.heading === '甲另子节')!
+    const result = await makeExecutor().executeStep([call('a', 'rag_search', { query: '独有词汇' })])
     const item = result.results[0]!
-    const efficiency = directory.sections.find((section) => section.heading === '效率')!
 
     expect(item.status).toBe('success')
-    expect(item.data.startsWith(baselineFor('制造站效率'))).toBe(true)
-    expect(item.data).toContain(`【base/制造.md | 效率 | L11-11 | ${efficiency.sectionId}】`)
-    expect(item.data).toContain(efficiency.sectionId)
-    expect(item.data).toContain('标题路径：制造体系 > 制造站 > 效率')
-    expect(item.data).toContain('父级引导（L7-7）：制造站引言。')
-    expect(item.data).toContain('【小节导航】base/制造.md')
-    const scheduling = directory.sections.find((section) => section.heading === '排班')!
-    expect(item.data).toContain(`- ${scheduling.sectionId}｜排班`)
-    expect(item.injectedIds?.every((id) => !id.startsWith('sec-'))).toBe(true)
+    expect(item.data).toContain(TREE_HEADER)
+    expect(item.data).toContain(rootRowFor('base/树.md'))
+    // 命中的上级只作为结构行出现，不带 ID；命中行带 ID 并就地展开正文预览。
+    expect(item.data).toContain(`  - ${parent.heading}\n`)
+    expect(item.data).not.toContain(parent.sectionId)
+    expect(item.data).toContain(`    ${hitRowFor(hit)}`)
+    expect(item.data).toContain('      > 独有词汇正文。')
+    // 未命中的同级小节只列标题，不带 ID。
+    expect(item.data).toContain(`    - ${sibling.heading}`)
+    expect(item.data).not.toContain(sibling.sectionId)
+    expect(item.data).toContain('  - 乙节')
+    // 树内不出现相对路径、旧关系词与旧表。
+    expect(item.data).not.toContain('base/树.md')
+    expect(item.data).not.toContain('【小节索引】')
+    expect(item.data).not.toContain('｜命中｜')
+    expect(item.data).not.toContain('｜邻近｜')
+    expect(item.injectedIds).toEqual([chunks.find((chunk) => chunk.heading === '甲子节')!.id])
     expect(item.injectedIds?.every((id) => chunks.some((chunk) => chunk.id === id))).toBe(true)
+  })
+
+  it('预览超过 100 个 UTF-16 字符时在断点标出全文长度', async () => {
+    const body = `关键词起头。${'甲'.repeat(94)}尾段不应出现。`
+    rebuildCorpus({ 'base/长文.md': ['# 长文', '', '## 长节', '', body, ''].join('\n') })
+    const result = await makeExecutor().executeStep([call('a', 'rag_search', { query: '关键词' })])
+    const item = result.results[0]!
+
+    expect(item.status).toBe('success')
+    expect(item.data).toContain(`    > 关键词起头。${'甲'.repeat(94)}…（截断，全文 ${body.length} 字符）`)
+    expect(item.data).not.toContain('尾段不应出现')
+  })
+
+  it('同文件多个命中各自展开预览，未命中小节仍按原文顺序列出', async () => {
+    rebuildCorpus({
+      'base/双命中.md': [
+        '# 双命中体系',
+        '',
+        '## 甲节',
+        '',
+        '共同关键词甲。',
+        '',
+        '## 乙节',
+        '',
+        '共同关键词乙。',
+        '',
+        '## 丙节',
+        '',
+        '第三段内容。',
+        '',
+      ].join('\n'),
+    })
+    const first = directory.sections.find((section) => section.heading === '甲节')!
+    const second = directory.sections.find((section) => section.heading === '乙节')!
+    const third = directory.sections.find((section) => section.heading === '丙节')!
+    const item = (await makeExecutor().executeStep([call('a', 'rag_search', { query: '共同关键词' })])).results[0]!
+
+    expect(item.data).toContain(`  ${hitRowFor(first)}`)
+    expect(item.data).toContain('    > 共同关键词甲。')
+    expect(item.data).toContain(`  ${hitRowFor(second)}`)
+    expect(item.data).toContain('    > 共同关键词乙。')
+    expect(item.data).toContain(`  - ${third.heading}`)
+    expect(item.data).not.toContain(third.sectionId)
   })
 
   it('同一来源快照：展示的小节正文与检索块一致', async () => {
@@ -146,125 +223,108 @@ describe('RAG 展示：标题上下文与导航', () => {
     expect(item.data).toContain(efficiency.body)
   })
 
-  it('预算只够命中正文时不附加上下文，且 injectedIds 与真实送达一致', async () => {
-    const hits = search(buildIndex(chunks), '制造站效率', 5)
-    const firstBlock = blockFor(chunks[hits[0]!]!)
-    const result = await makeExecutor({ maxContextChars: firstBlock.length }).executeStep([
-      call('a', 'rag_search', { query: '制造站效率' }),
-    ])
-    const item = result.results[0]!
-
-    expect(item.data).toBe(firstBlock)
-    expect(item.data).not.toContain('【小节上下文】')
-    expect(item.injectedIds).toEqual([chunks[hits[0]!]!.id])
-    expect(item.data.length).toBeLessThanOrEqual(firstBlock.length)
-  })
-
-  it('附加信息只用剩余空间，不改变已送达正文的连续前缀', async () => {
-    const baseline = baselineFor('制造站效率')
-    const maxChars = baseline.length - 10
-    const result = await makeExecutor({ maxContextChars: maxChars }).executeStep([
-      call('a', 'rag_search', { query: '制造站效率' }),
-    ])
-    const item = result.results[0]!
-
-    // 去掉截断块的续读元数据与末尾上下文后，已送达正文仍是各命中块的连续前缀，未做首尾压缩。
-    const bodyOnly = item.data.split('\n\n【小节上下文】')[0]!.split('\n续读：')[0]!
-    expect(baseline.startsWith(bodyOnly)).toBe(true)
-    expect(item.data.length).toBeLessThanOrEqual(maxChars)
-  })
-
   it('默认送达缺少小节目录时报错，不返回没有阅读 ID 的正文', async () => {
     const result = await makeExecutor({}, false).executeStep([call('a', 'rag_search', { query: '制造站效率' })])
     const item = result.results[0]!
     expect(item.status).toBe('error')
     expect(item.data).toContain('无法定位命中块的原文阅读范围')
     expect(item.data).not.toContain('sec-')
-    expect(item.data).not.toContain('【小节上下文】')
+    expect(item.data).not.toContain('【文件目录】')
     expect(item.data).not.toContain('制造站效率由干员技能决定')
     expect(item.fragmentRanges).toBeUndefined()
     expect(result.snapshot.successUsed).toBe(0)
   })
 
-  it('上级范围入口映射直接父级，同父级按命中顺序去重', async () => {
+  it('命中标题前首部时标记落在根行，预览挂在根行之下', async () => {
     rebuildCorpus({
-      'base/父章.md': [
-        '# 父章',
+      'base/首部.md': ['# 首部体系', '', '独有词在首部。', '', '## 小节', '', '无关正文。', ''].join('\n'),
+    })
+    const section = directory.sections.find((item) => item.heading === '小节')!
+    const result = await makeExecutor().executeStep([call('a', 'rag_search', { query: '独有词' })])
+    const item = result.results[0]!
+
+    expect(item.status).toBe('success')
+    expect(item.data).toContain(rootRowFor('base/首部.md', true))
+    expect(item.data).toContain('  > # 首部体系')
+    expect(item.data).toContain('  > 独有词在首部。')
+    expect(item.data).toContain(`  - ${section.heading}`)
+    expect(item.data).not.toContain(section.sectionId)
+  })
+
+  it('无 H1 的文件以文件名作根标题', async () => {
+    rebuildCorpus({ 'base/无题.md': ['', '## 顶层节', '', '独有词正文。', ''].join('\n') })
+    const top = directory.sections.find((section) => section.heading === '顶层节')!
+    const result = await makeExecutor().executeStep([call('a', 'rag_search', { query: '独有词' })])
+    const item = result.results[0]!
+
+    expect(item.status).toBe('success')
+    expect(item.data).toContain(rootRowFor('base/无题.md'))
+    expect(item.data).toContain(`  ${hitRowFor(top)}`)
+  })
+
+  it('预算不足时整棵非命中子树折叠为一行计数', async () => {
+    rebuildCorpus({
+      'base/折叠.md': [
+        '# 折叠体系',
         '',
-        '父章正文。',
+        '## 命中节',
         '',
-        '## 子甲',
+        '独有词正文。',
         '',
-        '共同关键词 甲。',
+        '## 长子树',
         '',
-        '## 子乙',
+        '### 子一',
         '',
-        '共同关键词 乙。',
+        '无关正文一。',
+        '',
+        '### 子二',
+        '',
+        '无关正文二。',
         '',
       ].join('\n'),
     })
-    const parent = directory.sections.find((section) => section.heading === '父章')!
-    const result = await makeExecutor().executeStep([call('a', 'rag_search', { query: '共同关键词' })])
-    const data = result.results[0]!.data
+    const hit = directory.sections.find((section) => section.heading === '命中节')!
+    const full = (await makeExecutor().executeStep([call('a', 'rag_search', { query: '独有词' })])).results[0]!.data
+    const tight = (await makeExecutor({ maxContextChars: full.length - 1 }).executeStep([
+      call('b', 'rag_search', { query: '独有词' }),
+    ])).results[0]!
 
-    expect(data).toContain('【上级范围入口】以下为包含下级小节的原文范围')
-    const entry = `- ${parent.sectionId}｜base/父章.md｜标题路径：父章｜正文 ${parent.body.length} 字符`
-    expect(data).toContain(entry)
-    expect(data.split(entry).length - 1).toBe(1)
-    expect(result.results[0]!.hitIds?.every((id) => !id.startsWith('sec-'))).toBe(true)
-    expect(result.results[0]!.injectedIds?.every((id) => !id.startsWith('sec-'))).toBe(true)
+    expect(tight.status).toBe('success')
+    expect(tight.data).toContain(`  ${hitRowFor(hit)}`)
+    expect(tight.data).toContain('    > 独有词正文。')
+    expect(tight.data).toContain('  - 长子树（含 2 个小节未展开）')
+    expect(tight.data).not.toContain('子一')
+    expect(tight.data).not.toContain('子二')
+    expect(tight.data.length).toBeLessThanOrEqual(full.length - 1)
   })
 
-  it('无父级小节不虚造上级范围入口', async () => {
-    rebuildCorpus({ 'base/顶层.md': ['', '## 顶层', '', '顶层正文，独有关键词。', ''].join('\n') })
-    const top = directory.sections.find((section) => section.heading === '顶层')!
-    expect(top.parentId).toBeUndefined()
-    const result = await makeExecutor().executeStep([call('a', 'rag_search', { query: '独有关键词' })])
-    const data = result.results[0]!.data
-
-    expect(data).toContain('【小节上下文】')
-    expect(data).toContain(top.sectionId)
-    expect(data).not.toContain('【上级范围入口】')
-  })
-
-  it('上级范围入口只整行送达：空间足够时完整可复制，不足时不挤占正文也不截断 ID', async () => {
-    const full = await makeExecutor().executeStep([call('a', 'rag_search', { query: '制造站效率' })])
-    const fullData = full.results[0]!.data
-    const station = directory.sections.find((section) => section.heading === '制造站')!
+  it('预算不足时命中节点与其预览优先，其余结构行整行省略', async () => {
     const efficiency = directory.sections.find((section) => section.heading === '效率')!
-    expect(fullData).toContain(`- ${station.sectionId}｜base/制造.md｜标题路径：制造体系 > 制造站｜正文 ${station.body.length} 字符`)
+    const scheduling = directory.sections.find((section) => section.heading === '排班')!
+    const full = (await makeExecutor().executeStep([call('a', 'rag_search', { query: '25%' })])).results[0]!.data
+    const preview = `      > ${efficiency.body}`
+    const previewEnd = full.indexOf(preview) + preview.length
+    const tight = (await makeExecutor({ maxContextChars: previewEnd }).executeStep([
+      call('b', 'rag_search', { query: '25%' }),
+    ])).results[0]!
 
-    const start = fullData.indexOf('【上级范围入口】')
-    expect(start).toBeGreaterThan(0)
-    const tight = await makeExecutor({ maxContextChars: start - 1 }).executeStep([
-      call('b', 'rag_search', { query: '制造站效率' }),
-    ])
-    const tightData = tight.results[0]!.data
-
-    expect(tightData).toBe(fullData.slice(0, start - 1))
-    expect(tightData).not.toContain('【上级范围入口】')
-    expect(tightData).not.toContain('…（截断）')
-    expect(tightData).toContain(`- ${efficiency.sectionId}｜base/制造.md｜标题路径：制造体系 > 制造站 > 效率`)
-    expect(tightData.length).toBeLessThanOrEqual(start - 1)
+    expect(tight.data).toBe(full.slice(0, previewEnd))
+    expect(tight.data).toContain(hitRowFor(efficiency))
+    expect(tight.data).not.toContain(scheduling.heading)
+    expect(tight.data).not.toContain('…（截断）')
+    expect(tight.data.length).toBeLessThanOrEqual(previewEnd)
   })
 
-  it('首个可调用 ID 行放不下时整行省略，不输出截断 ID', async () => {
-    const baseline = baselineFor('制造站效率')
-    const efficiency = directory.sections.find((section) => section.heading === '效率')!
-    const header = '【小节上下文】'
-    const maxChars = baseline.length + 2 + header.length + 1
-    const result = await makeExecutor({ maxContextChars: maxChars }).executeStep([
+  it('预算只够表头时返回容量错误，不发送没有阅读 ID 的树', async () => {
+    const item = (await makeExecutor({ maxContextChars: TREE_HEADER.length }).executeStep([
       call('a', 'rag_search', { query: '制造站效率' }),
-    ])
-    const item = result.results[0]!
+    ])).results[0]!
 
-    expect(item.data.startsWith(baseline)).toBe(true)
-    expect(item.data.endsWith(header)).toBe(true)
-    // 含 ID 的上下文行要么整行写入，要么整行省略，不出现被截断的 ID。
-    expect(item.data).not.toContain(`- ${efficiency.sectionId}｜base/制造.md｜标题路径：`)
-    expect(item.data).not.toContain('…（截断）')
-    expect(item.data.length).toBeLessThanOrEqual(maxChars)
-    expect(item.injectedIds?.every((id) => !id.startsWith('sec-'))).toBe(true)
+    expect(item.status).toBe('error')
+    expect(item.data).toContain('无法在 maxContextChars=')
+    expect(item.data).not.toContain('sec-')
+    expect(item.injectedIds).toEqual([])
+    expect(item.fragmentRanges).toEqual([])
   })
 })
 
@@ -418,7 +478,7 @@ describe('read：按小节读取原文与关联事实', () => {
     expect(tight.snapshot).toMatchObject({ successUsed: 1, attemptUsed: 1, executed: 1 })
   })
 
-  it('通过上级范围入口读取含多个子节的原文并连续续读', async () => {
+  it('通过整篇入口读取含多个子节的原文并连续续读', async () => {
     const longLine = '甲'.repeat(100)
     const bodyLines = Array.from({ length: 70 }, () => longLine)
     rebuildCorpus({
@@ -438,15 +498,13 @@ describe('read：按小节读取原文与关联事实', () => {
       ].join('\n'),
     })
     const parent = directory.sections.find((section) => section.heading === '长父章')!
+    const doc = directory.documentRange('base/长父章.md')!
     expect(parent.body).toContain('子一正文。')
     expect(parent.body).toContain('子二正文。')
 
+    // 目录树只给整篇入口：模型从根行取 doc ID 读取含全部子节的原文。
     const rag = await makeExecutor().executeStep([call('r', 'rag_search', { query: '子一正文' })])
-    const entry = new RegExp(
-      `- (sec-[0-9a-f]{16})｜base/长父章\\.md｜标题路径：长父章｜正文 ${parent.body.length} 字符`,
-    ).exec(rag.results[0]!.data)
-    expect(entry).not.toBeNull()
-    expect(entry![1]).toBe(parent.sectionId)
+    expect(rag.results[0]!.data).toContain(`全文 ${doc.body.length} 字符`)
 
     const executor = makeExecutor()
     let offset = 0
@@ -454,7 +512,7 @@ describe('read：按小节读取原文与关联事实', () => {
     let pages = 0
     for (let page = 0; page < 10; page++) {
       const result = await executor.executeStep([
-        call(`p${page}`, 'read', { section_id: entry![1], offset }),
+        call(`p${page}`, 'read', { section_id: doc.sectionId, offset }),
       ])
       expect(result.results[0]!.status).toBe('success')
       const parsed = parsePage(result.results[0]!.data)
@@ -466,7 +524,7 @@ describe('read：按小节读取原文与关联事实', () => {
     }
 
     expect(pages).toBeGreaterThan(1)
-    expect(collected).toBe(parent.body)
+    expect(collected).toBe(doc.body)
     expect(collected).toContain('子一正文。')
     expect(collected).toContain('子二正文。')
     expect(executor.snapshot().successUsed).toBe(pages)

@@ -10,7 +10,7 @@ import { isFulltextFile } from './corpus.js'
 import { search, type IndexEntry } from './retriever.js'
 import { readObjectsFor, type ProseLinkIndex } from './prose-links.js'
 import { buildReadPage, type ReadPageDelivery } from './read.js'
-import type { SectionDirectory, SectionEntry } from './sections.js'
+import type { FileOutline, SectionDirectory, SectionEntry } from './sections.js'
 import { isFactTool, type BenchQuery, type DocChunk, type ToolCall } from './types.js'
 import {
   getCardStore,
@@ -29,7 +29,7 @@ import {
 export type CurrentToolId = 'rag_search' | 'facts_search' | 'read'
 
 /** 工具定义（含描述）变化时递增；快照保留该值供对照分组，指纹随描述变化。 */
-export const TOOL_SCHEMA_VERSION = 15 as const
+export const TOOL_SCHEMA_VERSION = 16 as const
 
 /** 旧原文读取工具名退役提示（ADR-022 决策 1）：按未知工具拒绝，不静默改译。 */
 export const RETIRED_READ_SECTION_MESSAGE = 'read_section 已退役；请改用 read（参数：section_id、offset、facts_offset），原文与关联事实在同一次读取中返回；本次调用未执行。'
@@ -193,7 +193,7 @@ const STATIC_TOOL_DEFINITIONS: Record<'rag_search' | 'read', JsonObject> = {
     type: 'function',
     function: {
       name: 'rag_search',
-      description: '检索机制、组合、排班及培养建议，返回知识库片段或原文范围。结果可含供 read 使用的小节或范围 ID、分页信息及上级范围入口；登记了关联事实的小节会给出可展开入口（仅导航，不返回事实）；hybrid 模式还可能返回附带事实卡或未附带提示，以实际返回内容为准。',
+      description: '检索机制、组合、排班及培养建议，返回按文件组织的原文目录树。带 ID 的行可 read：命中行就地展开该块正文的前 100 个字符，文件根行给出整篇入口与全文规模；登记了关联事实的命中行会给出可展开入口（仅导航，不返回事实）；hybrid 模式还可能返回附带事实卡或未附带提示，以实际返回内容为准。',
       parameters: {
         type: 'object',
         properties: {
@@ -208,7 +208,7 @@ const STATIC_TOOL_DEFINITIONS: Record<'rag_search' | 'read', JsonObject> = {
     type: 'function',
     function: {
       name: 'read',
-      description: '按已返回的 ID 读取知识库原文与明确登记关联的事实，两者各有独立偏移、可分别分段续读；ID 可来自检索结果、分页信息或上级范围入口。offset 续读原文正文，facts_offset 续读关联事实；返回的 complete=false 表示该范围还有后续页，complete=true 仅表示该范围读完，不表示问题已完整解决。',
+      description: '按已返回的 ID 读取知识库原文与明确登记关联的事实，两者各有独立偏移、可分别分段续读；ID 可来自检索结果或分页信息。offset 续读原文正文，facts_offset 续读关联事实；返回的 complete=false 表示该范围还有后续页，complete=true 仅表示该范围读完，不表示问题已完整解决。',
       parameters: {
         type: 'object',
         properties: {
@@ -1039,10 +1039,10 @@ interface RagBlock {
   section?: SectionEntry
 }
 
-/** 父级引导展示上限；超出时截断并标注。 */
-const PARENT_LEAD_LIMIT = 300
-/** 每个命中文档的小节导航上限。 */
-const NAVIGATION_LIMIT = 8
+/** 命中节点就地展开的正文预览上限（UTF-16 字符）。 */
+const PREVIEW_CHARS = 100
+/** 目录树表头：说明缩进含义、命中标记与带 ID 的行。 */
+const TREE_HEADER = '【文件目录】缩进=标题层级；◆=检索命中；带 ID 的行可 read'
 
 interface BuiltRagData {
   data: string
@@ -1058,8 +1058,8 @@ interface BuiltRagData {
 
 /**
  * 组装 RAG 送达正文（ADR-022 决策 7）：
- *   - 默认只送达命中的 H2/H3 块：块头含小节 ID、来源与原文范围，正文取该块在同一原文快照中的行范围
- *     （止于下一个 H2/H3 边界），超出预算时连续截取并给可复制的 read 续读入口；
+ *   - 默认按文件展示目录树，命中行提供阅读 ID 与最多 100 个 UTF-16 字符的原文预览；
+ *     预览与片段坐标取同一原文快照，目录根行提供整篇入口；
  *   - 显式 expandFulltext=1 时沿用 ADR-013 的按文件整篇扩展（base/guides 去重），续读指向 read；
  *   - 默认路径缺少可定位原文时明确失败，避免送达没有阅读 ID 和连续范围的正文。
  */
@@ -1078,7 +1078,7 @@ function buildRagData(
 
   if (!expandFulltext) return buildHitBlockData(blocks, maxChars, sections, links)
   if (!sections) {
-    return { ...buildRagDataLegacy(blocks, maxChars, undefined, links), capacityError: false, fulltextRanges: [], fragmentRanges: [] }
+    return { ...buildRagDataLegacy(blocks, maxChars), capacityError: false, fulltextRanges: [], fragmentRanges: [], linkedEntries: [] }
   }
   return { ...buildExpandedRagData(blocks, maxChars, sections, links), fragmentRanges: [] }
 }
@@ -1091,6 +1091,106 @@ interface HitBlockSlice {
   /** 块正文相对同运行 documentRange.body 的 UTF-16 半开区间。 */
   docOffset: number
   startLine: number
+}
+
+/** 一次命中：块、其阅读目标（命中小节或文档范围）与在原文快照中的切片。 */
+interface TreeHit {
+  chunk: DocChunk
+  target: SectionEntry
+  slice: HitBlockSlice
+}
+
+/** 一个命中文件：目录范围、文件目录与本次命中。 */
+interface FileTreeSource {
+  file: string
+  doc: SectionEntry
+  outline: FileOutline
+  hits: TreeHit[]
+}
+
+/**
+ * 默认送达（ADR-022 决策 7、本地第二轮）：按文件给出 Markdown 目录树，命中节点就地展开正文预览。
+ * 只有根行与命中节点带可调用 ID；非命中节点只给标题与层级缩进；父级引导与上级范围入口不再输出。
+ * 必需条目（表头、根行、命中行与其祖先）与命中预览优先于其余结构行；整棵非命中子树在预算不足时折叠为一行计数。
+ */
+function buildHitBlockData(
+  blocks: RagBlock[],
+  maxChars: number,
+  sections: SectionDirectory | undefined,
+  links: ProseLinkIndex | undefined,
+): BuiltRagData {
+  const hits = resolveTreeHits(blocks, sections)
+  // 无命中时保持既有的 empty 语义：不发送表头，也不按容量错误报出。
+  if (hits.length === 0) {
+    return { data: '', injectedIds: [], delivered: false, capacityError: false, fulltextRanges: [], fragmentRanges: [], linkedEntries: [] }
+  }
+  const sources = collectFileTrees(hits, sections!)
+  const folded = new Set<string>()
+  let plan = buildTreePlan(sections!, sources, links, folded, true)
+  while (treeEntriesLength(plan.entries) > maxChars) {
+    const candidate = plan.foldCandidates.at(-1)
+    if (candidate === undefined) break
+    folded.add(candidate)
+    plan = buildTreePlan(sections!, sources, links, folded, true)
+  }
+
+  const rendered = renderTreeEntries(plan.entries, maxChars)
+  const written = plan.previews.filter((preview) => rendered.written.has(preview.entryIndex))
+  // 一条预览都没送达时不发送只有结构的树，按容量错误报出，避免把「没有证据」当成已送达。
+  if (written.length === 0) {
+    return {
+      data: renderHitCapacityError(maxChars),
+      injectedIds: [],
+      delivered: false,
+      capacityError: true,
+      fulltextRanges: [],
+      fragmentRanges: [],
+      linkedEntries: [],
+    }
+  }
+  return {
+    data: rendered.data,
+    injectedIds: written.map((preview) => preview.chunkId),
+    delivered: written.length > 0,
+    capacityError: false,
+    fulltextRanges: [],
+    fragmentRanges: written.map((preview) => preview.range),
+    linkedEntries: plan.offers.map((offer) => ({
+      sectionId: offer.sectionId,
+      file: offer.file,
+      objectCount: offer.objectCount,
+      written: rendered.data.includes(offer.line),
+    })),
+  }
+}
+
+/** 命中映射：命中小节优先，标题前首部（无对应小节）以同文件文档范围为阅读入口。 */
+function resolveTreeHits(blocks: RagBlock[], sections: SectionDirectory | undefined): TreeHit[] {
+  const hits: TreeHit[] = []
+  for (const block of blocks) {
+    const { chunk } = block
+    const doc = sections?.documentRange(chunk.file)
+    const target = block.section ?? doc
+    const slice = doc && target ? hitBlockSlice(chunk, target, doc) : undefined
+    if (!slice || !target) {
+      throw new Error(`rag_search 无法定位命中块的原文阅读范围：${chunk.file}（L${chunk.startLine}-${chunk.endLine}）；请提供同一运行的小节目录。`)
+    }
+    hits.push({ chunk, target, slice })
+  }
+  return hits
+}
+
+/** 按首次命中顺序（检索 rank 顺序）收集文件树；文档范围与文件目录缺失属于装配缺陷，直接失败。 */
+function collectFileTrees(hits: readonly TreeHit[], sections: SectionDirectory): FileTreeSource[] {
+  const files = [...new Set(hits.map((hit) => hit.chunk.file))]
+  return files.map((file) => {
+    const doc = sections.documentRange(file)
+    const outline = sections.outlineFor(file)
+    if (!doc || !outline) {
+      throw new Error(`rag_search 无法定位命中文件的目录结构：${file}；请提供同一运行的小节目录。`)
+    }
+    return { file, doc, outline, hits: hits.filter((hit) => hit.chunk.file === file) }
+  })
 }
 
 /** 取 [fromLine, toLine] 行区间在同一原文快照中的连续正文；行超出快照时不伪造。 */
@@ -1120,140 +1220,15 @@ function hitBlockSlice(chunk: DocChunk, target: SectionEntry, doc: SectionEntry)
   return { text, bodyOffset, docOffset, startLine: chunk.startLine }
 }
 
-/** 命中块续读元数据行：给出可直接复制的 read 调用，用 offset 续读同一阅读范围的后续原文。 */
-function renderBlockContinuation(target: SectionEntry, nextOffset: number): string {
-  return `续读：read(section_id="${target.sectionId}", offset=${nextOffset})｜complete false｜正文 ${target.body.length} 字符`
-}
-
 function renderHitCapacityError(maxChars: number): string {
   return `rag_search 无法在 maxContextChars=${maxChars} 内返回命中块（必要元数据加正文放不下）：请提高 maxContextChars 后重试。`
 }
 
-/**
- * 默认送达：按检索顺序逐块送达命中块原文。必要元数据（小节 ID、来源、原文范围）优先于正文，
- * 元数据加一单位证据都放不下时不发送该块，也不在省略后重新检索补满 topK。
- */
-function buildHitBlockData(
-  blocks: RagBlock[],
-  maxChars: number,
-  sections: SectionDirectory | undefined,
-  links: ProseLinkIndex | undefined,
-): BuiltRagData {
-  let body = ''
-  const injectedIds: string[] = []
-  const fragmentRanges: FragmentRange[] = []
-  let capacityBlocked = false
-
-  for (const block of blocks) {
-    const { chunk } = block
-    const doc = sections?.documentRange(chunk.file)
-    // 命中块优先映射到小节；标题前首部（无对应小节）以同文件的文档范围为阅读入口。
-    const target = block.section ?? doc
-    const slice = doc && target ? hitBlockSlice(chunk, target, doc) : undefined
-    if (!slice || !target) {
-      throw new Error(`rag_search 无法定位命中块的原文阅读范围：${chunk.file}（L${chunk.startLine}-${chunk.endLine}）；请提供同一运行的小节目录。`)
-    }
-
-    const separator = body ? '\n\n' : ''
-    const header = renderRagHeader(block, target.sectionId)
-    const remaining = maxChars - body.length - separator.length - header.length - 1
-    if (remaining < 1) {
-      capacityBlocked = true
-      continue
-    }
-    // 截断时先为完整续读元数据留位；两者都放不下则跳过该块，不发送只有元数据或半段正文的结果。
-    const room = slice.text.length > remaining
-      ? remaining - renderBlockContinuation(target, target.body.length).length - 1
-      : remaining
-    if (room < 1) {
-      capacityBlocked = true
-      continue
-    }
-    const page = slice.text.length <= room ? slice.text : safeCutAtLine(slice.text.slice(0, room))
-    if (page.length === 0) {
-      capacityBlocked = true
-      continue
-    }
-    const complete = page.length === slice.text.length
-    body += `${separator}${header}\n${page}`
-    if (!complete) body += `\n${renderBlockContinuation(target, slice.bodyOffset + page.length)}`
-    injectedIds.push(chunk.id)
-    fragmentRanges.push({
-      kind: 'hit',
-      file: chunk.file,
-      sectionId: target.sectionId,
-      chunkId: chunk.id,
-      docOffset: slice.docOffset,
-      docEndOffset: slice.docOffset + page.length,
-      startLine: slice.startLine,
-      endLine: slice.startLine + countNewlines(page),
-    })
-  }
-
-  if (injectedIds.length === 0 && capacityBlocked) {
-    return {
-      data: renderHitCapacityError(maxChars),
-      injectedIds: [],
-      delivered: false,
-      capacityError: true,
-      fulltextRanges: [],
-      fragmentRanges: [],
-      linkedEntries: [],
-    }
-  }
-
-  let data = body
-  let linkedEntries: LinkedEntryObservation[] = []
-  if (sections && data.length < maxChars && blocks.some((block) => block.section)) {
-    const context = buildSectionContext(sections, blocks, new Set(injectedIds), links)
-    data = appendSectionContext(data, context.lines, maxChars)
-    linkedEntries = observeLinkedEntries(context.offers, data)
-    fragmentRanges.push(...parentLeadFragments(context.parentLeads, sections, data))
-  }
-  return {
-    data,
-    injectedIds,
-    delivered: injectedIds.length > 0,
-    capacityError: false,
-    fulltextRanges: [],
-    fragmentRanges,
-    linkedEntries,
-  }
-}
-
-/** 父级引导只在整行实际写入时登记连续范围，不把被截断的展示当成完整正文送达；同范围只登记一次。 */
-function parentLeadFragments(leads: readonly ParentLeadOffer[], sections: SectionDirectory, data: string): FragmentRange[] {
-  const ranges: FragmentRange[] = []
-  const seen = new Set<string>()
-  for (const lead of leads) {
-    if (!data.includes(lead.line)) continue
-    const doc = sections.documentRange(lead.parent.file)
-    if (!doc) continue
-    const docOffset = lineStartOffset(doc.body.split('\n'), doc.startLine, lead.startLine)
-    if (docOffset === null) continue
-    const key = `${lead.parent.sectionId}\u0000${docOffset}`
-    if (seen.has(key)) continue
-    seen.add(key)
-    ranges.push({
-      kind: 'parent_lead',
-      file: lead.parent.file,
-      sectionId: lead.parent.sectionId,
-      docOffset,
-      docEndOffset: docOffset + lead.text.length,
-      startLine: lead.startLine,
-      endLine: lead.endLine,
-    })
-  }
-  return ranges
-}
-
-/** 既有行为：按 topK 顺序拼接命中块，整段硬截断到 maxChars，再按剩余空间附加小节上下文。 */
+/** 既有行为：按 topK 顺序拼接命中块，整段硬截断到 maxChars（仅在缺少小节目录时使用）。 */
 function buildRagDataLegacy(
   blocks: RagBlock[],
   maxChars: number,
-  sections: SectionDirectory | undefined,
-  links: ProseLinkIndex | undefined,
-): { data: string; injectedIds: string[]; delivered: boolean; linkedEntries: LinkedEntryObservation[] } {
+): { data: string; injectedIds: string[]; delivered: boolean } {
   let body = ''
   const injectedIds: string[] = []
   for (const block of blocks) {
@@ -1263,14 +1238,7 @@ function buildRagDataLegacy(
     const textStart = body.length - block.chunk.text.length
     if (Math.min(maxChars, body.length) > textStart) injectedIds.push(block.chunk.id)
   }
-  let data = body.slice(0, maxChars)
-  let linkedEntries: LinkedEntryObservation[] = []
-  if (sections && data.length < maxChars && blocks.some((block) => block.section)) {
-    const context = buildSectionContext(sections, blocks, new Set(injectedIds), links)
-    data = appendSectionContext(data, context.lines, maxChars)
-    linkedEntries = observeLinkedEntries(context.offers, data)
-  }
-  return { data, injectedIds, delivered: injectedIds.length > 0, linkedEntries }
+  return { data: body.slice(0, maxChars), injectedIds, delivered: injectedIds.length > 0 }
 }
 
 type FulltextBlockAddition =
@@ -1324,17 +1292,25 @@ function buildExpandedRagData(blocks: RagBlock[], maxChars: number, sections: Se
 
   let data = body
   let linkedEntries: LinkedEntryObservation[] = []
+  // 整篇正文已送达，目录树只补结构与命中位置，不再重复展开预览。
   if (!stopped && !capacityError && data.length < maxChars && blocks.some((block) => block.section)) {
-    const context = buildSectionContext(sections, blocks, new Set(injectedIds), links)
-    data = appendSectionContext(data, context.lines, maxChars)
-    linkedEntries = observeLinkedEntries(context.offers, data)
+    const sources = collectFileTrees(resolveTreeHits(blocks, sections), sections)
+    const plan = buildTreePlan(sections, sources, links, new Set<string>(), false)
+    const rendered = renderTreeEntries(plan.entries, maxChars - data.length - 2)
+    data += rendered.data ? `\n\n${rendered.data}` : ''
+    linkedEntries = plan.offers.map((offer) => ({
+      sectionId: offer.sectionId,
+      file: offer.file,
+      objectCount: offer.objectCount,
+      written: rendered.data.includes(offer.line),
+    }))
   }
   return { data, injectedIds, delivered: injectedIds.length > 0, capacityError, fulltextRanges, linkedEntries }
 }
 
 /** 单个文档范围的送达：整篇放得下则 complete，否则元数据先留位、按行边界送达可续读前缀。 */
 function appendFulltextBlock(body: string, separator: string, doc: SectionEntry, maxChars: number): FulltextBlockAddition {
-  const header = `【${doc.file}｜原文扩展｜L${doc.startLine}-${doc.endLine}】`
+  const header = `【${fileBaseNameOf(doc.file)}｜原文扩展｜L${doc.startLine}-${doc.endLine}】`
   const prefix = `${separator}${header}\n`
   const remaining = maxChars - body.length - prefix.length
   if (remaining >= doc.body.length) {
@@ -1583,20 +1559,35 @@ function dedupeCanonicals(values: readonly string[]): string[] {
   return result
 }
 
-/** 来源头保持既有格式；命中块给出可调用的小节 ID，新增小节信息一律放到正文之后。 */
-function renderRagHeader(block: RagBlock, sectionId?: string): string {
+/** 防御分支块头（仅在缺少小节目录时使用）：保留文件来源，避免来源信息完全丢失。 */
+function renderRagHeader(block: RagBlock): string {
   const { chunk } = block
-  const id = sectionId === undefined ? '' : ` | ${sectionId}`
-  return `【${chunk.file} | ${chunk.heading} | L${chunk.startLine}-${chunk.endLine}${id}】`
+  return `【${fileBaseNameOf(chunk.file)} | ${chunk.heading} | L${chunk.startLine}-${chunk.endLine}】`
 }
 
-/** 含可调用小节 ID 的行必须整行放入；空间不足时省略，绝不输出被截断的 ID。 */
-interface SectionContextLine {
+/** 相对路径的文件名部分；展示层只用文件名，跨目录重名由语料白名单机械校验拦住。 */
+function fileBaseNameOf(file: string): string {
+  return file.slice(file.lastIndexOf('/') + 1)
+}
+
+/** 目录树条目：必需（表头/根行/命中行/祖先行）与命中预览优先，其余结构行让位。 */
+interface TreeEntry {
   text: string
-  atomic?: boolean
+  /** 与上一条之间的分隔符。 */
+  separator: string
+  priority: 'essential' | 'preview' | 'structure'
+  /** 父条目已写入时才展示，保持树的层级与预览归属。 */
+  parentIndex?: number
 }
 
-/** 一条关联事实入口提示：记录可复制的整行文本，供送达观测按行核对是否实际写入。 */
+/** 命中预览条目：按实际写入登记注入记录与片段范围。 */
+interface PreviewRecord {
+  entryIndex: number
+  chunkId: string
+  range: FragmentRange
+}
+
+/** 一条关联事实入口提示：所在命中行的整行文本，供送达观测按行核对是否实际写入。 */
 interface LinkedOffer {
   sectionId: string
   file: string
@@ -1604,160 +1595,196 @@ interface LinkedOffer {
   line: string
 }
 
-/** 一条父级引导展示：记录其原文范围与整行文本，供按实际写入登记片段范围。 */
-interface ParentLeadOffer {
-  parent: SectionEntry
-  text: string
-  startLine: number
-  endLine: number
-  line: string
+/** 一个文件的目录树渲染计划；foldCandidates 是本轮仍可继续折叠的子树根（文档顺序）。 */
+interface TreePlan {
+  entries: TreeEntry[]
+  previews: PreviewRecord[]
+  offers: LinkedOffer[]
+  foldCandidates: string[]
 }
 
-/** 关联事实入口行：完整可复制 ID、文件、标题路径、对象数与可直接复制的 read 示例。 */
-function renderLinkedEntryLine(section: SectionEntry, headingPath: readonly string[], objectCount: number): string {
-  const path = headingPath.length > 0 ? headingPath.join(' > ') : '（文档根节点）'
-  return `- ${section.sectionId}｜${section.file}｜标题路径：${path}｜关联 ${objectCount} 个对象｜示例：read(section_id="${section.sectionId}")`
+/** 目录树节点：同文件小节的父子关系，仅用于渲染与折叠。 */
+interface OutlineNode {
+  section: SectionEntry
+  children: OutlineNode[]
 }
 
-/** 提示行按整行是否出现在最终正文判定 written，避免把「已生成」误当「已送达」。 */
-function observeLinkedEntries(offers: readonly LinkedOffer[], data: string): LinkedEntryObservation[] {
-  return offers.map((offer) => ({
-    sectionId: offer.sectionId,
-    file: offer.file,
-    objectCount: offer.objectCount,
-    written: data.includes(offer.line),
-  }))
+/** 平铺小节装回父子结构；父级不在目录内（一级标题或无标题文件）时作为森林根。 */
+function buildOutlineForest(nodes: readonly SectionEntry[]): { forest: OutlineNode[]; parentOf: Map<string, string | undefined> } {
+  const byId = new Map<string, OutlineNode>()
+  const parentOf = new Map<string, string | undefined>()
+  const forest: OutlineNode[] = []
+  for (const section of nodes) {
+    const node: OutlineNode = { section, children: [] }
+    byId.set(section.sectionId, node)
+    const parent = section.parentId === undefined ? undefined : byId.get(section.parentId)
+    parentOf.set(section.sectionId, parent?.section.sectionId)
+    if (parent) parent.children.push(node)
+    else forest.push(node)
+  }
+  return { forest, parentOf }
+}
+
+/** 节点在树里的缩进：一级标题由根行承载，二级起每级两空格。 */
+function nodeIndent(section: SectionEntry): string {
+  return '  '.repeat(Math.max(0, section.level - 1))
+}
+
+/** 子树内的小节数（不含自身）。 */
+function descendantCount(node: OutlineNode): number {
+  return node.children.reduce((sum, child) => sum + 1 + descendantCount(child), 0)
+}
+
+/** 未命中子树折叠后的计数后缀。 */
+function foldSuffix(count: number): string {
+  return `（含 ${count} 个小节未展开）`
+}
+
+/** 命中预览：按原文换行逐行加 `> ` 前缀，硬截断到 PREVIEW_CHARS 并在断点标出全文长度。 */
+function previewBlock(text: string, indent: string): { block: string; delivered: string } {
+  const delivered = safeCutToLength(text, PREVIEW_CHARS)
+  const lines = delivered.split('\n').map((line) => (line === '' ? `${indent}>` : `${indent}> ${line}`))
+  if (delivered.length < text.length) {
+    lines[lines.length - 1] = `${lines[lines.length - 1]}…（截断，全文 ${text.length} 字符）`
+  }
+  return { block: lines.join('\n'), delivered }
+}
+
+/** 按字符数硬截断，且不拆 UTF-16 代理对。 */
+function safeCutToLength(text: string, limit: number): string {
+  if (text.length <= limit) return text
+  const head = text.slice(0, limit)
+  const last = head.charCodeAt(head.length - 1)
+  return last >= 0xd800 && last <= 0xdbff ? head.slice(0, -1) : head
+}
+
+/** 文件根行：H1 标题、整篇入口 ID 与全文规模；标题前首部命中时标记落在根行。 */
+function renderRootRow(source: FileTreeSource, hit: boolean): string {
+  return `- ${source.outline.title}｜${source.doc.sectionId}｜全文 ${source.doc.body.length} 字符${hit ? ' ◆' : ''}`
 }
 
 /**
- * 组装小节上下文，顺序固定为：当前小节标识 → 上级范围入口 → 既有父级引导 → 兄弟导航 → 关联事实入口。
- * 上级范围入口只针对实际送达的命中小节，复用 parentId/get，不虚造无父级入口；
- * 关联事实入口只面向实际显示的命中节点与导航项，按读取范围合并规则判断是否有可展开关联，
- * 只列确实有登记对象的小节（给出对象数与 read 示例），不列出命中文件内其它不相关登记，且只用剩余预算。
+ * 组装目录树（ADR-022 决策 7 的阅读 ID、ADR-020 决策 3 的关联提示）：
+ *   根行给文件标题、整篇入口与全文规模；命中节点带小节 ID 与 ◆，并在 withPreview 时就地展开正文预览；
+ *   非命中节点只给标题，命中祖先链之外的子树在预算不足时折叠为一行计数；
+ *   关联对象数只标在命中行（树上唯一还能展开关联的可调用节点），不再输出上级范围入口与父级引导。
  */
-function buildSectionContext(
+function buildTreePlan(
   sections: SectionDirectory,
-  blocks: RagBlock[],
-  delivered: Set<string>,
+  sources: readonly FileTreeSource[],
   links: ProseLinkIndex | undefined,
-): { lines: SectionContextLine[]; offers: LinkedOffer[]; parentLeads: ParentLeadOffer[] } {
-  const unique: Array<{ block: RagBlock; section: SectionEntry }> = []
-  const seenSections = new Set<string>()
-  for (const block of blocks) {
-    const section = block.section
-    if (!section || seenSections.has(section.sectionId)) continue
-    seenSections.add(section.sectionId)
-    unique.push({ block, section })
-  }
-
-  const lines: SectionContextLine[] = [{ text: '【小节上下文】' }]
-  for (const { block, section } of unique) {
-    const context = sections.contextFor(section.sectionId)
-    const path = context && context.headingPath.length > 0 ? context.headingPath.join(' > ') : '（文档根节点）'
-    lines.push({ text: `- ${section.sectionId}｜${block.chunk.file}｜标题路径：${path}`, atomic: true })
-  }
-
-  const parentLines: SectionContextLine[] = []
-  const seenParents = new Set<string>()
-  for (const { block, section } of unique) {
-    if (!delivered.has(block.chunk.id) || !section.parentId || seenParents.has(section.parentId)) continue
-    const parent = sections.get(section.parentId)
-    if (!parent) continue
-    seenParents.add(parent.sectionId)
-    parentLines.push({ text: renderParentRangeEntry(parent), atomic: true })
-  }
-  if (parentLines.length > 0) {
-    lines.push({ text: '【上级范围入口】以下为包含下级小节的原文范围，不等同于符合问题条件的完整答案集。' })
-    lines.push(...parentLines)
-  }
-
-  // TODO(tech-debt) PD-1：父级引导按命中小节逐行生成、去重只到子小节粒度，同一父级下的多个子小节同时命中时，
-  // 同一行会被重复写入 data（相邻「上级范围入口」已按 parentId 去重，两者口径不一致）；parentLeadFragments 又按父级去重登记，
-  // 故正文重复不计入 fragmentRanges。实测 2026-09-16 单轮 20 题：正文 79 行对去重 51 种（重复 28 行、2,658 字符）。
-  // 重启条件：需要正文展示与送达台账去重口径一致，或要把复读度/预算占用用作对照指标时，按父级去重展示并补「同一父级多子小节命中」用例。
-  const parentLeads: ParentLeadOffer[] = []
-  for (const { section } of unique) {
-    const context = sections.contextFor(section.sectionId)
-    if (!context?.parentLead) continue
-    const lead = context.parentLead
-    const text = lead.text.length <= PARENT_LEAD_LIMIT ? lead.text : safeCutAtLine(lead.text.slice(0, PARENT_LEAD_LIMIT))
-    const endLine = lead.startLine + countNewlines(text)
-    const marker = text.length < lead.text.length ? '…（截断）' : ''
-    const line = `  父级引导（L${lead.startLine}-${endLine}）：${text}${marker}`
-    // 可选引导以完整展示单元送达；余量不足时省略，确保范围只登记已返回的连续正文。
-    lines.push({ text: line, atomic: true })
-    const parent = section.parentId ? sections.get(section.parentId) : undefined
-    if (parent) parentLeads.push({ parent, text, startLine: lead.startLine, endLine, line })
-  }
-
-  const files = [...new Set(unique.map(({ block }) => block.chunk.file))]
-  for (const file of files) {
-    const first = unique.find(({ block }) => block.chunk.file === file)
-    if (!first) continue
-    const navigation = sections.navigationFor(first.section.sectionId, NAVIGATION_LIMIT)
-    lines.push({ text: `【小节导航】${file}` })
-    for (const item of navigation.items) lines.push({ text: `- ${item.sectionId}｜${item.heading}`, atomic: true })
-    if (navigation.omitted > 0) lines.push({ text: `（省略 ${navigation.omitted} 项）` })
-  }
-
-  // 关联事实入口（ADR-022 决策 7）：按实际显示的命中节点与导航项逐节点计算可展开关联；
-  // 提示只做导航、不自动返回事实，也不并入命中小节。放在既有上下文之后，只用剩余预算。
+  folded: ReadonlySet<string>,
+  withPreview: boolean,
+): TreePlan {
+  const entries: TreeEntry[] = [{ text: TREE_HEADER, separator: '', priority: 'essential' }]
+  const previews: PreviewRecord[] = []
   const offers: LinkedOffer[] = []
-  if (links) {
-    const offerLines: SectionContextLine[] = []
-    const candidates: SectionEntry[] = []
-    const seenCandidates = new Set<string>()
-    const addCandidate = (section: SectionEntry | undefined): void => {
-      if (!section || seenCandidates.has(section.sectionId)) return
-      seenCandidates.add(section.sectionId)
-      candidates.push(section)
+  const foldCandidates: string[] = []
+
+  for (const source of sources) {
+    const { forest, parentOf } = buildOutlineForest(source.outline.nodes)
+    // 同小节只展开一次（同节被多个块命中时保留首次命中）；标题前首部命中挂在根行。
+    const bySection = new Map<string, TreeHit>()
+    let rootHit: TreeHit | undefined
+    for (const hit of source.hits) {
+      if (hit.target.level === 0) {
+        rootHit ??= hit
+        continue
+      }
+      if (!bySection.has(hit.target.sectionId)) bySection.set(hit.target.sectionId, hit)
     }
-    for (const { section } of unique) addCandidate(section)
-    for (const file of files) {
-      const first = unique.find(({ block }) => block.chunk.file === file)
-      if (!first) continue
-      for (const item of sections.navigationFor(first.section.sectionId, NAVIGATION_LIMIT).items) {
-        addCandidate(sections.get(item.sectionId))
+    const essential = new Set<string>()
+    for (const hit of bySection.values()) {
+      let current: string | undefined = hit.target.sectionId
+      while (current !== undefined) {
+        essential.add(current)
+        current = parentOf.get(current)
       }
     }
-    for (const section of candidates) {
-      const objects = readObjectsFor(section.sectionId, sections, links)
-      if (objects.length === 0) continue
-      const line = renderLinkedEntryLine(section, sections.contextFor(section.sectionId)?.headingPath ?? [], objects.length)
-      offerLines.push({ text: line, atomic: true })
-      offers.push({ sectionId: section.sectionId, file: section.file, objectCount: objects.length, line })
+
+    let first = true
+    const push = (text: string, priority: TreeEntry['priority'], parentIndex: number): number => {
+      const index = entries.length
+      entries.push({ text, separator: first ? '\n\n' : '\n', priority, parentIndex })
+      first = false
+      return index
     }
-    if (offerLines.length > 0) {
-      lines.push({ text: '【关联事实入口】以下小节登记了可展开的关联事实；提示只做导航，用 read 读取该小节即可同时取得原文与登记事实：' })
-      lines.push(...offerLines)
+    const pushPreview = (hit: TreeHit, indent: string, parentIndex: number): void => {
+      const preview = previewBlock(hit.slice.text, indent)
+      const index = push(preview.block, 'preview', parentIndex)
+      previews.push({
+        entryIndex: index,
+        chunkId: hit.chunk.id,
+        range: {
+          kind: 'hit',
+          file: source.file,
+          sectionId: hit.target.sectionId,
+          chunkId: hit.chunk.id,
+          docOffset: hit.slice.docOffset,
+          docEndOffset: hit.slice.docOffset + preview.delivered.length,
+          startLine: hit.slice.startLine,
+          endLine: hit.slice.startLine + countNewlines(preview.delivered),
+        },
+      })
     }
+
+    const rootIndex = push(renderRootRow(source, rootHit !== undefined), 'essential', 0)
+    if (rootHit && withPreview) pushPreview(rootHit, '  ', rootIndex)
+
+    const walk = (node: OutlineNode, parentIsNonEssential: boolean, parentIndex: number): void => {
+      const { section } = node
+      const id = section.sectionId
+      const isEssential = essential.has(id)
+      if (!isEssential && folded.has(id)) {
+        push(`${nodeIndent(section)}- ${section.heading}${foldSuffix(descendantCount(node))}`, 'structure', parentIndex)
+        return
+      }
+      if (!isEssential && !parentIsNonEssential && descendantCount(node) > 0) foldCandidates.push(id)
+      const hit = bySection.get(id)
+      let nodeIndex: number
+      if (hit) {
+        const objects = links ? readObjectsFor(id, sections, links).length : 0
+        const linked = objects > 0 ? `｜关联 ${objects} 个对象` : ''
+        const line = `${nodeIndent(section)}- ${id}｜${section.heading} ◆${linked}`
+        nodeIndex = push(line, 'essential', parentIndex)
+        if (objects > 0) offers.push({ sectionId: id, file: source.file, objectCount: objects, line })
+        if (withPreview) pushPreview(hit, `${nodeIndent(section)}  `, nodeIndex)
+      } else {
+        nodeIndex = push(`${nodeIndent(section)}- ${section.heading}`, isEssential ? 'essential' : 'structure', parentIndex)
+      }
+      for (const child of node.children) walk(child, !isEssential, nodeIndex)
+    }
+    for (const node of forest) walk(node, false, rootIndex)
   }
 
-  return { lines, offers, parentLeads }
+  return { entries, previews, offers, foldCandidates }
 }
 
-/** 上级范围入口行：完整可复制 ID、文件、标题路径与正文 UTF-16 字符数。 */
-function renderParentRangeEntry(parent: SectionEntry): string {
-  const path = parent.level === 0 ? '（文档根节点）' : [...parent.ancestors, parent.heading].join(' > ')
-  return `- ${parent.sectionId}｜${parent.file}｜标题路径：${path}｜正文 ${parent.body.length} 字符`
+/** 目录树条目的总字符数（含分隔符），用于判断是否需要折叠。 */
+function treeEntriesLength(entries: readonly TreeEntry[]): number {
+  return entries.reduce((sum, entry) => sum + entry.separator.length + entry.text.length, 0)
 }
 
-/** 按行追加小节上下文；含 ID 的行只整行放入或省略，普通引导文字仍按既有方式截断。 */
-function appendSectionContext(data: string, lines: SectionContextLine[], maxChars: number): string {
-  let out = data
-  lines.forEach((line, index) => {
-    if (out.length >= maxChars) return
-    const separator = index === 0 ? '\n\n' : '\n'
-    if (out.length + separator.length + line.text.length <= maxChars) {
-      out += `${separator}${line.text}`
-      return
+/**
+ * 按必需条目、预览、其余结构的优先级分配额度，再按原文顺序输出。
+ * 条目整行保留或省略；父条目未写入时一并省略其下级。
+ */
+function renderTreeEntries(entries: readonly TreeEntry[], maxChars: number): { data: string; written: Set<number> } {
+  let used = 0
+  const written = new Set<number>()
+  for (const priority of ['essential', 'preview', 'structure'] as const) {
+    for (const [index, entry] of entries.entries()) {
+      if (entry.priority !== priority) continue
+      if (entry.parentIndex !== undefined && !written.has(entry.parentIndex)) continue
+      const size = entry.separator.length + entry.text.length
+      if (used + size <= maxChars) {
+        used += size
+        written.add(index)
+      }
     }
-    if (line.atomic) return
-    const marker = '…（截断）'
-    const room = maxChars - out.length - separator.length - marker.length
-    if (room > 0) out += `${separator}${line.text.slice(0, room)}${marker}`
-  })
-  return out
+  }
+  const data = entries.filter((_, index) => written.has(index)).map((entry) => `${entry.separator}${entry.text}`).join('')
+  return { data, written }
 }
 
 /** 无关联索引时的空索引：read 仍可读取原文，只是没有登记事实可送。 */
