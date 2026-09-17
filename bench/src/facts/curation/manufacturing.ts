@@ -21,7 +21,7 @@ export const MANUFACTURING_CURATIONS: CurationBatch = {
       operatorId: '温蒂',
       notes: '本卡属「自动化组」：统一核心还需清流精一；承曦格雷伊、森蚺、冬时等按当前布局补足发电站或中枢协作。',
     },
-    // 来源：knowledge/guides/跨设施组合.md「感知信息组」
+    // 来源：knowledge/guides/跨设施组合.md「感知信息组：资源用途与跨设施分工」
     {
       operatorId: '迷迭香',
       notes: '本卡属「感知信息组」：核心还需黑键精二进驻贸易站；絮雨、琴柳、夕等按设施分工参与，本组不绑定单一产物。',

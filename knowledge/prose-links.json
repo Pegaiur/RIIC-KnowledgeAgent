@@ -340,7 +340,7 @@
     },
     {
       "file": "guides/跨设施组合.md",
-      "headingPath": ["跨设施组合", "感知信息组"],
+      "headingPath": ["跨设施组合", "感知信息组：资源用途与跨设施分工"],
       "scope": "section",
       "objects": [
         { "kind": "skill", "operator": "迷迭香", "room": "制造站", "name": "超感" },
@@ -364,7 +364,7 @@
     },
     {
       "file": "guides/跨设施组合.md",
-      "headingPath": ["跨设施组合", "龙门中枢组"],
+      "headingPath": ["跨设施组合", "龙门中枢组：中枢成员协作与制造站加成"],
       "scope": "section",
       "objects": [
         { "kind": "skill", "operator": "斩业星熊", "room": "控制中枢", "name": "共事情谊" },
@@ -374,7 +374,7 @@
     },
     {
       "file": "guides/跨设施组合.md",
-      "headingPath": ["跨设施组合", "凯尔希·思衡托与精英干员挂件"],
+      "headingPath": ["跨设施组合", "凯尔希·思衡托与精英干员挂件：办公室联络与设施计数"],
       "scope": "section",
       "objects": [
         { "kind": "skill", "operator": "凯尔希·思衡托", "room": "办公室", "name": "“泰拉的方舟”" },

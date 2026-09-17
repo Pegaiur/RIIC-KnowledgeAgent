@@ -66,7 +66,7 @@ export const TRADE_CURATIONS: CurationBatch = {
       operatorId: '乌有',
       notes: '本卡是「人间烟火组」核心之一（本卡精二），在贸易站侧消费人间烟火；完整资源链与重要成员见同名组合词条。',
     },
-    // 来源：knowledge/guides/跨设施组合.md「感知信息组」
+    // 来源：knowledge/guides/跨设施组合.md「感知信息组：资源用途与跨设施分工」
     {
       operatorId: '黑键',
       notes: '本卡是「感知信息组」核心之一（本卡精二），进驻贸易站；另一核心迷迭香与设施分工见同名组合词条。',

@@ -218,13 +218,13 @@ export const TERM_CURATIONS: TermCurations = {
       '絮雨、琴柳达到精二，夕精零为重要成员；爱丽丝、车尔尼、塑心、令达到精二为次级成员',
       '设施分工：迷迭香进制造站，黑键进贸易站；絮雨进办公室，琴柳进控制中枢或宿舍，夕进控制中枢；爱丽丝、车尔尼、塑心主要通过宿舍侧技能参与，令通过控制中枢技能参与',
       '本组不绑定单一产物，根据当前主要使用的设施理解组合价值',
-    ], 'listed', source(crossFacility, '感知信息组')),
+    ], 'listed', source(crossFacility, '感知信息组：资源用途与跨设施分工')),
     combo('龙门中枢组', [
       member('斩业星熊', 'core'), member('诗怀雅', 'important'), member('陈', 'secondary'),
     ], [
       '斩业星熊达到精二；诗怀雅精零为重要成员，陈精零为次级成员',
       '核心与适配成员共同安排在控制中枢；斩业星熊与龙门近卫局干员同驻时可为制造站提供额外生产力',
       '本组只描述控制中枢关系，不是制造站组合',
-    ], 'listed', source(crossFacility, '龙门中枢组')),
+    ], 'listed', source(crossFacility, '龙门中枢组：中枢成员协作与制造站加成')),
   ],
 }
