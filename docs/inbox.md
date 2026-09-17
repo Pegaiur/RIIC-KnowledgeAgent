@@ -27,6 +27,8 @@
 
 ## 待办区
 
+- [x] **阅读范围与正文衔接三轮采样共性分析** — 已对照三轮回答、送达与成本，复核 F10 与送达归因；分析已合入原 exp，统一计数、归因与结论，记录见 docs/exp/exp-read-scope-bridge-20q-answer-check.md。 — 2026-09-17 — 已完成
+
 - [x] **渐进披露阅读范围与正文衔接** — 已澄清最小共同上级范围，补充龙舌兰组结算分工和工休阅读顺序、跨篇入口；作答概括规则留待后续观察。语料部分沿用 docs/plan-corpus-supplement.md，实施记录见 docs/plan-corpus-supplement-notes.md。 — 2026-09-17 — 已完成
 
 - [x] **渐进披露局部优化** — 已补齐散件关联、细化 rag/read/facts 取证指引，按用途拆分办公室小节并整理组合分工。语料部分归 docs/plan-corpus-supplement.md，本批记录见 docs/plan-corpus-supplement-notes.md。 — 2026-09-17 — 已完成
