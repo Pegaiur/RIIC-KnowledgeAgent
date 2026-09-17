@@ -1671,6 +1671,10 @@ function buildSectionContext(
     lines.push(...parentLines)
   }
 
+  // TODO(tech-debt) PD-1：父级引导按命中小节逐行生成、去重只到子小节粒度，同一父级下的多个子小节同时命中时，
+  // 同一行会被重复写入 data（相邻「上级范围入口」已按 parentId 去重，两者口径不一致）；parentLeadFragments 又按父级去重登记，
+  // 故正文重复不计入 fragmentRanges。实测 2026-09-16 单轮 20 题：正文 79 行对去重 51 种（重复 28 行、2,658 字符）。
+  // 重启条件：需要正文展示与送达台账去重口径一致，或要把复读度/预算占用用作对照指标时，按父级去重展示并补「同一父级多子小节命中」用例。
   const parentLeads: ParentLeadOffer[] = []
   for (const { section } of unique) {
     const context = sections.contextFor(section.sectionId)
