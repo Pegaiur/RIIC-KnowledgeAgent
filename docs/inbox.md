@@ -27,6 +27,8 @@
 
 ## 待办区
 
+- [x] **渐进披露阅读范围与正文衔接** — 已澄清最小共同上级范围，补充龙舌兰组结算分工和工休阅读顺序、跨篇入口；作答概括规则留待后续观察。语料部分沿用 docs/plan-corpus-supplement.md，实施记录见 docs/plan-corpus-supplement-notes.md。 — 2026-09-17 — 已完成
+
 - [x] **渐进披露局部优化** — 已补齐散件关联、细化 rag/read/facts 取证指引，按用途拆分办公室小节并整理组合分工。语料部分归 docs/plan-corpus-supplement.md，本批记录见 docs/plan-corpus-supplement-notes.md。 — 2026-09-17 — 已完成
 
 - [x] **渐进披露与 references 定位调整** — 见 docs/archive/plan-progressive-disclosure.md、ADR-021、ADR-022。2026-09-15 用户要求整份渐进披露定稿并授权补齐具体契约：补齐事实出口，11 份真源移入 raw、类别/歧义移入 guides、数据源开发文档移除，撤销 references；交付 read 双偏移分页、必填 scope、概念精确引用、命中小节默认送达与默认关闭的目录注入开关，完成散文试点、定位/门禁收尾及观测。限定旧门禁延后例外保留，运行路径与新行为测试随批闭合；历史数据不改写，不自动指定新基线。2026-09-16 用户允许迁移先于事实出口，授权及后续闭合记录见 docs/archive/plan-progressive-disclosure.md 实施纪要。当前目录迁移（第 2–3 步）、事实出口（第 1 步、卡 v8）、第 4 步（关联格式 v2/scope/概念引用、精确技能投影、read 双偏移分页与 readDelivery 观测）、第 5 步（默认只送达命中小节块、默认关闭目录注入、RAG 片段范围观测）与第 6 步（gold 26 键迁移、gold 定位目录与检索范围分离、白名单/完整性断言与旧门禁转绿、两份已登记基线口径处置）以及第 7 步（散文试点、组合小节审阅与精确关联/概念标注）均已落地；第 8 步的零费用端到端契约与一轮真实模型观测均已完成（记录见 docs/exp/exp-e2e-contract-glm-stub.md 与 docs/exp/exp-progressive-disclosure-glm-low-default.md），分阶段 hitrate 已在第 7 步完成（见 docs/archive/plan-progressive-disclosure.md 实施纪要第 7 步段与 docs/exp/exp-hitrate-migration-scope-compare.md），不恢复目录压缩 stash。 — 2026-09-16 — 已完成
