@@ -23,6 +23,16 @@
     },
     {
       "file": "guides/高效率散件.md",
+      "headingPath": ["高效率散件", "贸易站散件", "条件型贸易散件"],
+      "scope": "section",
+      "objects": [
+        { "kind": "skill", "operator": "吉星", "room": "贸易站", "name": "勤俭经营·β" },
+        { "kind": "skill", "operator": "伺夜", "room": "贸易站", "name": "新城贸易" },
+        { "kind": "skill", "operator": "空弦", "room": "贸易站", "name": "虔诚筹款·β" }
+      ]
+    },
+    {
+      "file": "guides/高效率散件.md",
       "headingPath": ["高效率散件", "办公室联络散件"],
       "scope": "section",
       "objects": [
@@ -34,16 +44,71 @@
     },
     {
       "file": "guides/高效率散件.md",
-      "headingPath": ["高效率散件", "办公室联络散件", "有额外条件或代价的办公室选择"],
+      "headingPath": ["高效率散件", "办公室联络散件", "心情代价型联络选择"],
       "scope": "section",
       "objects": [
         { "kind": "skill", "operator": "斥罪", "room": "办公室", "name": "法为正典" },
-        { "kind": "skill", "operator": "凯尔希·思衡托", "room": "办公室", "name": "“泰拉的方舟”" },
         { "kind": "skill", "operator": "水灯心", "room": "办公室", "name": "永不停歇·β" },
-        { "kind": "skill", "operator": "地灵", "room": "办公室", "name": "准时下班" },
+        { "kind": "skill", "operator": "地灵", "room": "办公室", "name": "准时下班" }
+      ]
+    },
+    {
+      "file": "guides/高效率散件.md",
+      "headingPath": ["高效率散件", "办公室联络散件", "设施条件型联络选择"],
+      "scope": "section",
+      "objects": [
+        { "kind": "skill", "operator": "凯尔希·思衡托", "room": "办公室", "name": "“泰拉的方舟”" }
+      ]
+    },
+    {
+      "file": "guides/高效率散件.md",
+      "headingPath": ["高效率散件", "办公室联络散件", "办公室资源转换"],
+      "scope": "section",
+      "objects": [
         { "kind": "skill", "operator": "絮雨", "room": "办公室", "name": "巡游" },
-        { "kind": "skill", "operator": "絮雨", "room": "办公室", "name": "追忆" },
+        { "kind": "skill", "operator": "絮雨", "room": "办公室", "name": "追忆" }
+      ]
+    },
+    {
+      "file": "guides/高效率散件.md",
+      "headingPath": ["高效率散件", "办公室联络散件", "中枢联络加成"],
+      "scope": "section",
+      "objects": [
         { "kind": "skill", "operator": "焰狐龙梓兰", "room": "控制中枢", "name": "办公室年度人物" }
+      ]
+    },
+    {
+      "file": "guides/高效率散件.md",
+      "headingPath": ["高效率散件", "赤金散件"],
+      "scope": "section",
+      "objects": [
+        { "kind": "skill", "operator": "阿罗玛", "room": "制造站", "name": "净味香氛" },
+        { "kind": "skill", "operator": "阿罗玛", "room": "制造站", "name": "例行清扫" },
+        { "kind": "skill", "operator": "苍苔", "room": "制造站", "name": "金属工艺·α" },
+        { "kind": "skill", "operator": "苍苔", "room": "制造站", "name": "打工心得" },
+        { "kind": "skill", "operator": "清流", "room": "制造站", "name": "再生能源" }
+      ]
+    },
+    {
+      "file": "guides/高效率散件.md",
+      "headingPath": ["高效率散件", "通用制造散件"],
+      "scope": "section",
+      "objects": [
+        { "kind": "skill", "operator": "槐琥", "room": "制造站", "name": "配合意识" },
+        { "kind": "skill", "operator": "至简", "room": "制造站", "name": "绘图设计" },
+        { "kind": "skill", "operator": "至简", "room": "制造站", "name": "机械辅助·β" }
+      ]
+    },
+    {
+      "file": "guides/高效率散件.md",
+      "headingPath": ["高效率散件", "经验散件"],
+      "scope": "section",
+      "objects": [
+        { "kind": "skill", "operator": "食铁兽", "room": "制造站", "name": "拳术指导录像" },
+        { "kind": "skill", "operator": "弑君者", "room": "制造站", "name": "逆境荣光" },
+        { "kind": "skill", "operator": "裂响", "room": "制造站", "name": "“连轴转”" },
+        { "kind": "skill", "operator": "酒神", "room": "制造站", "name": "戏中人" },
+        { "kind": "skill", "operator": "怒潮凛冬", "room": "制造站", "name": "情同手足" }
       ]
     },
     {
@@ -112,6 +177,7 @@
       "objects": [
         { "kind": "skill", "operator": "摩根", "room": "贸易站", "name": "帮派指南针" },
         { "kind": "skill", "operator": "戴菲恩", "room": "控制中枢", "name": "运筹好手" },
+        { "kind": "skill", "operator": "维娜·维多利亚", "room": "贸易站", "name": "外贸决议·β" },
         { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "干员组（28 条）"], "term": "格拉斯哥帮" }
       ]
     },
@@ -224,6 +290,7 @@
       "objects": [
         { "kind": "skill", "operator": "歌蕾蒂娅", "room": "控制中枢", "name": "集群狩猎·β" },
         { "kind": "skill", "operator": "歌蕾蒂娅", "room": "控制中枢", "name": "潮汐守望" },
+        { "kind": "concept", "file": "base/机制-制造站.md", "headingPath": ["制造站机制", "制造站等级参数"] },
         { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "干员组（28 条）"], "term": "深海猎人" },
         { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "规则说明（25 条）"], "term": "特殊加成", "termOccurrence": 1 },
         { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "规则说明（25 条）"], "term": "特殊加成", "termOccurrence": 2 },

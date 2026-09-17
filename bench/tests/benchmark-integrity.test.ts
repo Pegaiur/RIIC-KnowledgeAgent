@@ -17,10 +17,10 @@ describe('20 题基准完整性', () => {
       goldCount: 20,
       specCount: 20,
       corpusFileCount: 19,
-      chunkCount: 121,
+      chunkCount: 124,
       // 定位目录 = manifest 19 份 + raw 机械真源 11 份
       anchorFileCount: 30,
-      anchorChunkCount: 742,
+      anchorChunkCount: 745,
     })
   })
 
@@ -30,7 +30,7 @@ describe('20 题基准完整性', () => {
     const keys = Object.values(gold).flatMap((entry) => entry.golden)
     const rawKeys = keys.filter((key) => key.startsWith('raw/'))
 
-    expect(keys).toHaveLength(69)
+    expect(keys).toHaveLength(75)
     expect(rawKeys).toHaveLength(24)
     expect(checkGold(gold, loadGoldAnchorChunks(knowledgeRoot, RAW_MACHINE_SOURCE_DOC_IDS)).missing).toEqual([])
 

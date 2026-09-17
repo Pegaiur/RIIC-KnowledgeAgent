@@ -3,12 +3,12 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { loadConfig, type BenchConfig } from '../src/config.js'
-import { collectMarkdownFiles, splitChunks } from '../src/corpus.js'
+import { collectMarkdownFiles, loadCorpus, splitChunks } from '../src/corpus.js'
 import { buildIndex } from '../src/retriever.js'
 import { buildSectionDirectory, type SectionDirectory } from '../src/sections.js'
 import { createKnowledgeToolExecutor } from '../src/tool-executor.js'
 import { getCardStore } from '../src/facts/store.js'
-import type { ProseLinkIndex, ResolvedProseObject, UnresolvedProseObject } from '../src/prose-links.js'
+import { buildProseLinkIndex, type ProseLinkIndex, type ResolvedProseObject, type UnresolvedProseObject } from '../src/prose-links.js'
 import type { DocChunk, ToolCall } from '../src/types.js'
 
 const DOC = [
@@ -86,6 +86,28 @@ function sectionId(heading: string): string {
 }
 
 describe('read 关联事实送达', () => {
+  it('读取贸易站散件范围时同时送达候选的精确技能', async () => {
+    const corpusDir = join(process.cwd(), 'knowledge')
+    const corpus = loadCorpus(corpusDir)
+    const sections = buildSectionDirectory(corpusDir)
+    const links = buildProseLinkIndex({ root: process.cwd() })
+    const section = sections.sections.find((item) => item.file === 'guides/高效率散件.md' && item.heading === '贸易站散件')!
+    const executor = createKnowledgeToolExecutor({
+      config: { ...loadConfig(), retriever: 'hybrid', expandFulltext: false },
+      query: { id: 'PROSE-READ', category: 'fact', question: '会客室等级改变后如何计算伺夜的技能加成？' },
+      chunks: corpus,
+      index: buildIndex(corpus),
+      sections,
+      links,
+    }, 5)
+    const item = (await executor.executeStep([call('trade', { section_id: section.sectionId })])).results[0]!
+    expect(item.status).toBe('success')
+    expect(item.data).toContain('会客室每级额外提供5%获取效率')
+    expect(item.readDelivery?.deliveredObjects?.filter((object) => object.kind === 'card').map((object) => object.canonical).sort())
+      .toEqual(['吉星', '伺夜', '空弦'].sort())
+    expect(item.readDelivery?.factsPage?.complete).toBe(true)
+  })
+
   it('损坏索引的失效定位在 read 中显式报错，不伪装成未登记', async () => {
     const index: ProseLinkIndex = { links: [], bySection: new Map(), issues: ['未找到登记小节'] }
     const item = (await makeExecutor(index).executeStep([call('a', { section_id: sectionId('甲节') })])).results[0]!

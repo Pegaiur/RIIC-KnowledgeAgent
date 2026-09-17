@@ -603,7 +603,12 @@ describe('prose-links：真实语料核对', () => {
     ['泡泡组', ['泡泡｜囤积者']],
     ['自动化组', ['森蚺｜我寻思能行']],
     ['深海猎人组', ['歌蕾蒂娅｜潮汐守望']],
-  ])('%s 的关联投影保留组合实际依赖的技能', (heading, requiredSkills) => {
+    ['条件型贸易散件', ['吉星｜勤俭经营·β', '伺夜｜新城贸易', '空弦｜虔诚筹款·β']],
+    ['赤金散件', ['阿罗玛｜净味香氛', '阿罗玛｜例行清扫', '苍苔｜金属工艺·α', '苍苔｜打工心得', '清流｜再生能源']],
+    ['通用制造散件', ['槐琥｜配合意识', '至简｜绘图设计', '至简｜机械辅助·β']],
+    ['经验散件', ['食铁兽｜拳术指导录像', '弑君者｜逆境荣光', '裂响｜“连轴转”', '酒神｜戏中人', '怒潮凛冬｜情同手足']],
+    ['格拉斯哥帮组', ['维娜·维多利亚｜外贸决议·β']],
+  ])('%s 的关联投影保留正文实际依赖的技能', (heading, requiredSkills) => {
     const directory = buildSectionDirectory(join(process.cwd(), 'knowledge'))
     const index = buildProseLinkIndex({ root: process.cwd() })
     const link = index.links.find((candidate) => candidate.headingPath.at(-1) === heading)
@@ -632,6 +637,9 @@ describe('prose-links：真实语料核对', () => {
     expect(stacking.map((concept) => concept.termOccurrence)).toEqual([1, 2])
     expect(stacking[0]!.definition).toContain('无法与配合意识进行叠加')
     expect(stacking[1]!.definition).toContain('无法单独与天道酬勤·α、天道酬勤·β进行叠加')
+    const seats = concepts.find((concept) => concept.name === '制造站等级参数')!
+    expect(seats.file).toBe('base/机制-制造站.md')
+    expect(seats.definition).toContain('进驻人员上限')
   })
 
   it('knowledge/prose-links.json 机械检查零问题且目标小节可解析', () => {
@@ -640,7 +648,7 @@ describe('prose-links：真实语料核对', () => {
     expect(index.issues).toEqual([])
     const headings = index.links.map((link) => `${link.file}#${link.headingPath.join(' > ')}`)
     expect(headings).toContain('guides/高效率散件.md#高效率散件 > 办公室联络散件')
-    expect(headings).toContain('guides/高效率散件.md#高效率散件 > 办公室联络散件 > 有额外条件或代价的办公室选择')
+    expect(headings).toContain('guides/高效率散件.md#高效率散件 > 办公室联络散件 > 心情代价型联络选择')
     expect(headings).toContain('guides/高效率散件.md#高效率散件 > 源石碎片制造（搓玉）')
     for (const link of index.links) {
       expect(link.objects.length, `${link.sectionId} 的关联对象为空`).toBeGreaterThan(0)
@@ -660,7 +668,7 @@ describe('prose-links：真实语料核对', () => {
     expect(replacement).toBeTruthy()
   })
 
-  it('办公室两个小节各自登记本节候选，不靠父节 scope=section 继承', () => {
+  it('办公室各用途小节只展开本节候选', () => {
     const index = buildProseLinkIndex({ root: process.cwd() })
     const canonicalsOf = (path: string): string[] => {
       const link = index.links.find((candidate) => candidate.headingPath.join(' > ') === path)
@@ -670,10 +678,16 @@ describe('prose-links：真实语料核对', () => {
     }
 
     const office = canonicalsOf('高效率散件 > 办公室联络散件')
-    const conditional = canonicalsOf('高效率散件 > 办公室联络散件 > 有额外条件或代价的办公室选择')
     expect(office).toEqual(expect.arrayContaining(['珊比', '艾雅法拉', '遥', '普罗旺斯']))
     expect(office).not.toContain('斥罪')
-    expect(conditional).not.toContain('珊比')
-    expect(conditional).toEqual(expect.arrayContaining(['斥罪', '凯尔希·思衡托', '水灯心', '地灵', '絮雨']))
+    for (const [heading, expected] of [
+      ['心情代价型联络选择', ['斥罪', '水灯心', '地灵']],
+      ['设施条件型联络选择', ['凯尔希·思衡托']],
+      ['办公室资源转换', ['絮雨']],
+      ['中枢联络加成', ['焰狐龙梓兰']],
+    ] as const) {
+      const actual = canonicalsOf(`高效率散件 > 办公室联络散件 > ${heading}`)
+      expect([...new Set(actual)].sort()).toEqual([...expected].sort())
+    }
   })
 })
