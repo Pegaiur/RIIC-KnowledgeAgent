@@ -592,22 +592,22 @@ describe('prose-links：运行快照注入', () => {
 describe('prose-links：真实语料核对', () => {
   // 依据组合正文与 raw 真源核对职责、启动候选与代价；并存技能不会沿替换链自动进入精确投影。
   it.each([
-    ['水月标准化组', ['水月｜意识协议', '香草｜标准化·β', '杰西卡｜标准化·β', '史都华德｜标准化·β', '海沫｜标准化·β', '罗比菈塔｜标准化·β', '调香师｜标准化·β']],
-    ['红云组', ['红云｜拾荒者', 'Miss.Christine｜午休好去处', '稀音｜剪辑·α', '帕拉斯｜智慧之境', '刻俄柏｜“都想要”']],
+    ['水月标准化组：技能成员条件与中枢分工', ['水月｜意识协议', '香草｜标准化·β', '杰西卡｜标准化·β', '史都华德｜标准化·β', '海沫｜标准化·β', '罗比菈塔｜标准化·β', '调香师｜标准化·β']],
+    ['红云组：仓库容量转化与成员分支', ['红云｜拾荒者', 'Miss.Christine｜午休好去处', '稀音｜剪辑·α', '帕拉斯｜智慧之境', '刻俄柏｜“都想要”']],
     ['感知信息组：资源用途与跨设施分工', ['迷迭香｜超感', '黑键｜乐感', '絮雨｜巡游', '爱丽丝｜睡前故事', '车尔尼｜慢板行歌', '塑心｜无声共鸣', '塑心｜无词颂歌', '琴柳｜感染力', '琴柳｜维多利亚文学']],
-    ['龙舌兰组', ['柏喙｜裁缝·β', '明椒｜裁缝·β', '折光｜鉴定师的手段', '卡夫卡｜手工艺品·β']],
-    ['鸿雪杜林组', ['鸿雪｜销路宣发']],
-    ['赤金工艺组', ['苍苔｜金属工艺·α', '引星棘刺｜金属工艺·α', '砾｜金属工艺·β', '斑点｜金属工艺·α', '夜烟｜金属工艺·α', '温米｜金属工艺·α']],
-    ['莱茵科技', ['娜斯提｜莱茵科技·β']],
-    ['喀兰贸易组', ['孑｜摊贩经济']],
-    ['泡泡组', ['泡泡｜囤积者']],
-    ['自动化组', ['森蚺｜我寻思能行']],
-    ['深海猎人组', ['歌蕾蒂娅｜潮汐守望']],
-    ['条件型贸易散件', ['吉星｜勤俭经营·β', '伺夜｜新城贸易', '空弦｜虔诚筹款·β']],
-    ['赤金散件', ['阿罗玛｜净味香氛', '阿罗玛｜例行清扫', '苍苔｜金属工艺·α', '苍苔｜打工心得', '清流｜再生能源']],
-    ['通用制造散件', ['槐琥｜配合意识', '至简｜绘图设计', '至简｜机械辅助·β']],
-    ['经验散件', ['食铁兽｜拳术指导录像', '弑君者｜逆境荣光', '裂响｜“连轴转”', '酒神｜戏中人', '怒潮凛冬｜情同手足']],
-    ['格拉斯哥帮组', ['维娜·维多利亚｜外贸决议·β']],
+    ['龙舌兰组：效率归零、裁缝概率与订单报酬', ['柏喙｜裁缝·β', '明椒｜裁缝·β', '折光｜鉴定师的手段', '卡夫卡｜手工艺品·β']],
+    ['鸿雪杜林组：贸易核心与杜林挂件', ['鸿雪｜销路宣发']],
+    ['赤金工艺组：同站技能成员与贵金属配方', ['苍苔｜金属工艺·α', '引星棘刺｜金属工艺·α', '砾｜金属工艺·β', '斑点｜金属工艺·α', '夜烟｜金属工艺·α', '温米｜金属工艺·α']],
+    ['莱茵科技：制造技能协作与阵营计数边界', ['娜斯提｜莱茵科技·β']],
+    ['喀兰贸易组：跨设施协作与订单上限适配', ['孑｜摊贩经济']],
+    ['泡泡组：同站核心与仓库容量转化', ['泡泡｜囤积者']],
+    ['自动化组：第三人、发电站协作与归零范围', ['森蚺｜我寻思能行']],
+    ['深海猎人组：中枢协作、制造席位与心情代价', ['歌蕾蒂娅｜潮汐守望']],
+    ['贸易散件的工作人数、会客室与宿舍条件', ['吉星｜勤俭经营·β', '伺夜｜新城贸易', '空弦｜虔诚筹款·β']],
+    ['赤金散件的暖机、技能成员与贸易站数量条件', ['阿罗玛｜净味香氛', '阿罗玛｜例行清扫', '苍苔｜金属工艺·α', '苍苔｜打工心得', '清流｜再生能源']],
+    ['通用制造散件的他人生产力与工程机器人条件', ['槐琥｜配合意识', '至简｜绘图设计', '至简｜机械辅助·β']],
+    ['经验散件的生产力、心情代价与队友条件', ['食铁兽｜拳术指导录像', '弑君者｜逆境荣光', '裂响｜“连轴转”', '酒神｜戏中人', '怒潮凛冬｜情同手足']],
+    ['格拉斯哥帮组：同站成员计数与中枢协作', ['维娜·维多利亚｜外贸决议·β']],
   ])('%s 的关联投影保留正文实际依赖的技能', (heading, requiredSkills) => {
     const directory = buildSectionDirectory(join(process.cwd(), 'knowledge'))
     const index = buildProseLinkIndex({ root: process.cwd() })
@@ -626,7 +626,7 @@ describe('prose-links：真实语料核对', () => {
   it('深海猎人组的同名规则分别定位原文，不合并定义或推断技能档位', () => {
     const directory = buildSectionDirectory(join(process.cwd(), 'knowledge'))
     const index = buildProseLinkIndex({ root: process.cwd() })
-    const link = index.links.find((candidate) => candidate.headingPath.at(-1) === '深海猎人组')!
+    const link = index.links.find((candidate) => candidate.headingPath.at(-1) === '深海猎人组：中枢协作、制造席位与心情代价')!
     const concepts = readObjectsFor(link.sectionId, directory, index)
       .flatMap((object) => object.kind === 'concept' ? [object.concept] : [])
     const bonuses = concepts.filter((concept) => concept.term === '特殊加成')
@@ -637,7 +637,7 @@ describe('prose-links：真实语料核对', () => {
     expect(stacking.map((concept) => concept.termOccurrence)).toEqual([1, 2])
     expect(stacking[0]!.definition).toContain('无法与配合意识进行叠加')
     expect(stacking[1]!.definition).toContain('无法单独与天道酬勤·α、天道酬勤·β进行叠加')
-    const seats = concepts.find((concept) => concept.name === '制造站等级参数')!
+    const seats = concepts.find((concept) => concept.name === '制造站等级对应的工位、仓库容量与耗电')!
     expect(seats.file).toBe('base/机制-制造站.md')
     expect(seats.definition).toContain('进驻人员上限')
   })
@@ -648,8 +648,8 @@ describe('prose-links：真实语料核对', () => {
     expect(index.issues).toEqual([])
     const headings = index.links.map((link) => `${link.file}#${link.headingPath.join(' > ')}`)
     expect(headings).toContain('guides/高效率散件.md#高效率散件 > 办公室联络散件')
-    expect(headings).toContain('guides/高效率散件.md#高效率散件 > 办公室联络散件 > 心情代价型联络选择')
-    expect(headings).toContain('guides/高效率散件.md#高效率散件 > 源石碎片制造（搓玉）')
+    expect(headings).toContain('guides/高效率散件.md#高效率散件 > 办公室联络散件 > 联络速度与额外心情消耗的取舍')
+    expect(headings).toContain('guides/高效率散件.md#高效率散件 > 源石碎片制造（搓玉）的名单、练度与布局前提')
     for (const link of index.links) {
       expect(link.objects.length, `${link.sectionId} 的关联对象为空`).toBeGreaterThan(0)
       for (const object of link.objects) {
@@ -681,10 +681,10 @@ describe('prose-links：真实语料核对', () => {
     expect(office).toEqual(expect.arrayContaining(['珊比', '艾雅法拉', '遥', '普罗旺斯']))
     expect(office).not.toContain('斥罪')
     for (const [heading, expected] of [
-      ['心情代价型联络选择', ['斥罪', '水灯心', '地灵']],
-      ['设施条件型联络选择', ['凯尔希·思衡托']],
-      ['办公室资源转换', ['絮雨']],
-      ['中枢联络加成', ['焰狐龙梓兰']],
+      ['联络速度与额外心情消耗的取舍', ['斥罪', '水灯心', '地灵']],
+      ['精英干员设施计数与联络加成', ['凯尔希·思衡托']],
+      ['絮雨的记忆碎片与感知信息转换', ['絮雨']],
+      ['焰狐龙梓兰的中枢岗位与办公室加成', ['焰狐龙梓兰']],
     ] as const) {
       const actual = canonicalsOf(`高效率散件 > 办公室联络散件 > ${heading}`)
       expect([...new Set(actual)].sort()).toEqual([...expected].sort())
