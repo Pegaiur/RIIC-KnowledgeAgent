@@ -1,4 +1,4 @@
-import { mkdtempSync, mkdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, relative, sep } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
@@ -31,21 +31,21 @@ function docIds(files: readonly string[]): string[] {
 describe('corpus：语料收集与分块', () => {
   it('只收集显式白名单中的 Markdown，不递归扫描目录', () => {
     writeDoc('base/发电站机制.md', '# 发电站\n## 无人机\n正文A\n## 充能\n正文B\n')
-    writeDoc('recommendation/组合知识库.md', '# 组合\n## 体系\n正文C\n')
-    writeDoc('recommendation/实现TODO提示.md', '# TODO\n不应进入检索\n')
+    writeDoc('guides/组合知识库.md', '# 组合\n## 体系\n正文C\n')
+    writeDoc('guides/实现TODO提示.md', '# TODO\n不应进入检索\n')
     writeDoc('SKILL.md', '# 技能手册\n不应进入检索\n')
     writeDoc('未登记.md', '# 未登记\n不应进入检索\n')
-    writeManifest(['base/发电站机制.md', 'recommendation/组合知识库.md'])
+    writeManifest(['base/发电站机制.md', 'guides/组合知识库.md'])
 
     const files = collectMarkdownFiles(docsDir)
-    expect(docIds(files)).toEqual(['base/发电站机制.md', 'recommendation/组合知识库.md'])
-    expect(docIds(files)).not.toContain('recommendation/实现TODO提示.md')
+    expect(docIds(files)).toEqual(['base/发电站机制.md', 'guides/组合知识库.md'])
+    expect(docIds(files)).not.toContain('guides/实现TODO提示.md')
     expect(docIds(files)).not.toContain('SKILL.md')
     expect(docIds(files)).not.toContain('未登记.md')
   })
 
   it('白名单文件集合与 corpusStats 一致', () => {
-    const allowed = ['base/stats-a.md', 'references/stats-b.md']
+    const allowed = ['base/stats-a.md', 'guides/stats-b.md']
     const files = allowed.map((file) => writeDoc(file, `# ${file}\n正文\n`))
     writeManifest(allowed)
 
@@ -80,6 +80,14 @@ describe('corpus：语料收集与分块', () => {
     expect(() => collectMarkdownFiles(docsDir)).toThrowError('语料白名单存在重复条目：base/重复.md')
   })
 
+  it('跨目录同名文件被拒绝：文档范围 ID 只保留文件名', () => {
+    writeDoc('base/同名.md', '# 甲体系\n正文甲\n')
+    writeDoc('guides/同名.md', '# 乙体系\n正文乙\n')
+    writeManifest(['base/同名.md', 'guides/同名.md'])
+    expect(() => collectMarkdownFiles(docsDir))
+      .toThrowError('语料白名单存在跨目录同名文件：base/同名.md 与 guides/同名.md；文档范围 ID 只保留文件名，请重命名其中一个')
+  })
+
   it('白名单路径越出语料根目录时快速失败', () => {
     writeManifest(['../越界.md'])
     expect(() => collectMarkdownFiles(docsDir)).toThrowError('语料白名单路径越出语料根目录：../越界.md')
@@ -95,6 +103,60 @@ describe('corpus：语料收集与分块', () => {
     writeDoc('SKILL.md', '# 技能手册\n不应进入检索\n')
     writeManifest(['skill.md'])
     expect(() => collectMarkdownFiles(docsDir)).toThrowError('语料白名单禁止登记 SKILL.md：skill.md')
+  })
+
+  it('白名单只接受 base/ 与 guides/ 前缀，显式登记 raw/ 条目被拒绝', () => {
+    writeDoc('raw/名册.md', '# 名册\n机械真源\n')
+    writeManifest(['raw/名册.md'])
+    expect(() => collectMarkdownFiles(docsDir)).toThrowError('语料白名单只允许登记 base/ 与 guides/ 下的文件：raw/名册.md')
+    expect(() => loadCorpusManifest(docsDir)).toThrowError('语料白名单只允许登记 base/ 与 guides/ 下的文件：raw/名册.md')
+  })
+
+  it('白名单显式登记 references/ 或目录外开发文档条目被拒绝', () => {
+    writeDoc('references/类别.md', '# 类别\n定义\n')
+    writeManifest(['references/类别.md'])
+    expect(() => collectMarkdownFiles(docsDir)).toThrowError('语料白名单只允许登记 base/ 与 guides/ 下的文件：references/类别.md')
+
+    writeDoc('数据源.md', '# 数据源\n开发说明\n')
+    writeManifest(['数据源.md'])
+    expect(() => collectMarkdownFiles(docsDir)).toThrowError('语料白名单只允许登记 base/ 与 guides/ 下的文件：数据源.md')
+  })
+
+  it.each([
+    ['base/../raw/穿越.md', 'raw/穿越.md'],
+    ['guides/../references/穿越.md', 'references/穿越.md'],
+    ['guides\\..\\raw\\穿越.md', 'raw/穿越.md'],
+    ['base/子目录/../../开发说明.md', '开发说明.md'],
+  ])('按归一化目标拒绝白名单范围穿越：%s', (entry, target) => {
+    writeDoc(target, '# 白名单外正文\n不应进入检索\n')
+    writeManifest([entry])
+
+    expect(() => collectMarkdownFiles(docsDir))
+      .toThrowError(`语料白名单只允许登记 base/ 与 guides/ 下的文件：${entry}`)
+    expect(() => loadCorpusManifest(docsDir))
+      .toThrowError(`语料白名单只允许登记 base/ 与 guides/ 下的文件：${entry}`)
+  })
+
+  it('归一化后仍在允许目录内的相对路径保持可用', () => {
+    const file = writeDoc('guides/归一化.md', '# 指南\n可检索正文\n')
+    writeManifest(['guides/子目录/../归一化.md'])
+
+    expect(collectMarkdownFiles(docsDir)).toEqual([file])
+    expect(loadCorpusManifest(docsDir)).toEqual(['guides/归一化.md'])
+  })
+
+  it('允许目录内的目录链接不能把同根 raw 内容带入白名单', () => {
+    const target = writeDoc('raw/链接目标/正文.md', '# 机械真源\n不应进入检索\n')
+    const alias = join(docsDir, 'base/目录别名')
+    mkdirSync(dirname(alias), { recursive: true })
+    symlinkSync(dirname(target), alias, process.platform === 'win32' ? 'junction' : 'dir')
+    const entry = 'base/目录别名/正文.md'
+    writeManifest([entry])
+
+    expect(() => collectMarkdownFiles(docsDir))
+      .toThrowError(`语料白名单只允许登记 base/ 与 guides/ 下的文件：${entry}`)
+    expect(() => loadCorpusManifest(docsDir))
+      .toThrowError(`语料白名单只允许登记 base/ 与 guides/ 下的文件：${entry}`)
   })
 
   it('按 ## 标题切分，front matter 与注释剔除', () => {

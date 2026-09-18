@@ -2,7 +2,7 @@
  * 基准共用类型定义
  */
 
-import type { RagDeliveryRecord } from './delivery.js'
+import type { RagDeliveryRecord, ReadDeliveryRecord } from './delivery.js'
 
 /** 思考深度档位（Hy3 reasoning_effort 映射） */
 export type ThinkingMode = 'off' | 'low' | 'high'
@@ -11,7 +11,7 @@ export type ThinkingMode = 'off' | 'low' | 'high'
 export type ProviderId = 'hy3' | 'qwen' | 'glm' | 'deepseek'
 
 /** 工具标识；grep_search/lookup/query_operators 仅保留历史记录与聚合识别，不再下发。 */
-export type ToolId = 'rag_search' | 'grep_search' | 'facts_search' | 'read_section' | 'lookup' | 'query_operators'
+export type ToolId = 'rag_search' | 'grep_search' | 'facts_search' | 'read' | 'read_section' | 'lookup' | 'query_operators'
 
 /** 检索分词器标识（bigram 零依赖默认；jieba 见 ADR-001） */
 export type TokenizerId = 'bigram' | 'jieba'
@@ -126,6 +126,8 @@ export interface CostRecord {
   toolBatch?: ToolBatchStats
   /** 本轮各次 RAG 的范围与卡片送达台账；历史缺失表示不可用。 */
   ragDelivery?: RagDeliveryRecord[]
+  /** 本轮各次 read 的原文与关联对象送达台账；按 callId 保存，历史缺失表示不可用。 */
+  readDelivery?: ReadDeliveryRecord[]
 }
 
 /** 基准问题 */
@@ -190,9 +192,9 @@ export function isFactTool(name: string | ToolId): boolean {
   return name === 'facts_search'
 }
 
-/** 是否为原文小节阅读工具；不参与检索命中率口径。 */
+/** 是否为原文小节阅读工具（含已退役的旧名，供历史记录与观测识别）；不参与检索命中率口径。 */
 export function isSectionReadTool(name: string | ToolId): boolean {
-  return name === 'read_section'
+  return name === 'read' || name === 'read_section'
 }
 
 /** 是否为 facts 旧工具名；供历史记录、观测统计和旧 trace 兼容读取。 */

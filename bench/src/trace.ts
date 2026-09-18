@@ -3,7 +3,7 @@
  * 不记录 hidden reasoning、请求 headers 或完整运行配置。
  */
 import type { BenchQuery, HttpAttempt, LlmUsage, TerminationReason, ToolCall, ToolBatchStats } from './types.js'
-import type { AttachedFactsObservation, ToolBudgetState, ToolResultStatus, FulltextRange } from './tool-executor.js'
+import type { AttachedFactsObservation, ToolBudgetState, ToolResultStatus, FragmentRange, FulltextRange, LinkedEntryObservation, ReadDeliveryRecord } from './tool-executor.js'
 
 export interface TraceLlmEvent {
   type: 'llm_call'
@@ -33,8 +33,14 @@ export interface TraceToolEvent {
   injectedIds?: string[]
   /** rag_search 原文扩展的实际送达范围（ADR-013）；未扩展时省略。 */
   fulltextRanges?: FulltextRange[]
+  /** rag_search 命中块与父级引导的连续正文片段（ADR-022 决策 6）；全文扩展模式为空数组。 */
+  fragmentRanges?: FragmentRange[]
   /** rag_search 内部 facts 附带的触发词/路径/送达观测（ADR-013 步骤 3）；无触发词时省略。 */
   attachedFacts?: AttachedFactsObservation[]
+  /** rag_search 关联事实入口提示观测（ADR-020）；无提示时省略。 */
+  linkedEntries?: LinkedEntryObservation[]
+  /** read 单次送达台账（ADR-022 决策 6）：单条记录，与 records 中同 callId 项一致；非 read 调用省略。 */
+  readDelivery?: ReadDeliveryRecord
   elapsedMs: number
   status: ToolResultStatus
   executed: boolean

@@ -23,3 +23,9 @@
 | [015](ADR-015-facts-multi-term-query.md) | 已实施 | facts 多词条数组查询 | 2026-09-12 |
 | [016](ADR-016-single-tool-call-admission.md) | 已实施 | 工具步骤只准入首个调用，同批超量拒绝 | 2026-09-12 |
 | [017](ADR-017-quality-baseline-record.md) | 已实施 | 正式质量基线记录移出 spec，由 AGENTS.md 承载并入门禁校验 | 2026-09-12 |
+| [018](ADR-018-keyword-catalog-delivery.md) | 已实施 | 关键词目录随查询 Agent 指令交付 | 2026-09-13 |
+| [019](ADR-019-facts-tag-lookup.md) | 已实施 | facts 显式标签反查入口 | 2026-09-13 |
+| [020](ADR-020-prose-linked-knowledge.md) | 已实施 | 散文小节关联事实的引用、提示与显式展开契约 | 2026-09-13 |
+| [021](ADR-021-facts-source-layout.md) | 已实施 | facts 真源目录归并与事实出口 | 2026-09-15 |
+| [022](ADR-022-progressive-disclosure.md) | 已实施 | 渐进披露的阅读、关联与默认送达契约 | 2026-09-15 |
+| [023](ADR-023-rag-directory-preview.md) | 已实施 | RAG 采用文件目录树与命中预览 | 2026-09-17 |

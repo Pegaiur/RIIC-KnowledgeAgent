@@ -75,9 +75,17 @@ function assertFullFacts(root: string): ReturnType<typeof loadReferenceFacts> {
   return facts
 }
 
-/** 通过全量事实门禁并返回指定模式的 RecordCard；未通过时不暴露半成品。 */
-export function loadValidatedRecordCards(root: string, mode: CurationMode = 'curated'): RecordCard[] {
-  const facts = assertFullFacts(root)
+/** 通过全量机械门禁的 raw facts 快照；供关联解析与卡片投影共用同一份实例（ADR-022 决策 6）。 */
+export function loadValidatedFacts(root: string): ReturnType<typeof loadReferenceFacts> {
+  return assertFullFacts(root)
+}
+
+/** 从同一份 raw facts 快照投影 RecordCard，并执行类别/等价组/人工覆盖校验与 fixture 兼容回归。 */
+export function projectValidatedRecordCards(
+  root: string,
+  facts: ReturnType<typeof loadReferenceFacts>,
+  mode: CurationMode = 'curated',
+): RecordCard[] {
   const taxonomy = loadTaxonomy(root, facts)
   if (taxonomy.operatorGroups.length !== EXPECTED_OPERATOR_GROUPS
     || taxonomy.operatorGroups.reduce((sum, group) => sum + group.members.length, 0) !== EXPECTED_OPERATOR_GROUP_MEMBERS
@@ -92,4 +100,9 @@ export function loadValidatedRecordCards(root: string, mode: CurationMode = 'cur
   const rawCards = projectRecordCards({ facts, taxonomy, equivalenceGroups, curations, mode: 'raw' })
   assertFixtureCompatibility(rawCards)
   return mode === 'raw' ? rawCards : projectRecordCards({ facts, taxonomy, equivalenceGroups, curations, mode })
+}
+
+/** 通过全量事实门禁并返回指定模式的 RecordCard；未通过时不暴露半成品。 */
+export function loadValidatedRecordCards(root: string, mode: CurationMode = 'curated'): RecordCard[] {
+  return projectValidatedRecordCards(root, loadValidatedFacts(root), mode)
 }

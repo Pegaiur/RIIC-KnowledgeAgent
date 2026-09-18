@@ -21,7 +21,7 @@ function expectEnvelope(item: ToolExecutionResult, expectedIds: string[]) {
   expect(item.hitIds).toEqual(expectedIds)
   expect(item.injectedIds).toEqual(expectedIds)
   expect(item.factsResult).toMatchObject({
-    factsResultVersion: 6, matchedCount: expectedIds.length, returnedCount: expectedIds.length, complete: true,
+    factsResultVersion: 8, matchedCount: expectedIds.length, returnedCount: expectedIds.length, complete: true,
   })
   const envelope = JSON.parse(serializeToolResult(item))
   expect(envelope).toMatchObject({
@@ -50,7 +50,7 @@ describe('真实词条的 executor 解析协议', () => {
     const item = (await executor().executeStep([call('叙拉古')])).results[0]!
     const paths = item.factsResult!.resolution.items[0]!.paths
     expect(paths.map((path) => path.kind)).toEqual(['exact', 'combo'])
-    // 阵营名单取自 references/类别.md，搭配名单取自 guides/贸易站组合.md。
+    // 阵营名单取自 guides/类别.md，搭配名单取自 guides/贸易站组合.md。
     const faction = '安洁莉娜、拉普兰德、普罗旺斯、红云、布洛卡、巫恋、铃兰、贾维、奥斯塔、斥罪、子月、伺夜、阿罗玛、忍冬、裁度、荒芜拉普兰德、贝洛内、复奏'.split('、')
     expect(paths[0]).toMatchObject({ kind: 'exact', category: 'faction' })
     expect([...paths[0]!.memberIds].sort()).toEqual(faction.sort())
@@ -69,7 +69,7 @@ describe('真实词条的 executor 解析协议', () => {
     expect(item.factsResult?.resolution.items[0]?.paths[1]).toMatchObject({
       kind: 'substring', term: '临光', targets: ['operator:耀骑士临光'], memberIds: ['耀骑士临光'],
     })
-    expect(item.factsResult).toMatchObject({ factsResultVersion: 6, matchedCount: 2, returnedCount: 2, complete: true })
+    expect(item.factsResult).toMatchObject({ factsResultVersion: 8, matchedCount: 2, returnedCount: 2, complete: true })
     expect(new Set(item.hitIds)).toEqual(new Set(['临光', '耀骑士临光']))
     expectEnvelope(item, item.hitIds!)
     expect(item.data).toContain('子串：临光 → 耀骑士临光')

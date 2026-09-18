@@ -17,10 +17,18 @@ export interface RecordSkill {
   name: string
   /** 解锁方式：初始解锁 / 精英 N 解锁 / 精英 N 提升 */
   unlockType: string
-  /** 标签/作用产物定位（保留 references 原文，不结构化拆分；无则空串） */
+  /** 原始注记原文（`〔…〕` 内文本，保留无法结构化的缺口注记；无则空串） */
   target: string
   /** 效果原文（references 原句，不做 minEff 数值化） */
   effectText: string
+  /** 来源标签（`〔标签：…〕` 结构化值，供 tags 反查；兼容旧 fixture 时可缺省） */
+  tags?: string[]
+  /** 作用产物（`〔作用产物：…〕` 结构化值；raw 与 curated 同源，空为 []，旧卡可缺省） */
+  products?: string[]
+  /** 作用职业（`〔作用职业：…〕` 结构化值；raw 与 curated 同源，空为 []，旧卡可缺省） */
+  professions?: string[]
+  /** 引用术语（`〔引用术语：…〕` 结构化值；名称本身不触发概念展开，空为 []，旧卡可缺省） */
+  referencedTerms?: string[]
   /** 技能级人工备注；raw 模式缺省 */
   notes?: string
   /** 被替换的具体 grant；仅升级技能存在 */
@@ -31,6 +39,8 @@ export interface RecordSkill {
   equivalenceGroupId?: string
   /** 等价组内可用于 facts_search 展开的技能名 */
   equivalenceSkillNames?: string[]
+  /** 等价组共同效果原文；仅命中等价组时投影，curated 覆盖不改写本字段 */
+  equivalenceEffectText?: string
 }
 
 /** 干员记录卡 */

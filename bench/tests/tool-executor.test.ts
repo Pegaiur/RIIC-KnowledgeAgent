@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { loadConfig } from '../src/config.js'
+import { loadCorpus } from '../src/corpus.js'
 import { buildIndex } from '../src/retriever.js'
+import { buildSectionDirectory } from '../src/sections.js'
 import type { DocChunk, ToolCall } from '../src/types.js'
 import { getCardStore } from '../src/facts/store.js'
 import {
@@ -53,8 +55,8 @@ const FACTS_LIMIT = 3
 
 describe('独立函数工具 schema', () => {
   it.each([
-    ['bm25', ['rag_search', 'read_section']],
-    ['hybrid', ['rag_search', 'facts_search', 'read_section']],
+    ['bm25', ['rag_search', 'read']],
+    ['hybrid', ['rag_search', 'facts_search', 'read']],
   ] as const)('%s 只暴露当前模式允许的函数工具', (retriever, names) => {
     const tools = toolsForRetriever(retriever, FACTS_LIMIT)
     expect(tools.map((tool) => (tool.function as { name: string }).name)).toEqual(names)
@@ -65,7 +67,7 @@ describe('独立函数工具 schema', () => {
     }
   })
 
-  it('facts_search schema 以 queries 数组为唯一必填字段，maxItems 由配置上限派生', () => {
+  it('facts_search schema 声明 queries、tags、offset，maxItems 由配置上限派生', () => {
     const facts = toolsForRetriever('hybrid', FACTS_LIMIT).find((tool) => (tool.function as { name: string }).name === 'facts_search')!
     const fn = facts.function as { name: string; description: string; parameters: { properties: Record<string, Record<string, unknown>>; required: string[]; additionalProperties: boolean; anyOf?: unknown[] } }
     expect(fn.name).toBe('facts_search')
@@ -77,9 +79,9 @@ describe('独立函数工具 schema', () => {
     expect(fn.description).toContain('可一次传入多个完整词条')
     expect(fn.description).toContain('数组不是复合过滤语法')
     expect(fn.description).not.toMatch(/最多\s*\d+\s*个/)
-    expect(Object.keys(fn.parameters.properties)).toEqual(['queries'])
+    expect(Object.keys(fn.parameters.properties)).toEqual(['queries', 'tags', 'offset'])
     expect(fn.parameters.properties.queries).toMatchObject({ type: 'array', minItems: 1, maxItems: FACTS_LIMIT, items: { type: 'string' } })
-    expect(fn.parameters.required).toEqual(['queries'])
+    expect(fn.parameters.required).toEqual([])
     expect(fn.parameters.additionalProperties).toBe(false)
     expect(fn.parameters.anyOf).toBeUndefined()
   })
@@ -87,9 +89,13 @@ describe('独立函数工具 schema', () => {
   it('RAG 与原文读取 schema 说明实际送达能力和分页字段边界', () => {
     const definitions = toolsForRetriever('hybrid', FACTS_LIMIT)
       .map((tool) => tool.function as { name: string; description: string })
-    expect(definitions.find((fn) => fn.name === 'rag_search')?.description).toContain('附带事实卡')
-    const read = definitions.find((fn) => fn.name === 'read_section')!.description
-    expect(read).toContain('上级范围入口')
+    const rag = definitions.find((fn) => fn.name === 'rag_search')!.description
+    expect(rag).toContain('目录树')
+    expect(rag).toContain('前 100 个字符')
+    expect(rag).toContain('附带事实卡')
+    const read = definitions.find((fn) => fn.name === 'read')!.description
+    expect(read).toContain('按已返回的 ID')
+    expect(read).not.toContain('上级范围入口')
     expect(read).toContain('complete=false')
     expect(read).toContain('complete=true')
     expect(read).toContain('不表示问题已完整解决')
@@ -122,7 +128,7 @@ describe('独立函数工具 schema', () => {
     const { results } = await runSequential(executor, [
       call('facts-bad', 'facts_search', {}),
       call('rag-bad', 'rag_search', {}),
-      call('read-bad', 'read_section', {}),
+      call('read-bad', 'read', {}),
     ])
 
     expect(results[0]?.data).toContain('{"queries":["完整词条"]}')
@@ -132,7 +138,7 @@ describe('独立函数工具 schema', () => {
   })
 
   it('schema 指纹只由当前实际工具数组决定', () => {
-    expect(toolSchemaMetadata('bm25', FACTS_LIMIT)).toMatchObject({ toolSchemaVersion: 12, toolNames: ['rag_search', 'read_section'] })
+    expect(toolSchemaMetadata('bm25', FACTS_LIMIT)).toMatchObject({ toolSchemaVersion: 16, toolNames: ['rag_search', 'read'] })
     expect(toolSchemaMetadata('bm25', FACTS_LIMIT).toolSchemaSha256).toMatch(/^[a-f0-9]{64}$/)
     expect(toolSchemaMetadata('bm25', FACTS_LIMIT).toolSchemaSha256).not.toBe(toolSchemaMetadata('hybrid', FACTS_LIMIT).toolSchemaSha256)
   })
@@ -198,7 +204,8 @@ describe('独立函数工具 schema', () => {
 
 describe('单工具调用准入（每步只准入首项）', () => {
   function bm25Executor(limit = 5) {
-    const config = loadConfig()
+    // 无目录夹具显式沿用全文回退，保持本用例的循环／预算前置条件。
+    const config = { ...loadConfig(), expandFulltext: true }
     config.retriever = 'bm25'
     return createKnowledgeToolExecutor({ config, query: { id: 'ADMISSION', category: 'fact', question: '单调用准入' }, chunks, index: buildIndex(chunks) }, limit)
   }
@@ -209,7 +216,7 @@ describe('单工具调用准入（每步只准入首项）', () => {
       call('first', 'rag_search', { query: '制造站效率' }),
       // 参数不是合法 JSON，若被解析应记 invalid_params；超量项应保持 protocol_rejected。
       { id: 'second', name: 'rag_search', arguments: '{ 不是 JSON' },
-      call('third', 'read_section', { section_id: '不存在的小节' }),
+      call('third', 'read', { section_id: '不存在的小节' }),
     ])
 
     expect(step.results.map((item) => item.status)).toEqual(['success', 'protocol_rejected', 'protocol_rejected'])
@@ -253,7 +260,8 @@ describe('单工具调用准入（每步只准入首项）', () => {
   })
 
   it('获准尝试余额耗尽时超量项不提示重试', async () => {
-    const config = loadConfig()
+    // 无目录夹具显式沿用全文回退，保持本用例的循环／预算前置条件。
+    const config = { ...loadConfig(), expandFulltext: true }
     config.retriever = 'bm25'
     config.toolAttemptLimit = 1
     const executor = createKnowledgeToolExecutor({ config, query: { id: 'ADMISSION-ATTEMPT', category: 'fact', question: '尝试上限' }, chunks, index: buildIndex(chunks) }, 5)
@@ -273,7 +281,8 @@ describe('单工具调用准入（每步只准入首项）', () => {
 
 describe('独立函数 executor：逐步单调用结算双上限预算', () => {
   it('空结果与参数错误不扣成功额度，仅非空成功扣点，超限后按成功额度拒绝', async () => {
-    const config = loadConfig()
+    // 无目录夹具显式沿用全文回退，保持本用例的循环／预算前置条件。
+    const config = { ...loadConfig(), expandFulltext: true }
     config.retriever = 'bm25'
     const executor = createKnowledgeToolExecutor({ config, query: { id: 'SETTLE', category: 'fact', question: '制造站效率？' }, chunks, index: buildIndex(chunks) }, 2)
 
@@ -292,18 +301,22 @@ describe('独立函数 executor：逐步单调用结算双上限预算', () => {
     expect(snapshot).toMatchObject({ successLimit: 2, successUsed: 2, attemptLimit: 10, attemptUsed: 4, requested: 5, denied: 1, executed: 3, remaining: 0 })
   })
 
-  it('RAG 未送达正文证据（仅截断头部）判空并免扣成功额度，不拒绝后续调用', async () => {
+  it('RAG 容量连必要元数据都放不下时报明确容量错误，不扣成功额度', async () => {
     const config = loadConfig()
     config.retriever = 'bm25'
     config.maxContextChars = 1
-    const executor = createKnowledgeToolExecutor({ config, query: { id: 'RAG-NO-BODY', category: 'fact', question: '制造站效率？' }, chunks, index: buildIndex(chunks) }, 1)
+    const chunks = loadCorpus(config.corpusDir)
+    const sections = buildSectionDirectory(config.corpusDir)
+    const executor = createKnowledgeToolExecutor({ config, query: { id: 'RAG-NO-BODY', category: 'fact', question: '制造站效率？' }, chunks, index: buildIndex(chunks), sections }, 1)
 
     const { results, snapshot } = await runSequential(executor, [
       call('a', 'rag_search', { query: '制造站效率' }),
       call('b', 'rag_search', { query: '制造站效率' }),
     ])
 
-    expect(results.map((item) => item.status)).toEqual(['empty', 'empty'])
+    // 必要元数据（小节 ID、来源、原文范围）优先于正文：放不下时明确报容量错误，不发送只有元数据的结果。
+    expect(results.map((item) => item.status)).toEqual(['error', 'error'])
+    expect(results[0]?.data).toContain('无法在 maxContextChars=1 内返回命中块')
     expect(results.every((item) => item.executed)).toBe(true)
     expect(results[0]?.injectedIds).toEqual([])
     expect(snapshot).toMatchObject({ successUsed: 0, attemptUsed: 2, denied: 0, executed: 2, remaining: 1 })
@@ -324,7 +337,8 @@ describe('独立函数 executor：逐步单调用结算双上限预算', () => {
   })
 
   it('两项上限同时用尽时优先提示成功额度', async () => {
-    const config = loadConfig()
+    // 无目录夹具显式沿用全文回退，保持本用例的循环／预算前置条件。
+    const config = { ...loadConfig(), expandFulltext: true }
     config.retriever = 'bm25'
     config.toolAttemptLimit = 1
     const executor = createKnowledgeToolExecutor({ config, query: { id: 'BOTH', category: 'fact', question: '双限' }, chunks, index: buildIndex(chunks) }, 1)
@@ -358,7 +372,8 @@ describe('独立函数 executor：逐步单调用结算双上限预算', () => {
   })
 
   it('第五次成功扣点后拒绝第六次，每项余额按结算后状态生成', async () => {
-    const config = loadConfig()
+    // 无目录夹具显式沿用全文回退，保持本用例的循环／预算前置条件。
+    const config = { ...loadConfig(), expandFulltext: true }
     const executor = createKnowledgeToolExecutor({ config, query: { id: 'BATCH-5', category: 'fact', question: '查询' }, chunks, index: buildIndex(chunks) }, 5)
     const calls = Array.from({ length: 6 }, (_, i) => call(`call-${i + 1}`, 'rag_search', { query: '制造站效率' }))
 
@@ -415,7 +430,7 @@ describe('独立函数 executor：逐步单调用结算双上限预算', () => {
     expect(item).toMatchObject({
       status: 'success',
       factsResult: {
-        factsResultVersion: 6,
+        factsResultVersion: 8,
         matchedCount: 1,
         returnedCount: 1,
         complete: true,
@@ -423,7 +438,7 @@ describe('独立函数 executor：逐步单调用结算双上限预算', () => {
       },
     })
     const envelope = JSON.parse(serializeToolResult(item)) as Record<string, any>
-    expect(envelope).toMatchObject({ factsResultVersion: 6, resolution: { items: [{ index: 0, status: 'success', paths: [{ kind: 'alias', term: '维娜' }] }] } })
+    expect(envelope).toMatchObject({ factsResultVersion: 8, resolution: { items: [{ index: 0, status: 'success', paths: [{ kind: 'alias', term: '维娜' }] }] } })
     expect(envelope.data).toContain('别名：维娜 → 维娜·维多利亚')
   })
 
@@ -468,6 +483,20 @@ describe('独立函数 executor：逐步单调用结算双上限预算', () => {
     expect(results.every((item) => !item.executed)).toBe(true)
     expect(snapshot).toMatchObject({ successUsed: 0, attemptUsed: 4, executed: 0, denied: 0, remaining: 5 })
     expect(results[0]?.data).toContain('query')
+  })
+
+  it('参数字段名为空字符串时也按未知参数拒绝，不执行底层检索', async () => {
+    const config = loadConfig()
+    config.retriever = 'hybrid'
+    const executor = createKnowledgeToolExecutor({ config, query: { id: 'EMPTY-KEY', category: 'fact', question: '查询' }, chunks, index: buildIndex(chunks) }, 5)
+    const { results } = await runSequential(executor, [
+      call('a', 'rag_search', { query: '制造站', '': 'x' }),
+      call('b', 'facts_search', { queries: ['刻俄柏'], '': 'x' }),
+      call('c', 'read', { section_id: 'sec-x', '': 'x' }),
+    ])
+
+    expect(results.map((item) => item.status)).toEqual(['invalid_params', 'invalid_params', 'invalid_params'])
+    expect(results.every((item) => !item.executed)).toBe(true)
   })
 
   it('重复 call ID 作为协议失败，工具不执行且预算不变', async () => {
@@ -549,7 +578,7 @@ describe('facts_search 多词分段、去重与原子性', () => {
     const item = batch.results[0]!
     expect(item.status).toBe('success')
     expect(item.factsResult?.scope).toEqual({ queries: ['刻俄柏', '刻俄柏'] })
-    expect(item.factsResult).toMatchObject({ factsResultVersion: 6, matchedCount: 1, returnedCount: 1, complete: true })
+    expect(item.factsResult).toMatchObject({ factsResultVersion: 8, matchedCount: 1, returnedCount: 1, complete: true })
     expect(item.factsResult?.resolution.items).toEqual([
       { index: 0, query: '刻俄柏', status: 'success', paths: expect.any(Array), canonicals: ['刻俄柏'], message: null },
       { index: 1, query: '刻俄柏', status: 'success', paths: expect.any(Array), canonicals: ['刻俄柏'], message: null },
@@ -647,10 +676,10 @@ describe('facts_search 多词分段、去重与原子性', () => {
     expect(item.data).toContain('刻俄柏（已在第 1 段返回，此处仅列名）')
   })
 
-  it('v6 输出只携带 resolution.items，不同时携带 v5 的 resolution.paths', async () => {
+  it('v8 输出只携带 resolution.items，不同时携带 v5 的 resolution.paths', async () => {
     const batch = await multiExecutor().executeStep([call('shape', 'facts_search', { queries: ['刻俄柏'] })])
     const envelope = JSON.parse(serializeToolResult(batch.results[0]!)) as { factsResultVersion: number; resolution: Record<string, unknown> }
-    expect(envelope.factsResultVersion).toBe(6)
+    expect(envelope.factsResultVersion).toBe(8)
     expect(envelope.resolution).toHaveProperty('items')
     expect(envelope.resolution).not.toHaveProperty('paths')
   })

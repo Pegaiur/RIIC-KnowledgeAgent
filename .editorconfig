@@ -1,0 +1,7 @@
+# 统一编辑器写入的行尾为 LF，减少工作区 CRLF churn。
+# git 侧行尾以 .gitattributes 的 `* text=auto eol=lf` 为准；本文件只约束编辑器，不修改任何 git 配置。
+# 生效范围：VS Code / Trae 需安装 EditorConfig 扩展；JetBrains、Vim、Emacs 等原生支持。
+root = true
+
+[*]
+end_of_line = lf

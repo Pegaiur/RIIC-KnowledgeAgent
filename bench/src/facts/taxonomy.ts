@@ -121,12 +121,12 @@ export function parseTaxonomy(text: string, facts: ReferenceFacts): Taxonomy {
   }
 }
 
-/** 从仓库真源读取类别.md。 */
+/** 从仓库真源读取 guides/类别.md。 */
 export function loadTaxonomy(root: string, facts: ReferenceFacts): Taxonomy {
   try {
-    return parseTaxonomy(readFileSync(join(root, 'knowledge', 'references', '类别.md'), 'utf-8'), facts)
+    return parseTaxonomy(readFileSync(join(root, 'knowledge', 'guides', '类别.md'), 'utf-8'), facts)
   } catch (error) {
     if (error instanceof FactsParseError) throw error
-    throw new FactsParseError('无法读取真源类别：knowledge/references/类别.md')
+    throw new FactsParseError('无法读取真源类别：knowledge/guides/类别.md')
   }
 }

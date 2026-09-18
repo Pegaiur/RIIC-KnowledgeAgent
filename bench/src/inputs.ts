@@ -9,7 +9,9 @@ import { join } from 'node:path'
 import { effectiveAttachFacts, type BenchConfig } from './config.js'
 import type { CardStore } from './facts/store.js'
 import type { SectionDirectory } from './sections.js'
+import { PROSE_LINKS_VERSION, type ProseLinkIndex, type ProseScope, type ResolvedProseLink } from './prose-links.js'
 import { currentEntityBoost, currentTokenizer } from './retriever.js'
+import { FACTS_RESULT_VERSION } from './tool-executor.js'
 import type { BenchQuery, DocChunk, ThinkingMode, TokenizerId } from './types.js'
 
 export const RUN_INPUTS_SCHEMA_VERSION = 1 as const
@@ -38,6 +40,34 @@ export interface FactsInputObservation {
   error?: string
 }
 
+/** 单条登记对象的可读引用留档；概念保留精确来源位置，卡片保留 canonical 与具体 grant。 */
+export type ProseLinkObjectCapture =
+  | { kind: 'operator'; ref: string; canonical: string }
+  | { kind: 'skill'; ref: string; canonical: string; grantId: string }
+  | {
+      kind: 'concept'
+      ref: string
+      name: string
+      file: string
+      headingPath: string[]
+      occurrence: number
+      term?: string
+      termOccurrence?: number
+      startLine: number
+      endLine: number
+    }
+  | { kind: 'unresolved'; ref: string; reason: string }
+
+/** 每条 v2 登记的定位与对象引用；与 read 台账按 ref 关联，不复制正文。 */
+export interface ProseLinkEntryCapture {
+  sectionId: string
+  file: string
+  headingPath: string[]
+  occurrence: number
+  scope: ProseScope
+  objects: ProseLinkObjectCapture[]
+}
+
 export interface RunInputs {
   schemaVersion: typeof RUN_INPUTS_SCHEMA_VERSION
   captureStatus: 'pending' | 'complete'
@@ -50,6 +80,8 @@ export interface RunInputs {
     definitions: unknown
     redacted: boolean
   }
+  /** 本次运行生效的 facts 结果卡版本；read 与 facts 出口共用同一渲染契约。 */
+  factsResultVersion: number
   config: {
     provider: BenchConfig['provider']
     providerLabel: string
@@ -61,10 +93,14 @@ export interface RunInputs {
     temperature: number | null
     maxTokens: number
     retriever: BenchConfig['retriever']
-    /** 检索语料是否包含技能表；false = 排除九份 references/技能-*.md（ADR-013）。 */
-    includeSkillTables: boolean
+    /** 检索范围：等于 manifest 登记的 base/guides（ADR-021）；历史 inputs 缺失该字段。 */
+    retrievalScope?: 'base-guides'
+    /** 历史字段：旧 inputs 曾记录检索是否含技能表；已退役，仅保留只读兼容，不据其 false 推断新范围。 */
+    includeSkillTables?: boolean
     /** 是否把 base/guides 命中小节扩展到原文文件范围（ADR-013）。 */
     expandFulltext: boolean
+    /** 是否把关键词目录追加到 system prompt（ADR-022 决策 8）；默认关闭。 */
+    injectKeywordCatalog: boolean
     /** RAG 内部 facts 附带的有效开关；未显式声明时随模式默认（ADR-013）。 */
     attachFacts: boolean
     corpusDir: string
@@ -113,6 +149,14 @@ export interface RunInputs {
     sectionCount: number
     orderPreserved: true
   }
+  /** 仅在提供散文小节关联索引时记录；不含正文，逐条保留定位与可读引用。 */
+  links?: {
+    version: number
+    linkCount: number
+    objectCount: number
+    issues: string[]
+    entries: ProseLinkEntryCapture[]
+  }
   facts: FactsInputObservation
 }
 
@@ -131,6 +175,8 @@ export interface RunInputsOptions {
   chunks: DocChunk[]
   /** 可选的运行级小节目录；仅开放阅读能力的模式提供。 */
   sections?: SectionDirectory
+  /** 可选的运行级散文小节关联索引。 */
+  links?: ProseLinkIndex
   sourceAtStart: SourceMetadata
 }
 
@@ -159,6 +205,7 @@ export function createRunInputs(options: RunInputsOptions): RunInputs {
       definitions: toolSchema.value,
       redacted: toolSchema.redacted,
     },
+    factsResultVersion: FACTS_RESULT_VERSION,
     config: {
       provider: options.config.provider,
       providerLabel: configStrings.providerLabel.text,
@@ -170,8 +217,9 @@ export function createRunInputs(options: RunInputsOptions): RunInputs {
       temperature: options.config.temperature ?? null,
       maxTokens: options.config.maxTokens,
       retriever: options.config.retriever,
-      includeSkillTables: options.config.includeSkillTables,
+      retrievalScope: 'base-guides',
       expandFulltext: options.config.expandFulltext,
+      injectKeywordCatalog: options.config.injectKeywordCatalog,
       attachFacts: effectiveAttachFacts(options.config),
       corpusDir: redactSensitiveText(options.config.corpusDir, sensitiveValues),
       tokenizer: currentTokenizer(),
@@ -219,7 +267,50 @@ export function createRunInputs(options: RunInputsOptions): RunInputs {
           },
         }
       : {}),
+    ...(options.links
+      ? {
+          links: {
+            version: PROSE_LINKS_VERSION,
+            linkCount: options.links.links.length,
+            objectCount: options.links.links.reduce((total, link) => total + link.objects.length, 0),
+            issues: options.links.issues.map((issue) => redactSensitiveText(issue, sensitiveValues)),
+            entries: options.links.links.map((link) => captureProseLinkEntry(link, sensitiveValues)),
+          },
+        }
+      : {}),
     facts: { status: 'not_used' },
+  }
+}
+
+/** 单条登记留档：保留定位与可读引用，概念另带精确来源位置；不复制正文或定义原文。 */
+function captureProseLinkEntry(link: ResolvedProseLink, sensitiveValues: Array<string | undefined>): ProseLinkEntryCapture {
+  const ref = (value: string): string => redactSensitiveText(value, sensitiveValues)
+  const objects: ProseLinkObjectCapture[] = [
+    ...link.objects.map((object): ProseLinkObjectCapture => object.kind === 'concept'
+      ? {
+          kind: 'concept',
+          ref: ref(object.ref),
+          name: ref(object.name),
+          file: object.file,
+          headingPath: [...object.headingPath],
+          occurrence: object.occurrence,
+          ...(object.term === undefined ? {} : { term: ref(object.term) }),
+          ...(object.termOccurrence === undefined ? {} : { termOccurrence: object.termOccurrence }),
+          startLine: object.startLine,
+          endLine: object.endLine,
+        }
+      : object.grantId === undefined
+        ? { kind: 'operator', ref: ref(object.ref), canonical: object.canonical }
+        : { kind: 'skill', ref: ref(object.ref), canonical: object.canonical, grantId: object.grantId }),
+    ...link.unresolved.map((item): ProseLinkObjectCapture => ({ kind: 'unresolved', ref: ref(item.ref), reason: ref(item.reason) })),
+  ]
+  return {
+    sectionId: link.sectionId,
+    file: link.file,
+    headingPath: [...link.headingPath],
+    occurrence: link.occurrence,
+    scope: link.scope,
+    objects,
   }
 }
 

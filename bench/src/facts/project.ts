@@ -74,11 +74,19 @@ export function projectRecordCards(options: RecordCardProjectionOptions): Record
         unlockType: grant.unlockText,
         target: fact.rawAnnotationText,
         effectText: resolveSkillEffectText(fact, mode, curations),
+        // 来源标签投影自 SkillFact.tags，raw 与 curated 两种模式一致。
+        tags: [...fact.tags],
+        // 注记数组同样两种模式同源；空注记保持 []，不推断缺项。
+        products: [...fact.products],
+        professions: [...fact.professions],
+        referencedTerms: [...fact.referencedTerms],
         ...(skillNotes.length === 0 ? {} : { notes: skillNotes.join('；') }),
         ...(grant.replacesGrantId === undefined ? {} : { replacesGrantId: grant.replacesGrantId }),
         skillCategories: categoriesBySkill.get(fact.id) ?? [],
         ...(equivalences.length === 0 ? {} : { equivalenceGroupId: equivalences[0].id }),
         ...(equivalences.length === 0 ? {} : { equivalenceSkillNames: [...equivalences[0].skillNames] }),
+        // 共同描述取等价组真源原文，不受 curated effectText 覆盖影响。
+        ...(equivalences.length === 0 ? {} : { equivalenceEffectText: equivalences[0].effectText }),
       }
     })
 

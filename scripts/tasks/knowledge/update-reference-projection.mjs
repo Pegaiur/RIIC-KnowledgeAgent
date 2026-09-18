@@ -1,8 +1,8 @@
 /**
- * 统一投影 references 技能分片中的公共练度说明。
+ * 统一投影 knowledge/raw 技能分片中的公共练度说明。
  *
  * 上游解包生成器不在当前仓库内，因此把跨九个分片的公共说明收敛为
- * 一个可重跑、可检查的投影步骤；设施事实正文仍以各分片的上游输出为准。
+ * 一个可重跑、可检查的投影步骤；设施事实正文仍以各分片的版本控制文本为准。
  */
 import { readFileSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
@@ -20,7 +20,7 @@ export const REFERENCE_ROOMS = [
   '制造站',
 ]
 
-export const GENERATED_HEADER = '<!-- 本文件由上游数据生成；公共练度说明由 scripts/tasks/knowledge/update-reference-projection.mjs 统一投影。 -->'
+export const GENERATED_HEADER = '<!-- 本文件的历史内容由上游生成；当前以版本控制内的文本为输入，本仓库不含该生成脚本，不能承诺重跑即可重建。公共练度说明由 scripts/tasks/knowledge/update-reference-projection.mjs 统一投影。 -->'
 
 export const REFERENCE_PREAMBLE = `**练度门槛**：\`精N\` = 精英化 N 阶段；\`Lv.30\` = 等级 30。
 
@@ -53,11 +53,11 @@ export function projectText(sourceText) {
 }
 
 export function projectReferenceFragments(root, { write = true } = {}) {
-  const referencesDir = join(resolve(root), 'knowledge', 'references')
+  const fragmentsDir = join(resolve(root), 'knowledge', 'raw')
   const changes = []
   for (const room of REFERENCE_ROOMS) {
-    const relativePath = `knowledge/references/技能-${room}.md`
-    const filePath = join(referencesDir, `技能-${room}.md`)
+    const relativePath = `knowledge/raw/技能-${room}.md`
+    const filePath = join(fragmentsDir, `技能-${room}.md`)
     const sourceText = readFileSync(filePath, 'utf-8')
     const projectedText = projectText(sourceText)
     if (projectedText !== sourceText) {
@@ -73,11 +73,11 @@ function main() {
   const root = fileURLToPath(new URL('../../../', import.meta.url))
   const changes = projectReferenceFragments(root, { write: !checkOnly })
   if (checkOnly && changes.length > 0) {
-    throw new Error(`references 公共练度说明未与统一投影一致：${changes.join('、')}`)
+    throw new Error(`raw 技能分片公共练度说明未与统一投影一致：${changes.join('、')}`)
   }
   process.stdout.write(checkOnly
-    ? 'references 公共练度说明投影校验通过：9 个分片一致\n'
-    : `references 公共练度说明已投影：${changes.length} 个分片更新\n`)
+    ? 'raw 技能分片公共练度说明投影校验通过：9 个分片一致\n'
+    : `raw 技能分片公共练度说明已投影：${changes.length} 个分片更新\n`)
 }
 
 const invokedPath = process.argv[1] ? pathToFileURL(resolve(process.argv[1])).href : ''

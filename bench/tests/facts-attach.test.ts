@@ -241,7 +241,8 @@ describe('rag_search 内部 facts 附带集成（hybrid 真实 store）', () => 
   })
 
   it('RAG 正文与附带同时送达仍只扣一次成功额度', async () => {
-    const config = { ...loadConfig(), retriever: 'hybrid' as const }
+    // 无目录夹具显式沿用全文回退，保留 RAG 与 facts 同时送达的前置条件。
+    const config = { ...loadConfig(), retriever: 'hybrid' as const, expandFulltext: true }
     const chunks = [{ id: 'base/甲.md#刻俄柏', file: 'base/甲.md', heading: '刻俄柏', text: '刻俄柏制造站技能说明。', startLine: 1, endLine: 1 }]
     const batch = await createKnowledgeToolExecutor({
       config,
@@ -324,11 +325,15 @@ it('真实 runner 产物与共享快照保留 RAG 送达台账并重算相同汇
       { thinking: 'off', dry: false, outDir: dir, config: { ...loadConfig(), apiKey: '', attachFacts: true } })
     const persisted = JSON.parse(readFileSync(output.jsonlPath, 'utf8').trim().split('\n')[0]!)
     const delivery = persisted.ragDelivery[0]
-    expect(delivery.fulltextRanges.length).toBeGreaterThan(0)
+    // 默认只送达命中小节：不产生整篇原文扩展范围，命中片段按连续正文登记。
+    expect(delivery.fulltextRanges).toEqual([])
+    expect(delivery.fragmentRanges.length).toBeGreaterThan(0)
+    expect(delivery.fragmentRanges.every((range: { kind: string }) => range.kind === 'hit' || range.kind === 'parent_lead')).toBe(true)
     expect(delivery.attachedFacts.some((fact: { delivered: string[] }) => fact.delivered.includes('温蒂'))).toBe(true)
     const meta = JSON.parse(readFileSync(output.metaPath, 'utf8'))
     const report = aggregate(output.records)
     expect(meta.ragDeliveryStats).toEqual(report.ragDeliveryStats)
+    expect(meta.ragDeliveryStats.fragmentRanges).toBe(report.ragDeliveryStats.fragmentRanges)
     expect(meta.ragDeliveryStats.internalFactsQueries).toBe(2)
     const file = join(dir, 'shared.json')
     writeSnapshot(file, snapshotFromRunDir(output.runDir))
@@ -346,7 +351,8 @@ describe('rag_search 内部 facts 异常原子性与预算拒绝（ADR-013 步�
   const ATOMIC_CHUNKS = [{ id: 'base/甲.md#温蒂', file: 'base/甲.md', heading: '温蒂', text: '温蒂制造站技能说明。', startLine: 1, endLine: 1 }]
 
   function atomicExecutor(question: string, injectedIds: string[], overrides: Partial<BenchConfig> = {}) {
-    const config = { ...loadConfig(), retriever: 'hybrid' as const, ...overrides }
+    // 无目录夹具沿用显式全文回退，本组只核对 facts 异常与预算结算。
+    const config = { ...loadConfig(), retriever: 'hybrid' as const, expandFulltext: true, ...overrides }
     return createKnowledgeToolExecutor({
       config,
       query: { id: 'ATOM', category: 'fact', question },

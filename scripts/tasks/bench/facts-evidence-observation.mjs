@@ -342,7 +342,7 @@ async function main() {
 选项：
   --run <path|id>   运行目录（绝对/相对仓库根）或 bench-runs 下的 run-id，必填
   --root <path>     仓库根（默认自动定位）
-  --roster <path>   名册真源路径（默认 <仓库根>/knowledge/references/名册.md；显式指定即视为确认与该运行对应）
+  --roster <path>   名册真源路径（默认 <仓库根>/knowledge/raw/名册.md；显式指定即视为确认与该运行对应）
   --assume-roster-matches  允许用当前名册解释运行记录，即使无法确认与运行版本对应（默认仅在运行 HEAD 与当前一致、运行当时非脏树且当前名册无未提交修改时自动采用）
   --json            以 JSON 输出完整结果
   --help            显示本帮助
@@ -361,7 +361,7 @@ async function main() {
     console.error(`错误：运行目录不存在：${runDir}`)
     process.exit(1)
   }
-  const rosterPath = values.roster ? resolve(values.roster) : join(repoRoot, 'knowledge', 'references', '名册.md')
+  const rosterPath = values.roster ? resolve(values.roster) : join(repoRoot, 'knowledge', 'raw', '名册.md')
   if (!existsSync(rosterPath)) {
     console.error(`错误：名册文件不存在：${rosterPath}`)
     process.exit(1)

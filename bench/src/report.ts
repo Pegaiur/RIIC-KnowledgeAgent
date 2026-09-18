@@ -67,6 +67,7 @@ export interface BenchReport {
   toolUsage: ToolUsageAgg[]
   toolStats: ToolStatsAgg
   ragDeliveryStats: RagDeliveryStats
+  readDeliveryStats: ReadDeliveryStats
 }
 
 /** 内部查询与送达分层；历史或异常缺观测时为 null，不补零。 */
@@ -76,6 +77,44 @@ export interface RagDeliveryStats {
   omittedTerms: number | null
   deliveredCards: number | null
   expandedRanges: number | null
+  /** 实际送达的命中块与父级引导片段数（ADR-022 决策 6）；全文扩展模式为 0，历史缺观测时为 null。 */
+  fragmentRanges: number | null
+  /** 实际写入正文的关联事实入口提示条数（ADR-020）；历史缺观测时为 null。 */
+  linkedHints: number | null
+}
+
+/**
+ * read 送达分层（ADR-022 决策 6）：从 records 的 read 台账重算。
+ * 提示、分页元数据与未送达对象都不计入证据；跨调用重复计卡次。历史缺观测时为 null，不补零。
+ */
+export interface ReadDeliveryStats {
+  calls: number | null
+  successes: number | null
+  /** 读到末尾或空范围、未送达任何证据的页数 */
+  empty: number | null
+  /** 未取得证据的非空结果（含容量错误与参数错误） */
+  errors: number | null
+  /** 实际送达的原文 UTF-16 字符数 */
+  bodyChars: number | null
+  deliveredCards: number | null
+  deliveredConcepts: number | null
+}
+
+/**
+ * 运行级观测声明（ADR-022 决策 6）：只有明确下发 read 的运行，才把「没有 read 调用」记成 0。
+ * 历史运行（read_section 时代）与无法证明下发过 read 的裸记录保持不可用，不把未调用与未观测混同。
+ */
+export interface ReportRunDeclaration {
+  /** 该运行实际下发的工具名；缺省表示无法证明支持新 read 观测。 */
+  toolNames?: readonly string[]
+}
+
+/** 从运行 meta（或快照 meta）提取观测声明；缺 toolNames 或结构不符时返回空声明。 */
+export function runDeclarationFromMeta(meta: unknown): ReportRunDeclaration {
+  if (typeof meta !== 'object' || meta === null) return {}
+  const toolNames = (meta as { toolNames?: unknown }).toolNames
+  if (!Array.isArray(toolNames) || toolNames.some((name) => typeof name !== 'string')) return {}
+  return { toolNames: toolNames as string[] }
 }
 
 /** 按 provider 聚合（跨模型对比用） */
@@ -113,7 +152,8 @@ export interface ToolStatsAgg {
    *  按 ADR-013 决策 5，success 即「RAG/facts 任一部分实际送达非空证据」，故本字段就是实际证据送达计数。 */
   successes: number | null
   /** 已执行且 hitIds 非空的结果数。旧 chunk 命中口径：只统计 RAG 分块/facts 卡命中，
-   *  不含仅由内部附带 facts 送达（hitIds 为空）的 rag_search，故不能等同于证据送达；仅作兼容与诊断保留。 */
+   *  不含仅由内部附带 facts 送达（hitIds 为空）的 rag_search；read_section 的 linked 展开成功时 hitIds 取实际送达 canonical，也计入本项（ADR-020）。
+   *  故不能等同于证据送达；仅作兼容与诊断保留。 */
   hitCount: number
   /** 已执行但旧记录或异常缺少 hitIds 的结果数。 */
   hitUnknown: number
@@ -235,7 +275,11 @@ function tokenValues(records: CostRecord[]): {
  * 从记录数组聚合。
  * TODO(tech-debt) A2：函数较长，可提取局部 groupBy/sum 助手收敛模板；收益低，暂缓。
  */
-export function aggregate(records: CostRecord[], queryContext: readonly ReportQueryContext[] = []): BenchReport {
+export function aggregate(
+  records: CostRecord[],
+  queryContext: readonly ReportQueryContext[] = [],
+  declaration: ReportRunDeclaration = {},
+): BenchReport {
   const byQuery = new Map<string, CostRecord[]>()
   for (const r of records) {
     const list = byQuery.get(r.queryId) ?? []
@@ -354,16 +398,17 @@ export function aggregate(records: CostRecord[], queryContext: readonly ReportQu
     toolUsage: aggregateToolUsage(records),
     toolStats: aggregateToolStats(records),
     ragDeliveryStats: aggregateRagDelivery(records),
+    readDeliveryStats: aggregateReadDelivery(records, declaration),
   }
 }
 
-/** 从共享快照聚合；queries 用于补齐无模型调用的失败题。 */
+/** 从共享快照聚合；queries 用于补齐无模型调用的失败题，meta 提供运行级观测声明。 */
 export function aggregateSnapshot(snapshot: BenchSnapshot): BenchReport {
   return aggregate(snapshot.records, snapshot.queries.map((query) => ({
     id: query.id,
     category: query.category,
     rounds: query.rounds,
-  })))
+  })), runDeclarationFromMeta(snapshot.meta))
 }
 
 /** 聚合独立函数工具调用，统计当前 run 内各工具被调用多少轮。 */
@@ -380,13 +425,15 @@ function aggregateToolUsage(records: CostRecord[]): ToolUsageAgg[] {
 }
 
 function aggregateRagDelivery(records: CostRecord[]): RagDeliveryStats {
-  const unavailable = { internalFactsQueries: null, attachedCalls: null, omittedTerms: null, deliveredCards: null, expandedRanges: null }
+  const unavailable = { internalFactsQueries: null, attachedCalls: null, omittedTerms: null, deliveredCards: null, expandedRanges: null, fragmentRanges: null, linkedHints: null }
   // agent.ts 的 ragDelivery 已排除同批超量拒绝（protocol_rejected，ADR-016），故不能按请求数比对台账长度；
   // 只在「请求过 rag_search 却缺整套送达台账」时判不可用，保留真正缺失数据的判定，不伪造成零送达。
   if (records.some((record) => (record.tools ?? []).includes('rag_search') && record.ragDelivery === undefined)) return unavailable
   const calls = records.flatMap((record) => record.ragDelivery ?? [])
   const factsKnown = calls.every((call) => call.attachedFacts !== undefined)
   const facts = calls.flatMap((call) => call.attachedFacts ?? [])
+  const linkedKnown = calls.every((call) => call.linkedEntries !== undefined)
+  const linked = calls.flatMap((call) => call.linkedEntries ?? [])
   return {
     internalFactsQueries: factsKnown ? facts.length : null,
     attachedCalls: factsKnown ? calls.filter((call) => call.attachedFacts?.some((fact) => fact.delivered.length > 0)).length : null,
@@ -395,7 +442,61 @@ function aggregateRagDelivery(records: CostRecord[]): RagDeliveryStats {
     deliveredCards: factsKnown ? sum(calls.map((call) => new Set(call.attachedFacts?.flatMap((fact) => fact.delivered)).size)) : null,
     expandedRanges: calls.every((call) => call.fulltextRanges !== undefined)
       ? calls.flatMap((call) => call.fulltextRanges ?? []).filter((range) => range.endOffset > range.offset).length : null,
+    // 命中块与父级引导片段：全文扩展模式已由 fulltextRanges 登记，不重复计；历史缺字段为不可用。
+    fragmentRanges: calls.every((call) => call.fragmentRanges !== undefined)
+      ? calls.flatMap((call) => call.fragmentRanges ?? []).filter((range) => range.docEndOffset > range.docOffset).length : null,
+    linkedHints: linkedKnown ? linked.filter((entry) => entry.written).length : null,
   }
+}
+
+/**
+ * read 送达统计：从 records 的台账重算。
+ * 旧运行使用已退役的 read_section 时整体不可用（null）；没有 read 调用的运行也只有在明确下发过
+ * read（declaration）时才记 0，否则与未观测无法区分，同样返回 null。
+ * 台账覆盖不完整（请求过 read 却缺条目或条目数与准入调用不符）不按残缺数据出数。
+ * 逐字段判定可用性：任一调用缺该字段（如送达前失败未记实际范围）即该字段不可用（null），
+ * 只把已观察到的空值记为 0。
+ */
+function aggregateReadDelivery(records: CostRecord[], declaration: ReportRunDeclaration): ReadDeliveryStats {
+  const unavailable: ReadDeliveryStats = {
+    calls: null, successes: null, empty: null, errors: null, bodyChars: null, deliveredCards: null, deliveredConcepts: null,
+  }
+  if (records.some((record) => (record.tools ?? []).includes('read_section'))) return unavailable
+  if (records.some((record) => (record.tools ?? []).includes('read') && record.readDelivery === undefined)) return unavailable
+  if (records.some(readLedgerMismatch)) return unavailable
+
+  const calls = records.flatMap((record) => record.readDelivery ?? [])
+  // 「未调用」与「未观测」必须分开：只有该运行明确支持新观测时，零次 read 才记 0。
+  if (calls.length === 0 && declaration.toolNames?.includes('read') !== true) return unavailable
+  const successes = calls.filter((call) => call.status === 'success').length
+  const empty = calls.filter((call) => call.status === 'empty').length
+  const bodyKnown = calls.every((call) => call.bodyRange !== undefined)
+  const objectsKnown = calls.every((call) => call.deliveredObjects !== undefined)
+  const objects = calls.flatMap((call) => call.deliveredObjects ?? [])
+  return {
+    calls: calls.length,
+    successes,
+    empty,
+    errors: calls.length - successes - empty,
+    bodyChars: bodyKnown
+      ? sum(calls.map((call) => (call.bodyRange ? call.bodyRange.endOffset - call.bodyRange.offset : 0)))
+      : null,
+    deliveredCards: objectsKnown ? objects.filter((object) => object.kind === 'card').length : null,
+    deliveredConcepts: objectsKnown ? objects.filter((object) => object.kind === 'concept').length : null,
+  }
+}
+
+/**
+ * read 台账覆盖检查：单调用规则下每次模型步骤至多准入首项调用，其余为同批超量拒绝（read 不入台账），
+ * 因此每条记录最多一条 read 台账，且只应出现在首项确为 read 时。
+ * 请求名未全部登记（首项身份无法判定）时只拒绝多于一条的台账，避免把历史记录误判为不完整。
+ */
+function readLedgerMismatch(record: CostRecord): boolean {
+  const ledger = record.readDelivery?.length ?? 0
+  const tools = record.tools ?? []
+  const requested = record.toolBatch?.requested ?? tools.length
+  if (requested !== tools.length) return ledger > 1
+  return ledger !== (tools[0] === 'read' ? 1 : 0)
 }
 
 function aggregateToolStats(records: CostRecord[]): ToolStatsAgg {
@@ -453,7 +554,8 @@ export function renderMarkdown(report: BenchReport): string {
     `- HTTP 尝试：${report.totalHttpAttempts}｜重试：${report.retryAttempts}`,
     `- 每查询输出 tokens：均值 ${avgOut}｜P95 ${p95Out.toLocaleString()}`,
     `- 工具批次：${report.toolStats.batches}｜提出 ${report.toolStats.requested}｜准入 ${report.toolStats.granted}｜执行 ${report.toolStats.executed}｜拒绝（预算/同批超量拒绝） ${report.toolStats.denied}｜错误 ${report.toolStats.errors}｜获准尝试 ${nullable(report.toolStats.attempts)}｜证据送达（成功） ${nullable(report.toolStats.successes)}｜有命中（旧 chunk 口径，不含 facts-only 送达） ${report.toolStats.hitCount}｜命中未知 ${report.toolStats.hitUnknown}`,
-    `- RAG 送达：原文范围 ${nullable(report.ragDeliveryStats.expandedRanges)}｜显式 facts_search ${report.toolUsage.find((item) => item.tool === 'facts_search')?.calls ?? 0}｜内部 facts 查询 ${nullable(report.ragDeliveryStats.internalFactsQueries)}｜实际附带调用 ${nullable(report.ragDeliveryStats.attachedCalls)}｜未附带词条 ${nullable(report.ragDeliveryStats.omittedTerms)}｜送达卡次 ${nullable(report.ragDeliveryStats.deliveredCards)}`,
+    `- RAG 送达：原文范围 ${nullable(report.ragDeliveryStats.expandedRanges)}｜命中片段 ${nullable(report.ragDeliveryStats.fragmentRanges)}｜显式 facts_search ${report.toolUsage.find((item) => item.tool === 'facts_search')?.calls ?? 0}｜内部 facts 查询 ${nullable(report.ragDeliveryStats.internalFactsQueries)}｜实际附带调用 ${nullable(report.ragDeliveryStats.attachedCalls)}｜未附带词条 ${nullable(report.ragDeliveryStats.omittedTerms)}｜送达卡次 ${nullable(report.ragDeliveryStats.deliveredCards)}｜关联入口 ${nullable(report.ragDeliveryStats.linkedHints)}`,
+    `- read 送达：调用 ${nullable(report.readDeliveryStats.calls)}｜成功 ${nullable(report.readDeliveryStats.successes)}｜空 ${nullable(report.readDeliveryStats.empty)}｜错误 ${nullable(report.readDeliveryStats.errors)}｜原文字符 ${nullable(report.readDeliveryStats.bodyChars)}｜送达记录卡 ${nullable(report.readDeliveryStats.deliveredCards)}｜送达概念 ${nullable(report.readDeliveryStats.deliveredConcepts)}`,
     ...(report.toolUsage.length > 0
       ? [`- 工具调用：${report.toolUsage.map((u) => `${u.tool} ${u.calls} 次`).join('｜')}`]
       : []),

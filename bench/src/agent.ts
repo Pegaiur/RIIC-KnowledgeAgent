@@ -13,6 +13,7 @@ import { callLLM, type ChatMessage, type ProviderCallLedger, type ProviderOption
 import { aggregateAttemptCosts, aggregateUsages, computeCosts } from './pricing.js'
 import { isObservedTool } from './types.js'
 import type { SectionDirectory } from './sections.js'
+import type { ProseLinkIndex } from './prose-links.js'
 import { markTraceFailed, type QueryTrace, type TraceFailure, type TraceLlmEvent, type TraceToolEvent } from './trace.js'
 import type { CardStore } from './facts/store.js'
 import {
@@ -54,8 +55,12 @@ export interface AgentOptions {
   onFactsStoreUsed?: (store: CardStore) => void
   /** facts store 加载失败时的观测回调；工具仍返回原有错误。 */
   onFactsStoreLoadFailed?: (error: unknown) => void
+  /** 运行级 facts 卡片快照提供者；由 runner 装配，供 facts 工具与 read 共用同一份实例。 */
+  factsStore?: () => CardStore
   /** 运行级原文小节目录；由 runner 按开放阅读能力的模式提供。 */
   sections?: SectionDirectory
+  /** 运行级散文小节关联索引；由 runner 装配，供 RAG 提示入口与 read 返回登记事实。 */
+  links?: ProseLinkIndex
   /** 可选的单题执行记录。 */
   trace?: QueryTrace
   thinking: ThinkingMode
@@ -72,8 +77,12 @@ class AgentExecutionError extends Error {
   }
 }
 
-/** 读取查询 Agent 的决策契约；只在构建提示时读取，不产生模块顶层副作用。 */
-export function loadKnowledgeAgentInstructions(root = process.cwd()): string {
+/**
+ * 读取查询 Agent 的决策契约；只在构建提示时读取，不产生模块顶层副作用。
+ * 单一人工指令源是 knowledge/AGENTS.md；是否在其后追加机器汇总关键词目录由有效配置决定（ADR-022 决策 8）：
+ * 关闭时只读 AGENTS.md，目录缺失不报错；开启时按原格式追加，读取失败或为空按中文错误失败。
+ */
+export function loadKnowledgeAgentInstructions(root = process.cwd(), injectKeywordCatalog = false): string {
   let content: string
   try {
     content = readFileSync(join(root, 'knowledge', 'AGENTS.md'), 'utf-8')
@@ -83,10 +92,27 @@ export function loadKnowledgeAgentInstructions(root = process.cwd()): string {
   }
   const instructions = content.trim()
   if (!instructions) throw new Error('查询 Agent 决策契约为空：knowledge/AGENTS.md')
-  return instructions
+  if (!injectKeywordCatalog) return instructions
+
+  let catalog: string
+  try {
+    catalog = readFileSync(join(root, 'knowledge', '关键词目录.md'), 'utf-8')
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error)
+    throw new Error(`读取查询 Agent 关键词目录失败（knowledge/关键词目录.md）：${detail}`)
+  }
+  // 生成物首行的 provenance HTML 注释（勿手改/重算入口）属维护信息，不作为模型指令注入。
+  const catalogText = catalog.replace(/^<!--[^\n]*-->\s*\n+/u, '').trim()
+  if (!catalogText) throw new Error('查询 Agent 关键词目录为空：knowledge/关键词目录.md')
+
+  return `${instructions}\n\n${catalogText}`
 }
 
-/** 构建系统提示；人工规则只来自 AGENTS.md，模式差异由实际工具 schema 描述。 */
+/**
+ * 构建系统提示；人工规则只来自 AGENTS.md，模式差异由实际工具 schema 描述。
+ * 关键词目录是否随指令注入由调用方按有效配置装配（runner 与 runQuery 的兜底都显式传入），
+ * 缺省入参等于默认配置（不注入目录），不存在恒定注入的旁路。
+ */
 export function buildSystemPrompt(
   retriever: RetrieverId = 'hybrid',
   agentInstructions = loadKnowledgeAgentInstructions(),
@@ -119,12 +145,14 @@ export async function runQuery(
     chunks,
     index,
     sections: opts.sections,
+    links: opts.links,
     injectedIds,
     onFactsStoreUsed: opts.onFactsStoreUsed,
     onFactsStoreLoadFailed: opts.onFactsStoreLoadFailed,
+    factsStore: opts.factsStore,
   }, config.toolBudget)
   const messages: ChatMessage[] = [
-    { role: 'system', content: opts.systemPrompt ?? buildSystemPrompt(config.retriever, opts.agentInstructions ?? loadKnowledgeAgentInstructions(), config.toolBudget, config.toolAttemptLimit) },
+    { role: 'system', content: opts.systemPrompt ?? buildSystemPrompt(config.retriever, opts.agentInstructions ?? loadKnowledgeAgentInstructions(process.cwd(), config.injectKeywordCatalog), config.toolBudget, config.toolAttemptLimit) },
     { role: 'user', content: query.question },
   ]
   const sessionController = new AbortController()
@@ -287,6 +315,7 @@ export async function runQuery(
           status: item.status,
           // 未执行的拒绝/参数错误确认为零；执行异常缺观测时保持不可用。
           fulltextRanges: item.fulltextRanges ?? (item.executed ? undefined : []),
+          fragmentRanges: item.fragmentRanges ?? (item.executed ? undefined : []),
           attachedFacts: item.attachedFacts?.map((fact) => ({
             ...fact,
             paths: fact.paths.map((path) => ({
@@ -294,7 +323,13 @@ export async function runQuery(
               ...('category' in path ? { category: path.category } : {}),
             })),
           })) ?? (item.fulltextRanges !== undefined || !item.executed ? [] : undefined),
+          // 关联事实入口提示：rag_search 每次都确定性给出（无提示为空数组），未执行也如实记空，避免一次参数错误令整轮指标不可用。
+          linkedEntries: item.linkedEntries ?? [],
         }))
+        // read 台账按 callId 保存；只在识别到的新 read 调用上存在，同批超量拒绝不计。
+        record.readDelivery = batch.results
+          .filter((item) => item.operation === 'read' && item.status !== 'protocol_rejected')
+          .flatMap((item) => (item.readDelivery === undefined ? [] : [item.readDelivery]))
         if (llmEvent) llmEvent.toolBatch = toolBatch
 
         const pendingMessages: ChatMessage[] = []
@@ -321,7 +356,10 @@ export async function runQuery(
             toolEvent.hitIds = item.hitIds
             toolEvent.injectedIds = item.injectedIds
             toolEvent.fulltextRanges = item.fulltextRanges
+            toolEvent.fragmentRanges = item.fragmentRanges
             toolEvent.attachedFacts = item.attachedFacts
+            toolEvent.linkedEntries = item.linkedEntries
+            toolEvent.readDelivery = item.readDelivery
             toolEvent.writtenContent = writtenContent
             toolEvent.reason = item.message
             if (isToolErrorStatus(item.status)) toolEvent.error = item.message

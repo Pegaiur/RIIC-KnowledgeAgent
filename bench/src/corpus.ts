@@ -1,7 +1,8 @@
 /**
  * 语料加载与分块
  *
- * 输入：corpusDir/corpus-manifest.json 显式登记的 Markdown；未登记文件默认不进入检索。
+ * 输入：corpusDir/corpus-manifest.json 显式登记的 Markdown（仅接受 base/ 与 guides/ 前缀）；未登记文件默认不进入检索。
+ * gold 定位目录（loadGoldAnchorChunks）另行叠加显式声明的 raw 机械真源，与检索范围分离。
  * 散文语料已废弃（2026-09-03，见 docs/notes-corpus-purge.md），facts-first 重建后 facts 模式由 facts_search 取代
  * 输出：按 ## / ### 标题切分的 DocChunk 数组；超长标题节按段落二次切分。
  */
@@ -73,6 +74,7 @@ function resolveManifestFiles(corpusRoot: string, entries: readonly string[]): R
     throw new Error(`无法解析语料根目录：${root}`)
   }
   const seen = new Set<string>()
+  const baseNames = new Map<string, string>()
   const result: ResolvedManifestFile[] = []
 
   entries.forEach((entry, index) => {
@@ -101,9 +103,22 @@ function resolveManifestFiles(corpusRoot: string, entries: readonly string[]): R
     }
     seen.add(duplicateKey)
 
+    // 文档范围 ID 只保留文件名，跨目录同名会让整篇入口指向不明来源。
+    const baseName = docId.slice(docId.lastIndexOf('/') + 1)
+    const baseKey = process.platform === 'win32' ? baseName.toLowerCase() : baseName
+    const previousPath = baseNames.get(baseKey)
+    if (previousPath !== undefined) {
+      throw new Error(`语料白名单存在跨目录同名文件：${previousPath} 与 ${docId}；文档范围 ID 只保留文件名，请重命名其中一个`)
+    }
+    baseNames.set(baseKey, docId)
+
     const lowerDocId = docId.toLowerCase()
     if (lowerDocId === 'skill.md' || lowerDocId.endsWith('/skill.md')) {
       throw new Error(`语料白名单禁止登记 SKILL.md：${entry}`)
+    }
+    // 按归一化后的目标限制范围，避免 base/../raw/ 一类路径绕过（ADR-021）。
+    if (!isFulltextFile(docId)) {
+      throw new Error(`语料白名单只允许登记 base/ 与 guides/ 下的文件：${entry}`)
     }
 
     let fileStat: ReturnType<typeof lstatSync>
@@ -127,6 +142,10 @@ function resolveManifestFiles(corpusRoot: string, entries: readonly string[]): R
     }
     if (isOutsideRoot(relative(physicalRoot, physicalFilePath))) {
       throw new Error(`语料白名单路径越出语料根目录：${entry}`)
+    }
+    // 父目录也可能是链接；物理目标即使仍在语料根内，也不能落入 raw 等非检索目录。
+    if (!isFulltextFile(toDocumentId(relative(physicalRoot, physicalFilePath)))) {
+      throw new Error(`语料白名单只允许登记 base/ 与 guides/ 下的文件：${entry}`)
     }
 
     result.push({ fullPath, docId })
@@ -241,31 +260,84 @@ export function clampTexts(chunks: DocChunk[], maxChars: number): DocChunk[] {
   })
 }
 
-/** 技能表文件判定：references/ 下九份 `技能-*.md`（ADR-013 检索范围收缩对象，不含技能等价组）。 */
-const SKILL_TABLE_FILE_RE = /^references\/技能-[^/]+\.md$/
-
-export function isSkillTableFile(file: string): boolean {
-  return SKILL_TABLE_FILE_RE.test(file)
-}
-
-/** 原文扩展候选：base 与 guides 语料（references 仍按原块返回，ADR-013）。 */
+/** 原文扩展候选：manifest 登记的 base 与 guides 语料（ADR-013；raw 不进入检索与阅读目录）。 */
 export function isFulltextFile(file: string): boolean {
   return file.startsWith('base/') || file.startsWith('guides/')
 }
 
-/**
- * 按检索范围装配分块：includeSkillTables=false 时排除九份技能表（ADR-013）。
- * 过滤在建索引前执行，返回数组与索引下标配套使用；不改 knowledge 真源与 corpus-manifest 语义。
- */
-export function selectRetrievalChunks(chunks: DocChunk[], options: { includeSkillTables: boolean }): DocChunk[] {
-  return options.includeSkillTables ? chunks : chunks.filter((chunk) => !isSkillTableFile(chunk.file))
-}
-
-/** 加载整个语料库并分块 */
+/** 加载整个语料库并分块：范围等于 manifest 声明的全部块（ADR-021，不再有技能表过滤）。 */
 export function loadCorpus(corpusRoot: string, maxChars?: number): DocChunk[] {
   const files = collectMarkdownFiles(corpusRoot)
   const chunks = files.flatMap((f) => splitChunks(f, corpusRoot))
   return maxChars !== undefined ? clampTexts(chunks, maxChars) : chunks
+}
+
+/**
+ * gold 完整定位目录（ADR-021 步骤 6）：manifest 原文分块 + 显式传入的 raw 机械真源分块。
+ * 与检索范围分离：只用于解析 gold 定位，不参与排序，也不进入模型原文阅读目录。
+ * 只读调用方给出的显式清单，不递归扫描 raw；路径越界、非 raw/、符号链接或缺失都直接失败。
+ */
+export function loadGoldAnchorChunks(corpusRoot: string, rawDocIds: readonly string[]): DocChunk[] {
+  const root = resolve(corpusRoot)
+  const rawFiles = resolveRawSourceFiles(root, rawDocIds)
+  return [...loadCorpus(root), ...rawFiles.flatMap((file) => splitChunks(file, root))]
+}
+
+/** 校验并解析 raw 真源清单为绝对路径；与 manifest 白名单共用同样的越界与链接检查。 */
+function resolveRawSourceFiles(corpusRoot: string, docIds: readonly string[]): string[] {
+  let physicalRoot: string
+  try {
+    physicalRoot = realpathSync(corpusRoot)
+  } catch {
+    throw new Error(`无法解析语料根目录：${corpusRoot}`)
+  }
+
+  return docIds.map((docId, index) => {
+    if (typeof docId !== 'string' || docId.trim().length === 0) {
+      throw new Error(`gold 定位真源第 ${index + 1} 项必须是非空字符串`)
+    }
+    const normalizedPath = docId.trim().replaceAll('\\', '/')
+    if (!normalizedPath.toLowerCase().endsWith('.md')) {
+      throw new Error(`gold 定位真源只接受 Markdown 文件：${docId}`)
+    }
+    if (isAbsolute(docId) || posix.isAbsolute(normalizedPath) || win32.isAbsolute(normalizedPath)) {
+      throw new Error(`gold 定位真源必须是相对语料根目录的路径：${docId}`)
+    }
+    if (!normalizedPath.startsWith('raw/')) {
+      throw new Error(`gold 定位真源只接受 raw/ 下的文件：${docId}`)
+    }
+
+    const fullPath = resolve(corpusRoot, ...normalizedPath.split('/'))
+    if (isOutsideRoot(relative(corpusRoot, fullPath))) {
+      throw new Error(`gold 定位真源路径越出语料根目录：${docId}`)
+    }
+
+    let fileStat: ReturnType<typeof lstatSync>
+    try {
+      fileStat = lstatSync(fullPath)
+    } catch {
+      throw new Error(`gold 定位真源不存在：${docId}`)
+    }
+    if (fileStat.isSymbolicLink()) {
+      throw new Error(`gold 定位真源不允许符号链接：${docId}`)
+    }
+    if (!fileStat.isFile()) {
+      throw new Error(`gold 定位真源不是普通文件：${docId}`)
+    }
+
+    let physicalFilePath: string
+    try {
+      physicalFilePath = realpathSync(fullPath)
+    } catch {
+      throw new Error(`gold 定位真源不存在：${docId}`)
+    }
+    const physicalDocId = toDocumentId(relative(physicalRoot, physicalFilePath))
+    if (isOutsideRoot(relative(physicalRoot, physicalFilePath)) || !physicalDocId.startsWith('raw/')) {
+      throw new Error(`gold 定位真源路径越出 raw/ 目录：${docId}`)
+    }
+
+    return fullPath
+  })
 }
 
 /** 语料统计（白名单文件存在性检查） */

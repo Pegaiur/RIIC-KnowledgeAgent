@@ -1,8 +1,10 @@
 /**
  * RAG 玩家侧散文术语检查。
  *
- * 只扫描人工清洗层 knowledge/base 与 knowledge/guides；references 为上游直出层，
- * 历史 recommendation 将在白名单切换后退出运行时，不据此规则批量改写。
+ * 只扫描人工清洗层 knowledge/base 与 knowledge/guides；knowledge/raw 为版本控制内的
+ * 机械真源，保留字段格式与原始措辞，不整套进入本检查。
+ * knowledge/guides/类别.md 与 knowledge/guides/歧义.md 是保留原格式的参考资料，
+ * 按下方精确路径整文件豁免（规则见 docs/rules/rag-prose-terminology.md）。
  */
 
 import { existsSync, readFileSync, readdirSync } from 'fs'
@@ -13,6 +15,15 @@ const scriptDir = dirname(fileURLToPath(import.meta.url))
 const root = resolve(scriptDir, '..')
 
 const scanRoots = ['knowledge/base', 'knowledge/guides']
+
+/**
+ * 保留原格式的参考资料：按精确仓库相对路径整文件豁免。
+ * 只登记这两个文件，不按头注、文件名模式或整个 knowledge/guides 放宽。
+ */
+const preservedReferenceFiles = new Set([
+  'knowledge/guides/类别.md',
+  'knowledge/guides/歧义.md',
+])
 
 const forbiddenTerms = [
   { pattern: /星级/u, replacement: '稀有度' },
@@ -39,31 +50,50 @@ function collectMarkdownFiles(dir) {
   })
 }
 
-const issues = []
-for (const scanRoot of scanRoots) {
-  for (const file of collectMarkdownFiles(resolve(root, scanRoot))) {
-    const lines = readFileSync(file, 'utf8').split(/\r?\n/u)
-    for (let index = 0; index < lines.length; index += 1) {
-      for (const term of forbiddenTerms) {
-        const match = term.pattern.exec(lines[index])
-        if (!match) continue
-        issues.push({
-          file: relative(root, file).replaceAll('\\', '/'),
-          line: index + 1,
-          term: match[0],
-          replacement: term.replacement,
-        })
+/**
+ * 扫描扫描根下的散文语料，返回问题数组（仓库相对路径、行号、命中词与替换建议）。
+ * 目录不存在或无 markdown 时返回空数组，不抛错。
+ * @param {string} targetRoot 仓库根；CLI 传脚本自身定位的仓库根，测试可注入临时根
+ */
+export function collectProseTermIssues(targetRoot) {
+  const resolvedRoot = resolve(targetRoot)
+  const issues = []
+  for (const scanRoot of scanRoots) {
+    for (const file of collectMarkdownFiles(resolve(resolvedRoot, scanRoot))) {
+      const relativePath = relative(resolvedRoot, file).replaceAll('\\', '/')
+      // 精确路径例外：保留原格式的参考资料整文件跳过禁词匹配。
+      if (preservedReferenceFiles.has(relativePath)) continue
+      const lines = readFileSync(file, 'utf8').split(/\r?\n/u)
+      for (let index = 0; index < lines.length; index += 1) {
+        for (const term of forbiddenTerms) {
+          const match = term.pattern.exec(lines[index])
+          if (!match) continue
+          issues.push({
+            file: relativePath,
+            line: index + 1,
+            term: match[0],
+            replacement: term.replacement,
+          })
+        }
       }
     }
   }
+  return issues
 }
 
-if (issues.length > 0) {
-  console.error(`❌ RAG 散文术语检查失败：发现 ${issues.length} 处非规范写法`)
-  for (const issue of issues) {
-    console.error(`- ${issue.file}:${issue.line} “${issue.term}” → ${issue.replacement}`)
+// isMain 守卫：直调时执行检查；被 import（vitest）时仅暴露纯函数，无副作用。
+const isMain =
+  Boolean(process.argv[1]) &&
+  resolve(fileURLToPath(import.meta.url)).toLowerCase() === resolve(process.argv[1]).toLowerCase()
+if (isMain) {
+  const issues = collectProseTermIssues(root)
+  if (issues.length > 0) {
+    console.error(`❌ RAG 散文术语检查失败：发现 ${issues.length} 处非规范写法`)
+    for (const issue of issues) {
+      console.error(`- ${issue.file}:${issue.line} “${issue.term}” → ${issue.replacement}`)
+    }
+    process.exitCode = 1
+  } else {
+    console.log('✅ RAG 散文术语检查通过')
   }
-  process.exitCode = 1
-} else {
-  console.log('✅ RAG 散文术语检查通过')
 }

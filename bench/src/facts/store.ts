@@ -2,12 +2,15 @@
  * 运行时记录卡内存 store + 检索索引（plan 步骤 5）。
  *
  * 运行时以最终门禁通过的全量 RecordCard 为源；fixture 只保留为回归基线。
- * factsSearch 返回六类规范词条与人工登记入口的查询级结果；lookup/queryOperators 仅供旧数据调用者和历史回归使用。
+ * factsSearch 返回六类规范词条与人工登记入口的查询级结果；factsSearchByTags 走「标签 → 设施 → 技能 → grant → 干员」派生，
+ * 只做来源标签 trim 后精确匹配，不自动合并同名职业/设施/技能组。
+ * lookup/queryOperators 仅供旧数据调用者和历史回归使用。
  * 不做落盘、不做自然语言解析、不做模糊兜底；子串仅按人工登记的短名做确定性展开，不做任意子串扫描。
  */
-import type { RecordCard } from './card.js'
+import type { RecordCard, RecordSkill } from './card.js'
 import { TERM_CURATIONS } from './curation/terms.js'
 import { loadValidatedRecordCards } from './final.js'
+import { REFERENCE_ROOMS } from './references.js'
 import {
   EMPTY_TERM_CURATIONS,
   validateTermCurations,
@@ -57,6 +60,36 @@ export interface FactsSearchResult {
   matches: FactsMatch[]
 }
 
+/** 单条标签命中依据：来源标签 → 设施 → 技能 → grant（解锁与替换随 grant）。 */
+export interface TagHit {
+  tag: string
+  canonical: string
+  room: string
+  skillName: string
+  /** grant 稳定 ID；兼容旧 fixture 时可缺省 */
+  grantId?: string
+  unlockType: string
+  /** 被替换的具体 grant；仅升级技能存在 */
+  replacesGrantId?: string
+}
+
+/** 单张记录卡的标签命中聚合：卡级去重，同卡多命中保留全部依据。 */
+export interface TagCardMatch {
+  card: RecordCard
+  /** 本次命中涉及的 grant ID（去重、按命中顺序）；无 grant 的旧 fixture 为空数组 */
+  matchedGrantIds: string[]
+  hits: TagHit[]
+}
+
+/** 标签反查结果：命中/未收录标签与按设施序稳定排序的卡级聚合。 */
+export interface TagSearchResult {
+  /** trim 后精确命中的来源标签（按输入顺序去重） */
+  matchedTags: string[]
+  /** 未收录的来源标签（按输入顺序去重） */
+  missingTags: string[]
+  cards: TagCardMatch[]
+}
+
 /** query_operators 过滤条件（正向条件由派发层校验；不含数值 minEff / 效率排序） */
 export interface OperatorFilters {
   room?: string
@@ -98,6 +131,8 @@ export interface CardStore {
   entryDictionary: FactsEntryDictionary
   /** 当前 facts 对外入口：六类词条与人工登记入口全部命中，按卡稳定去重。 */
   factsSearch: (query: string) => FactsSearchResult
+  /** 标签反查入口：按来源标签精确匹配，派生设施/技能/grant/干员并按卡去重。 */
+  factsSearchByTags: (tags: readonly string[]) => TagSearchResult
   lookup: (term: string) => RecordCard[]
   queryOperators: (filters: OperatorFilters) => RecordCard[]
 }
@@ -107,6 +142,55 @@ export interface CardSerializationFilters {
   termQuery?: string
   /** 标记 query_operators 输出，以加入卡级属性与技能投影范围说明。 */
   queryOperators?: boolean
+  /**
+   * read 关联的精确技能投影（ADR-022 决策 5）：只渲染指定 grant 及其被替换链，
+   * 不加入同卡其它设施或无关技能；卡头标为干员全局属性，每条技能标明引用关系。
+   */
+  projectionGrantIds?: readonly string[]
+}
+
+/** 技能引用关系标签：登记对象本身为「明确引用」，沿 replacesGrantId 补齐的为「替换依据」。 */
+export type SkillReferenceLabel = '明确引用' | '替换依据'
+
+export interface SkillProjection {
+  /** 按卡内原始顺序排列的投影技能 */
+  skills: RecordSkill[]
+  /** grantId → 引用关系标签 */
+  labels: Map<string, SkillReferenceLabel>
+}
+
+/**
+ * read 关联的技能精确投影：登记引用的 grant（明确引用）＋沿 replacesGrantId 补齐的被替换链（替换依据）。
+ * 只做卡内查找，不跨卡扩张；环状关系与已入选项保持稳定跳过。
+ * 明确引用或被替换依据在卡内不存在时直接报错，不静默跳过该项（否则会返回技能数为 0 的「成功」投影）。
+ * 先登记全部明确引用再补替换链，使标签不受登记顺序影响（先引用的升级技能不会把后引用的被替换技能降级）。
+ */
+export function skillProjection(card: RecordCard, explicitGrantIds: readonly string[]): SkillProjection {
+  const byGrantId = new Map<string, RecordSkill>()
+  for (const skill of card.skills) {
+    if (skill.grantId !== undefined && !byGrantId.has(skill.grantId)) byGrantId.set(skill.grantId, skill)
+  }
+  const labels = new Map<string, SkillReferenceLabel>()
+  for (const grantId of explicitGrantIds) {
+    if (!byGrantId.has(grantId)) {
+      throw new Error(`记录卡缺少关联明确引用的技能 grant：${card.canonical}｜${grantId}；不会返回零技能的投影卡。`)
+    }
+    labels.set(grantId, '明确引用')
+  }
+  for (const grantId of explicitGrantIds) {
+    let current = byGrantId.get(grantId)!.replacesGrantId
+    while (current !== undefined && !labels.has(current)) {
+      if (!byGrantId.has(current)) {
+        throw new Error(`记录卡缺少关联技能的被替换依据 grant：${card.canonical}｜${current}；不会返回缺链的投影卡。`)
+      }
+      labels.set(current, '替换依据')
+      current = byGrantId.get(current)!.replacesGrantId
+    }
+  }
+  return {
+    skills: card.skills.filter((skill) => skill.grantId !== undefined && labels.has(skill.grantId)),
+    labels,
+  }
 }
 
 function addTerm(byTerm: Map<string, Set<string>>, term: string, canonical: string): void {
@@ -147,6 +231,8 @@ interface TermIndexes {
   aliasesByTerm: Map<string, AliasEntry[]>
   substringsByTerm: Map<string, SubstringEntry>
   combosByTerm: Map<string, ComboEntry>
+  /** 来源标签 → 命中项（标签 → 设施 → 技能 → grant）。 */
+  tagIndex: Map<string, TagHit[]>
 }
 
 /** 构建检索索引并执行人工登记校验。 */
@@ -157,6 +243,7 @@ function buildTermIndexes(cards: RecordCard[], terms: TermCurations): TermIndexe
   const aliasesByTerm = new Map<string, AliasEntry[]>()
   const substringsByTerm = new Map<string, SubstringEntry>()
   const combosByTerm = new Map<string, ComboEntry>()
+  const tagIndex = new Map<string, TagHit[]>()
 
   for (const card of cards) {
     if (!card.canonical) throw new Error('记录卡 canonical 不能为空')
@@ -171,6 +258,21 @@ function buildTermIndexes(cards: RecordCard[], terms: TermCurations): TermIndexe
       for (const equivalenceName of skill.equivalenceSkillNames ?? []) {
         addTerm(byTerm, equivalenceName, card.canonical)
         addFactTerm(byFactTerm, equivalenceName, 'skill', card.canonical)
+      }
+      for (const rawTag of skill.tags ?? []) {
+        const tag = rawTag.trim()
+        if (!tag) continue
+        const hits = tagIndex.get(tag) ?? []
+        hits.push({
+          tag,
+          canonical: card.canonical,
+          room: skill.room ?? '',
+          skillName: skill.name,
+          ...(skill.grantId === undefined ? {} : { grantId: skill.grantId }),
+          unlockType: skill.unlockType,
+          ...(skill.replacesGrantId === undefined ? {} : { replacesGrantId: skill.replacesGrantId }),
+        })
+        tagIndex.set(tag, hits)
       }
     }
     for (const group of card.skillGroups) {
@@ -187,12 +289,32 @@ function buildTermIndexes(cards: RecordCard[], terms: TermCurations): TermIndexe
   for (const substring of validatedTerms.substrings) substringsByTerm.set(substring.text, substring)
   for (const combo of validatedTerms.combos) combosByTerm.set(combo.name, combo)
 
-  return { byCanonical, byTerm, byFactTerm, aliasesByTerm, substringsByTerm, combosByTerm }
+  return { byCanonical, byTerm, byFactTerm, aliasesByTerm, substringsByTerm, combosByTerm, tagIndex }
+}
+
+/** 按输入顺序去重的字符串列表（保留首次出现顺序）。 */
+function dedupeValues(values: readonly string[]): string[] {
+  const seen = new Set<string>()
+  const result: string[] = []
+  for (const value of values) {
+    if (seen.has(value)) continue
+    seen.add(value)
+    result.push(value)
+  }
+  return result
+}
+
+/** canonical 名称升序（UTF-16 码元顺序，跨环境确定）。 */
+function compareStrings(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0
 }
 
 /** 从记录卡数组构建检索 store（索引 + 查询函数） */
 export function buildCardStore(cards: RecordCard[], terms: TermCurations = EMPTY_TERM_CURATIONS): CardStore {
-  const { byCanonical, byTerm, byFactTerm, aliasesByTerm, substringsByTerm, combosByTerm } = buildTermIndexes(cards, terms)
+  const { byCanonical, byTerm, byFactTerm, aliasesByTerm, substringsByTerm, combosByTerm, tagIndex } = buildTermIndexes(cards, terms)
+  const roomOrder = new Map<string, number>(REFERENCE_ROOMS.map((room, index) => [room, index]))
+  /** 命中的最小设施序；未在 REFERENCE_ROOMS 登记的设施排在已登记项之后。 */
+  const roomRank = (room: string): number => roomOrder.get(room) ?? Number.MAX_SAFE_INTEGER
 
   /** facts_search：精确、别名、子串和搭配路径全部收集；同卡只返回一次。 */
   const factsSearch = (query: string): FactsSearchResult => {
@@ -262,6 +384,48 @@ export function buildCardStore(cards: RecordCard[], terms: TermCurations = EMPTY
     return { query: term, paths, matches }
   }
 
+  /**
+   * facts_search 的 tags 路径：只做来源标签 trim 后精确匹配，不做别名/子串/模糊扩展。
+   * 卡级按 canonical 去重；同卡多命中保留全部依据；按命中的最小设施序、再按 canonical 升序稳定排序。
+   * 未收录标签进入 missingTags；不自动合并同名职业/设施/技能组。
+   */
+  const factsSearchByTags = (tags: readonly string[]): TagSearchResult => {
+    const matchedTags: string[] = []
+    const missingTags: string[] = []
+    const requested = new Set<string>()
+    for (const raw of tags) {
+      const tag = (raw ?? '').trim()
+      if (!tag || requested.has(tag)) continue
+      requested.add(tag)
+      if (tagIndex.has(tag)) matchedTags.push(tag)
+      else missingTags.push(tag)
+    }
+
+    const hitsByCanonical = new Map<string, TagHit[]>()
+    for (const tag of matchedTags) {
+      for (const hit of tagIndex.get(tag)!) {
+        const hits = hitsByCanonical.get(hit.canonical) ?? []
+        hits.push(hit)
+        hitsByCanonical.set(hit.canonical, hits)
+      }
+    }
+
+    const ranked = [...hitsByCanonical].flatMap(([canonical, hits]) => {
+      const card = byCanonical.get(canonical)
+      if (!card) return []
+      const match: TagCardMatch = {
+        card,
+        matchedGrantIds: dedupeValues(hits.flatMap((hit) => (hit.grantId === undefined ? [] : [hit.grantId]))),
+        hits,
+      }
+      return [{ match, rank: Math.min(...hits.map((hit) => roomRank(hit.room))) }]
+    })
+    ranked.sort((left, right) => left.rank - right.rank
+      || compareStrings(left.match.card.canonical, right.match.card.canonical))
+
+    return { matchedTags, missingTags, cards: ranked.map((item) => item.match) }
+  }
+
   /** 只读入口词典：六类词条与人工登记入口的并集；识别候选词时不执行 factsSearch。 */
   const entryDictionary: FactsEntryDictionary = {
     terms: new Set<string>([
@@ -300,7 +464,7 @@ export function buildCardStore(cards: RecordCard[], terms: TermCurations = EMPTY
     })
   }
 
-  return { cards, byCanonical, byTerm, byFactTerm, entryDictionary, factsSearch, lookup, queryOperators }
+  return { cards, byCanonical, byTerm, byFactTerm, entryDictionary, factsSearch, factsSearchByTags, lookup, queryOperators }
 }
 
 function skillsInRoom(card: RecordCard, room?: string): RecordCard['skills'] {
@@ -414,9 +578,31 @@ function operatorScopeNotice(): string {
   return '查询范围说明：卡头中的设施、阵营、职业，以及技能组和卡级备注属于干员全局属性，不代表当前设施专属；下方技能按本次查询条件投影，未必包含该卡全部技能。'
 }
 
-/** 渲染单张记录卡；独立 facts_search 与 RAG 内部附带共用同一卡片格式。 */
+/** 投影卡说明：卡头属性仍是干员全局属性，只列出登记引用的技能及被替换依据。 */
+const PROJECTION_CARD_NOTICE = '关联投影说明：卡头设施、阵营、职业为干员全局属性，不代表本设施专属；下方只含登记引用的技能及其被替换依据，未列出的技能不属于本次明确引用。'
+
+/**
+ * 技能注记片段：固定顺序为作用产物、作用职业、引用术语、原始注记、同描述说明。
+ * 旧卡缺省新增字段仍合法；空注记与缺省字段都不产生占位片段。
+ */
+function skillAnnotationSegments(skill: RecordCard['skills'][number], room: string): string[] {
+  const segments: string[] = []
+  if (skill.products && skill.products.length > 0) segments.push(`作用产物：${skill.products.join('、')}`)
+  if (skill.professions && skill.professions.length > 0) segments.push(`作用职业：${skill.professions.join('、')}`)
+  if (skill.referencedTerms && skill.referencedTerms.length > 0) segments.push(`引用术语：${skill.referencedTerms.join('、')}`)
+  if (skill.target) segments.push(`原始注记：${skill.target}`)
+  if (skill.equivalenceSkillNames && skill.equivalenceSkillNames.length > 0) {
+    segments.push(`同描述技能：${skill.equivalenceSkillNames.join('、')}（设施：${room}）`)
+    if (skill.equivalenceEffectText !== undefined) segments.push(`共同描述（原文）：${skill.equivalenceEffectText}`)
+    segments.push('仅描述相同；解锁、替换、作用对象与完整效果须分别核对')
+  }
+  return segments
+}
+
+/** 渲染单张记录卡；独立 facts_search、RAG 内部附带与 read 关联共用同一卡片格式。 */
 export function serializeCard(card: RecordCard, filters: CardSerializationFilters, matchCategories?: FactsMatchCategory[]): string {
-  const scopedSkills = skillsInRoom(card, filters.room)
+  const projection = filters.projectionGrantIds === undefined ? undefined : skillProjection(card, filters.projectionGrantIds)
+  const scopedSkills = projection ? projection.skills : skillsInRoom(card, filters.room)
   const q = (filters.termQuery ?? '').trim()
   const matchingSkills = q
     ? scopedSkills.filter((skill) => skillMatchesTerm(skill, q))
@@ -428,6 +614,8 @@ export function serializeCard(card: RecordCard, filters: CardSerializationFilter
   if (matchCategories && matchCategories.length > 0) {
     lines.push(`匹配类别：${matchCategories.map((category) => FACTS_MATCH_CATEGORY_LABEL[category]).join('、')}`)
   }
+  // 投影卡卡头仍是干员全局属性，不冒充技能专属属性；差别在此说明。
+  if (projection) lines.push(PROJECTION_CARD_NOTICE)
   for (const skill of skills) {
     const room = skill.room?.trim() || '未知设施'
     const note = skill.notes === undefined ? '' : `；备注：${skill.notes}`
@@ -435,7 +623,11 @@ export function serializeCard(card: RecordCard, filters: CardSerializationFilter
       ? undefined
       : card.skills.find((candidate) => candidate.grantId === skill.replacesGrantId)
     const replacement = replaced === undefined ? '' : `；替换「${replaced.name}」`
-    lines.push(`- 【设施：${room}】${skill.unlockType}「${skill.name}」：${skill.effectText}${replacement}${note}`)
+    const annotations = skillAnnotationSegments(skill, room)
+    const annotation = annotations.length === 0 ? '' : `；${annotations.join('；')}`
+    const label = projection && skill.grantId !== undefined ? projection.labels.get(skill.grantId) : undefined
+    const labelText = label === undefined ? '' : `；${label}`
+    lines.push(`- 【设施：${room}】${skill.unlockType}「${skill.name}」：${skill.effectText}${replacement}${note}${annotation}${labelText}`)
   }
   if (card.skillGroups.length > 0) lines.push(`技能组：${card.skillGroups.join('、')}`)
   if (card.notes) lines.push(`备注：${card.notes}`)
@@ -448,4 +640,12 @@ let singleton: CardStore | undefined
 export function getCardStore(): CardStore {
   if (!singleton) singleton = buildCardStore(loadValidatedRecordCards(process.cwd(), 'curated'), TERM_CURATIONS)
   return singleton
+}
+
+/**
+ * 以运行级已校验卡片构建 store：与模块级单例同源同装配，但不跨运行复用，
+ * 供 runner 与关联解析共用同一份运行快照（ADR-022 决策 6）。
+ */
+export function createRunCardStore(cards: readonly RecordCard[]): CardStore {
+  return buildCardStore([...cards], TERM_CURATIONS)
 }

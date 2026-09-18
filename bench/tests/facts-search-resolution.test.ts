@@ -71,7 +71,7 @@ describe('facts 查询级解析', () => {
   })
 })
 
-const substringEvidence = { path: 'knowledge/references/歧义.md', section: '一、子串包含对（31 组，自动生成）' }
+const substringEvidence = { path: 'knowledge/guides/歧义.md', section: '一、子串包含对（31 组，自动生成）' }
 
 const substringCards: RecordCard[] = [
   { canonical: '测试甲', aliases: [], rarity: '4', class: '医疗', rooms: [], factionGroups: [], skillGroups: [], skills: [], notes: '' },

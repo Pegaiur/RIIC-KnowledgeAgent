@@ -9,7 +9,7 @@ const ROOT = new URL('../..', import.meta.url).pathname.replace(/^\//, '').repla
 describe('references：九个设施事实批次', () => {
   it('九个技能分片共用当前练度投影，不残留旧的三星门槛', () => {
     for (const room of REFERENCE_ROOMS) {
-      const source = readFileSync(join(ROOT, 'knowledge', 'references', `技能-${room}.md`), 'utf-8')
+      const source = readFileSync(join(ROOT, 'knowledge', 'raw', `技能-${room}.md`), 'utf-8')
       expect(source).toContain('一星、二星干员通常在达到 30 级')
       expect(source).toContain('三星、四星干员通常在精一阶段')
       expect(source).toContain('五星、六星干员通常在精二阶段')

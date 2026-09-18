@@ -2,13 +2,15 @@
  * 独立函数工具 schema 与按批次预算执行器。
  * 工具函数名直接完成路由；执行器仍共用一套预算、校验和底层检索门面。
  */
-import type { AttachedFactsObservation, FulltextRange } from './delivery.js'
-export type { AttachedFactsObservation, FulltextRange } from './delivery.js'
+import type { AttachedFactsObservation, FragmentRange, FulltextRange, LinkedEntryObservation, ReadDeliveryRecord } from './delivery.js'
+export type { AttachedFactsObservation, FragmentRange, FulltextRange, LinkedEntryObservation, ReadDeliveryRecord } from './delivery.js'
 import { createHash } from 'node:crypto'
 import { effectiveAttachFacts, loadConfig, type BenchConfig, type RetrieverId } from './config.js'
 import { isFulltextFile } from './corpus.js'
 import { search, type IndexEntry } from './retriever.js'
-import type { SectionDirectory, SectionEntry } from './sections.js'
+import { readObjectsFor, type ProseLinkIndex } from './prose-links.js'
+import { buildReadPage, type ReadPageDelivery } from './read.js'
+import type { FileOutline, SectionDirectory, SectionEntry } from './sections.js'
 import { isFactTool, type BenchQuery, type DocChunk, type ToolCall } from './types.js'
 import {
   getCardStore,
@@ -20,13 +22,18 @@ import {
   type FactsMatchCategory,
   type FactsSearchResult,
   type ResolutionPath,
+  type TagCardMatch,
 } from './facts/store.js'
 
 /** 当前可下发的工具集合；grep_search 等历史名不在其中。 */
-export type CurrentToolId = 'rag_search' | 'facts_search' | 'read_section'
+export type CurrentToolId = 'rag_search' | 'facts_search' | 'read'
 
 /** 工具定义（含描述）变化时递增；快照保留该值供对照分组，指纹随描述变化。 */
-export const TOOL_SCHEMA_VERSION = 12 as const
+export const TOOL_SCHEMA_VERSION = 16 as const
+
+/** 旧原文读取工具名退役提示（ADR-022 决策 1）：按未知工具拒绝，不静默改译。 */
+export const RETIRED_READ_SECTION_MESSAGE = 'read_section 已退役；请改用 read（参数：section_id、offset、facts_offset），原文与关联事实在同一次读取中返回；本次调用未执行。'
+const RETIRED_READ_SECTION_TOOL = 'read_section'
 
 export interface ToolBudgetState {
   /** 非空执行成功额度上限（每题默认 5） */
@@ -54,7 +61,15 @@ export type ToolResultStatus =
   /** 同一步骤中首项之外的超量调用：未执行、不计额度。 */
   | 'protocol_rejected'
 
-export const FACTS_RESULT_VERSION = 6 as const
+/** facts 结果卡版本：v8 起卡面渲染作用产物/作用职业/引用术语、原始注记与同描述依据（ADR-021 决策 3、4）。 */
+export const FACTS_RESULT_VERSION = 8 as const
+
+/**
+ * 单次 tags 反查的固定页上限（记录卡张数）。
+ * 宽标签不静默 Top-N 或截断卡片，改用显式分页：每卡仍完整返回，超出部分用 offset 续读。
+ * 首版取值 20：覆盖常见来源标签的完整命中集合，同时限制单次工具结果体积。
+ */
+export const FACTS_TAG_PAGE_CARDS = 20 as const
 
 /**
  * RAG 内部附带 facts 的独立额度（UTF-16 字符，ADR-013 决策 4 定稿）：
@@ -81,13 +96,32 @@ export interface FactsResolutionItem {
   message: string | null
 }
 
+/** tags 路径的分页元数据；queries 路径不携带。 */
+export interface FactsTagPage {
+  /** 本次请求的起始偏移 */
+  offset: number
+  /** 固定页上限（记录卡张数） */
+  limit: number
+  /** 本次标签命中的卡总数（跨标签去重） */
+  matchedCount: number
+  /** 本页实际返回的卡数 */
+  returnedCount: number
+  /** 本次匹配的卡是否已在本页读完（不代表标签能力或来源范围穷尽） */
+  complete: boolean
+  /** 续读偏移；complete=true 时为 null */
+  nextOffset: number | null
+}
+
 export interface FactsResultMetadata {
   factsResultVersion: typeof FACTS_RESULT_VERSION
   matchedCount: number
   returnedCount: number
-  complete: true
+  /** tags 路径取 tagPage.complete；queries 路径恒为 true */
+  complete: boolean
   scope: Record<string, unknown>
   resolution: { items: FactsResolutionItem[] }
+  /** 仅 tags 路径携带的分页信息 */
+  tagPage?: FactsTagPage
 }
 
 export interface ToolExecutionResult {
@@ -103,8 +137,14 @@ export interface ToolExecutionResult {
   factsResult?: FactsResultMetadata
   /** rag_search 原文扩展的实际送达范围；未扩展时为 undefined。 */
   fulltextRanges?: FulltextRange[]
+  /** rag_search 命中块与父级引导的连续正文片段（ADR-022 决策 7）；全文扩展模式为空数组。 */
+  fragmentRanges?: FragmentRange[]
   /** rag_search 内部 facts 附带的触发/匹配/送达观测；无触发词时为 undefined。 */
   attachedFacts?: AttachedFactsObservation[]
+  /** rag_search 关联事实入口提示观测（ADR-020）；无提示时省略。 */
+  linkedEntries?: LinkedEntryObservation[]
+  /** read 的单次送达台账（ADR-022 决策 6）；非 read 调用或未识别时省略。 */
+  readDelivery?: ReadDeliveryRecord
   message?: string
   fatal?: boolean
 }
@@ -120,14 +160,21 @@ export interface KnowledgeToolContext {
   query: BenchQuery
   chunks: DocChunk[]
   index: IndexEntry
-  /** 运行级原文小节目录；仅开放阅读能力的模式提供，用于展示上下文与 read_section。 */
+  /** 运行级原文小节目录；仅开放阅读能力的模式提供，用于展示上下文与 read。 */
   sections?: SectionDirectory
+  /** 运行级散文小节关联索引；提供时 rag_search 给出可展开入口，read 按该索引返回登记事实。 */
+  links?: ProseLinkIndex
   /** 由 Agent 共享的全题注入去重列表。 */
   injectedIds?: string[]
   /** 仅在 facts 工具实际取得 store 后通知 runner；不主动触发惰性加载。 */
   onFactsStoreUsed?: (store: CardStore) => void
   /** facts store 加载失败时通知 runner，随后继续抛出原错误。 */
   onFactsStoreLoadFailed?: (error: unknown) => void
+  /**
+   * 运行级 facts 卡片快照提供者（ADR-022 决策 6）：由 runner 装配并注入，
+   * 供 facts 工具与 read 共用同一份实例；缺省时按模块级单例惰性加载。
+   */
+  factsStore?: () => CardStore
 }
 
 export interface KnowledgeToolExecutor {
@@ -141,12 +188,12 @@ const ATTEMPT_BUDGET_HINT = '工具获准尝试次数已用尽，请依据已有
 type JsonObject = Record<string, unknown>
 
 /** 与配置无关的静态工具定义；facts_search 的 maxItems 由配置上限派生，见 factsSearchDefinition。 */
-const STATIC_TOOL_DEFINITIONS: Record<'rag_search' | 'read_section', JsonObject> = {
+const STATIC_TOOL_DEFINITIONS: Record<'rag_search' | 'read', JsonObject> = {
   rag_search: {
     type: 'function',
     function: {
       name: 'rag_search',
-      description: '检索机制、组合、排班及培养建议，返回知识库片段或原文范围。结果可含供 read_section 使用的小节或范围 ID、分页信息及上级范围入口；hybrid 模式还可能返回附带事实卡或未附带提示，以实际返回内容为准。',
+      description: '检索机制、组合、排班及培养建议，返回按文件组织的原文目录树。带 ID 的行可 read：命中行就地展开该块正文的前 100 个字符，文件根行给出整篇入口与全文规模；登记了关联事实的命中行会给出可展开入口（仅导航，不返回事实）；hybrid 模式还可能返回附带事实卡或未附带提示，以实际返回内容为准。',
       parameters: {
         type: 'object',
         properties: {
@@ -157,16 +204,17 @@ const STATIC_TOOL_DEFINITIONS: Record<'rag_search' | 'read_section', JsonObject>
       },
     },
   },
-  read_section: {
+  read: {
     type: 'function',
     function: {
-      name: 'read_section',
-      description: '按已返回的 ID 读取知识库原文小节或范围，可分段续读；ID 可来自检索结果、续读信息或上级范围入口。返回的 complete=false 表示该范围还有后续页，complete=true 仅表示该范围读完，不表示问题已完整解决。',
+      name: 'read',
+      description: '按已返回的 ID 读取知识库原文与明确登记关联的事实，两者各有独立偏移、可分别分段续读；ID 可来自检索结果或分页信息。offset 续读原文正文，facts_offset 续读关联事实；返回的 complete=false 表示该范围还有后续页，complete=true 仅表示该范围读完，不表示问题已完整解决。',
       parameters: {
         type: 'object',
         properties: {
           section_id: { type: 'string', minLength: 1, description: '工具结果已给出的小节或范围 ID，原样使用。' },
-          offset: { type: 'integer', minimum: 0, description: '可选，正文 UTF-16 索引，默认 0；用返回的 next_offset 续读' },
+          offset: { type: 'integer', minimum: 0, description: '可选，原文正文 UTF-16 索引，默认 0；用返回的 next_offset 续读' },
+          facts_offset: { type: 'integer', minimum: 0, description: '可选，关联事实对象序号，默认 0；用返回的 next_facts_offset 续读' },
         },
         required: ['section_id'],
         additionalProperties: false,
@@ -184,7 +232,7 @@ function factsSearchDefinition(factsQueryListLimit: number): JsonObject {
     type: 'function',
     function: {
       name: 'facts_search',
-      description: '用一个或多个完整词条精确查询干员事实卡：干员正式名、技能名、已收录技能组词、设施、阵营或职业；支持已确认别名（干员别名）、已登记子串短名、阵营规范名和搭配规范名。可一次传入多个完整词条，每项仍须是完整词条，数组不是复合过滤语法，单次词条数受运行配置限制；同名命中全部返回并保留命中路径，短名按登记返回全部长名，不做消歧；不支持简写合称，不拆词，不解析句子或多个条件。',
+      description: '用一个或多个完整词条精确查询干员事实卡：干员正式名、技能名、已收录技能组词、设施、阵营或职业；支持已确认别名（干员别名）、已登记子串短名、阵营规范名和搭配规范名。可一次传入多个完整词条，每项仍须是完整词条，数组不是复合过滤语法，单次词条数受运行配置限制；同名命中全部返回并保留命中路径，短名按登记返回全部长名，不做消歧；不支持简写合称，不拆词，不解析句子或多个条件。也可用 tags 按来源标签反查持有者，派生标签 → 设施 → 技能 → grant → 干员，只做 trim 后精确匹配，不做别名、子串或模糊扩展，且不与同名职业/设施/技能组自动合并。queries 与 tags 互斥，至少提供其一；offset 仅在 tags 路径出现（非负整数，默认 0），命中卡按固定页上限分页，每卡完整返回，用结果里的 next_offset 续读。',
       parameters: {
         type: 'object',
         properties: {
@@ -193,10 +241,22 @@ function factsSearchDefinition(factsQueryListLimit: number): JsonObject {
             minItems: 1,
             maxItems: factsQueryListLimit,
             items: { type: 'string', minLength: 1, description: '一个完整名称或分类词条；保留名称内部标点。' },
-            description: '待查询词条列表，数量上限见 maxItems。',
+            description: '待查询词条列表，数量上限见 maxItems；与 tags 互斥，至少提供其一。',
+          },
+          tags: {
+            type: 'array',
+            minItems: 1,
+            maxItems: factsQueryListLimit,
+            items: { type: 'string', minLength: 1, description: '一个完整来源标签名；只做 trim 后精确匹配，不做别名、子串或模糊扩展。' },
+            description: '待反查的来源标签列表，数量上限见 maxItems；与 queries 互斥，至少提供其一。',
+          },
+          offset: {
+            type: 'integer',
+            minimum: 0,
+            description: '仅 tags 路径可用：命中卡的分页偏移，默认 0；用结果里的 next_offset 续读。',
           },
         },
-        required: ['queries'],
+        required: [],
         additionalProperties: false,
       },
     },
@@ -210,8 +270,8 @@ function toolDefinitionFor(name: CurrentToolId, factsQueryListLimit: number): Js
 
 function allowedOperations(retriever: RetrieverId): CurrentToolId[] {
   return retriever === 'hybrid'
-    ? ['rag_search', 'facts_search', 'read_section']
-    : ['rag_search', 'read_section']
+    ? ['rag_search', 'facts_search', 'read']
+    : ['rag_search', 'read']
 }
 
 /** 返回当前模式实际发送的独立函数工具数组；facts maxItems 由调用方传入的配置上限派生。 */
@@ -346,6 +406,18 @@ function exhaustedResult(call: ToolCall, state: ToolBudgetState): ToolExecutionR
     data: message,
     budgetRemaining: state.successLimit - state.successUsed,
     message,
+    // 被拒绝的 read 没有解析参数也不进入执行：仍按契约留下 sectionId=null 的不可送达台账（ADR-022 决策 6）。
+    ...(call.name === 'read'
+      ? {
+          readDelivery: {
+            callId: call.id,
+            status: 'budget_exhausted',
+            sectionId: null,
+            factsResultVersion: FACTS_RESULT_VERSION,
+            resultChars: message.length,
+          },
+        }
+      : {}),
   }
 }
 
@@ -370,12 +442,26 @@ async function executeOne(
   config: BenchConfig,
   state: ToolBudgetState,
 ): Promise<ToolExecutionResult> {
+  // 旧原文读取工具名按未知工具规则拒绝并给出新工具名；不静默改译，也不记为新 read 台账。
+  if (call.name === RETIRED_READ_SECTION_TOOL) {
+    return result(call, call.name, 'unknown_operation', false, RETIRED_READ_SECTION_MESSAGE, state)
+  }
   if (!allowed.has(call.name as CurrentToolId)) {
     return result(call, call.name, 'unknown_operation', false, `当前检索模式不开放工具：${call.name}`, state)
   }
   const parsed = parseToolParams(call.name as CurrentToolId, call.arguments, config.factsQueryListLimit)
   if (!parsed.value) {
-    return result(call, call.name, 'invalid_params', false, parsed.reason, state)
+    return result(
+      call,
+      call.name,
+      'invalid_params',
+      false,
+      parsed.reason,
+      state,
+      undefined,
+      false,
+      readDeliveryFor(call, 'invalid_params', parsed.readSectionId ?? null, undefined, parsed.reason.length),
+    )
   }
 
   try {
@@ -384,48 +470,83 @@ async function executeOne(
       ?? (isFactTool(call.name)
         ? output.hitIds.length > 0 ? 'success' : 'empty'
         : output.data ? 'success' : 'empty')
-    // 上下文相关的参数错误（如 read_section 越界 offset）不计入已执行，但仍占用一次获准尝试。
+    // 上下文相关的参数错误（如 read 越界 offset）不计入已执行，但仍占用一次获准 attempt。
     const executed = status !== 'invalid_params'
     if (executed) state.executed++
-    const factsResult = isFactTool(call.name)
+    const factsPage = isFactTool(call.name) ? output.factsPage : undefined
+    const factsResult: FactsResultMetadata | undefined = isFactTool(call.name)
       ? {
           factsResultVersion: FACTS_RESULT_VERSION,
-          matchedCount: output.hitIds.length,
-          returnedCount: output.hitIds.length,
-          complete: true as const,
+          matchedCount: factsPage?.matchedCount ?? output.hitIds.length,
+          returnedCount: factsPage?.returnedCount ?? output.hitIds.length,
+          complete: factsPage?.complete ?? true,
           scope: parsed.value,
           resolution: { items: output.factsItems ?? [] },
+          ...(factsPage?.tagPage === undefined ? {} : { tagPage: factsPage.tagPage }),
         }
+      : undefined
+    const data = output.data || '（无匹配结果）'
+    const readDelivery = call.name === 'read'
+      ? readDeliveryFor(call, status, parsed.value.section_id as string, output.readDelivery, data.length)
       : undefined
     return {
       callId: call.id,
       operation: call.name,
       status,
       executed,
-      data: output.data || '（无匹配结果）',
+      data,
       budgetRemaining: state.remaining,
       actualParams: parsed.value,
       hitIds: output.hitIds,
       injectedIds: output.injectedIds,
       fulltextRanges: output.fulltextRanges,
+      fragmentRanges: output.fragmentRanges,
       attachedFacts: output.attachedFacts,
+      linkedEntries: output.linkedEntries,
+      readDelivery,
       factsResult,
-      // 操作直接返回的 error（如原文扩展容量不足）需带上文本，供 trace.error 与复盘定位；
-      // 与 catch 分支的错误口径一致，非 fatal，不扣成功额度。
+      ...(output.fatal === undefined ? {} : { fatal: output.fatal }),
+      // 操作返回的 error 带上文本供 trace.error 定位；容量错误非 fatal，加载或投影异常保留 fatal。
       ...(status === 'error' ? { message: output.data } : {}),
     }
   } catch (error) {
     state.executed++
+    const message = error instanceof Error ? error.message : String(error)
     return result(
       call,
       call.name,
       'error',
       true,
-      error instanceof Error ? error.message : String(error),
+      message,
       state,
       parsed.value,
       true,
+      readDeliveryFor(call, 'error', parsed.value.section_id as string, undefined, message.length),
     )
+  }
+}
+
+/**
+ * read 台账（ADR-022 决策 6）：只有识别到的新 read 调用才记录；失败在送达前不写实际范围，
+ * resultChars 取最终回写文本长度。旧 read_section 调用不进入本台账。
+ */
+function readDeliveryFor(
+  call: ToolCall,
+  status: ToolResultStatus,
+  sectionId: string | null,
+  observed: ReadPageDelivery | undefined,
+  resultChars: number,
+): ReadDeliveryRecord | undefined {
+  if (call.name !== 'read') return undefined
+  return {
+    callId: call.id,
+    status,
+    sectionId,
+    factsResultVersion: FACTS_RESULT_VERSION,
+    ...(observed?.bodyRange === undefined ? {} : { bodyRange: observed.bodyRange }),
+    ...(observed?.factsPage === undefined ? {} : { factsPage: observed.factsPage }),
+    ...(observed?.deliveredObjects === undefined ? {} : { deliveredObjects: observed.deliveredObjects }),
+    resultChars,
   }
 }
 
@@ -438,6 +559,7 @@ function result(
   state: ToolBudgetState,
   actualParams?: unknown,
   fatal = false,
+  readDelivery?: ReadDeliveryRecord,
 ): ToolExecutionResult {
   return {
     callId: call.id,
@@ -449,6 +571,7 @@ function result(
     actualParams,
     message,
     fatal,
+    ...(readDelivery === undefined ? {} : { readDelivery }),
   }
 }
 
@@ -467,6 +590,10 @@ interface ParsedToolParams {
   reason: string
   /** facts_search 专用：按原数组顺序的逐项解析记录（含非法占位）。 */
   factsItems?: FactsParseItem[]
+  /** facts_search 专用：本次走 queries 还是 tags 分支。 */
+  factsMode?: 'queries' | 'tags'
+  /** read 专用：参数整体非法时仍可识别的 section_id；无法识别为 null。 */
+  readSectionId?: string | null
 }
 
 function parseToolParams(
@@ -482,19 +609,19 @@ function parseToolParams(
   }
   if (!isObject(raw)) return { reason: `${tool} 参数必须是对象；参数示例：${exampleFor(tool)}` }
 
-  if (tool === 'read_section') return parseReadSectionParams(raw, exampleFor(tool))
+  if (tool === 'read') return parseReadParams(raw, exampleFor(tool))
   if (tool === 'facts_search') return parseFactsParams(raw, factsQueryListLimit, exampleFor(tool))
 
   const allowedKeys = ['query']
   const unknownKey = Object.keys(raw).find((key) => !allowedKeys.includes(key))
-  if (unknownKey) return { reason: `${tool} 不支持参数字段 ${unknownKey}；参数示例：${exampleFor(tool)}` }
+  if (unknownKey !== undefined) return { reason: `${tool} 不支持参数字段 ${unknownKey}；参数示例：${exampleFor(tool)}` }
 
   return parseRequiredString(raw, tool, 'query', exampleFor(tool))
 }
 
 /**
- * facts_search 参数：queries 为非空字符串数组。
- * 根级非法（缺字段、非数组、空数组、额外字段、超过上限）整批判 invalid_params；
+ * facts_search 参数：queries 或 tags 二者其一（互斥），offset 仅随 tags。
+ * 根级非法（缺两者、两者并存、offset 与 queries 并存、非数组、空数组、额外字段、超过上限）整批判 invalid_params；
  * 元素级非法只记为该元素 invalid，合法元素继续执行；上限按原数组长度检查，不先过滤非法项或去重。
  */
 function parseFactsParams(
@@ -502,17 +629,27 @@ function parseFactsParams(
   factsQueryListLimit: number,
   example: string,
 ): ParsedToolParams {
-  const allowedKeys = ['queries']
+  const allowedKeys = ['queries', 'tags', 'offset']
   const unknownKey = Object.keys(input).find((key) => !allowedKeys.includes(key))
-  if (unknownKey) return { reason: `facts_search 不支持参数字段 ${unknownKey}；参数示例：${example}` }
+  if (unknownKey !== undefined) return { reason: `facts_search 不支持参数字段 ${unknownKey}；参数示例：${example}` }
 
-  const raw = input.queries
-  if (raw === undefined) return { reason: `facts_search 缺少数组 queries；参数示例：${example}` }
+  const hasQueries = input.queries !== undefined
+  const hasTags = input.tags !== undefined
+  if (!hasQueries && !hasTags) return { reason: `facts_search 需要提供 queries 或 tags 之一；参数示例：${example}` }
+  if (hasQueries && hasTags) return { reason: `facts_search 的 queries 与 tags 互斥，只能提供其一；参数示例：${example}` }
+
+  if (hasQueries) {
+    if (input.offset !== undefined) return { reason: `facts_search 的 offset 只能与 tags 一起使用；参数示例：${example}` }
+    return parseFactsQueries(input.queries, factsQueryListLimit, example)
+  }
+  return parseFactsTags(input.tags, input.offset, factsQueryListLimit, example)
+}
+
+/** queries 分支：非空字符串数组，元素级非法占位。 */
+function parseFactsQueries(raw: unknown, limit: number, example: string): ParsedToolParams {
   if (!Array.isArray(raw)) return { reason: `facts_search 的 queries 必须是字符串数组；参数示例：${example}` }
   if (raw.length === 0) return { reason: `facts_search 的 queries 不能为空数组；参数示例：${example}` }
-  if (raw.length > factsQueryListLimit) {
-    return { reason: `facts_search 的 queries 最多 ${factsQueryListLimit} 个词条，实际 ${raw.length} 个；参数示例：${example}` }
-  }
+  if (raw.length > limit) return { reason: `facts_search 的 queries 最多 ${limit} 个词条，实际 ${raw.length} 个；参数示例：${example}` }
 
   const factsItems: FactsParseItem[] = raw.map((value, index) => typeof value === 'string' && value.trim() !== ''
     ? { index, query: value.trim(), message: null }
@@ -523,29 +660,66 @@ function parseFactsParams(
     const detail = factsItems.map((item) => item.message).join('；')
     return { reason: `facts_search 没有可用词条：${detail}；参数示例：${example}` }
   }
-  return { value: { queries: legalQueries }, factsItems, reason: '' }
+  return { value: { queries: legalQueries }, factsItems, factsMode: 'queries', reason: '' }
 }
 
-/** read_section 参数：section_id 必填非空字符串，offset 可选非负整数，额外字段拒绝。 */
-function parseReadSectionParams(
+/** tags 分支：非空字符串数组（上限同词条上限）与可选非负整数 offset，元素级非法占位。 */
+function parseFactsTags(raw: unknown, rawOffset: unknown, limit: number, example: string): ParsedToolParams {
+  if (!Array.isArray(raw)) return { reason: `facts_search 的 tags 必须是字符串数组；参数示例：${example}` }
+  if (raw.length === 0) return { reason: `facts_search 的 tags 不能为空数组；参数示例：${example}` }
+  if (raw.length > limit) return { reason: `facts_search 的 tags 最多 ${limit} 个标签，实际 ${raw.length} 个；参数示例：${example}` }
+
+  let offset = 0
+  if (rawOffset !== undefined) {
+    if (typeof rawOffset !== 'number' || !Number.isInteger(rawOffset) || rawOffset < 0) {
+      return { reason: `facts_search 的 offset 必须是非负整数；参数示例：${example}` }
+    }
+    offset = rawOffset
+  }
+
+  const factsItems: FactsParseItem[] = raw.map((value, index) => typeof value === 'string' && value.trim() !== ''
+    ? { index, query: value.trim(), message: null }
+    : { index, query: null, message: `第 ${index + 1} 项必须是非空字符串` })
+
+  const legalTags = factsItems.flatMap((item) => (item.query === null ? [] : [item.query]))
+  if (legalTags.length === 0) {
+    const detail = factsItems.map((item) => item.message).join('；')
+    return { reason: `facts_search 没有可用标签：${detail}；参数示例：${example}` }
+  }
+  return { value: { tags: legalTags, offset }, factsItems, factsMode: 'tags', reason: '' }
+}
+
+/**
+ * read 参数：section_id 必填非空字符串，offset 与 facts_offset 可选非负安全整数，额外字段（含旧 linked）拒绝。
+ * 参数整体非法时仍尽力识别 section_id，供 readDelivery 记录；不因任何非法参数执行读取。
+ */
+function parseReadParams(
   input: JsonObject,
   example: string,
-): { value?: Record<string, unknown>; reason: string } {
-  const allowedKeys = ['section_id', 'offset']
-  const unknownKey = Object.keys(input).find((key) => !allowedKeys.includes(key))
-  if (unknownKey) return { reason: `read_section 不支持参数字段 ${unknownKey}；参数示例：${example}` }
+): ParsedToolParams {
+  const sectionId = typeof input.section_id === 'string' && input.section_id.trim() !== ''
+    ? input.section_id.trim()
+    : null
+  const reject = (reason: string): ParsedToolParams => ({ reason, readSectionId: sectionId })
 
-  if (typeof input.section_id !== 'string' || input.section_id.trim() === '') {
-    return { reason: `read_section 缺少非空字符串 section_id；参数示例：${example}` }
-  }
-  let offset = 0
-  if (input.offset !== undefined) {
-    if (typeof input.offset !== 'number' || !Number.isInteger(input.offset) || input.offset < 0) {
-      return { reason: `read_section 的 offset 必须是非负整数；参数示例：${example}` }
+  const allowedKeys = ['section_id', 'offset', 'facts_offset']
+  const unknownKey = Object.keys(input).find((key) => !allowedKeys.includes(key))
+  if (unknownKey !== undefined) return reject(`read 不支持参数字段 ${unknownKey}；参数示例：${example}`)
+  if (sectionId === null) return reject(`read 缺少非空字符串 section_id；参数示例：${example}`)
+
+  const offsets: Record<string, number> = { offset: 0, facts_offset: 0 }
+  for (const field of ['offset', 'facts_offset'] as const) {
+    const raw = input[field]
+    if (raw === undefined) continue
+    if (typeof raw !== 'number' || !Number.isSafeInteger(raw) || raw < 0) {
+      return reject(`read 的 ${field} 必须是非负安全整数；参数示例：${example}`)
     }
-    offset = input.offset
+    offsets[field] = raw
   }
-  return { value: { section_id: input.section_id.trim(), offset }, reason: '' }
+  return {
+    value: { section_id: sectionId, offset: offsets.offset!, facts_offset: offsets.facts_offset! },
+    reason: '',
+  }
 }
 
 function parseRequiredString(
@@ -561,7 +735,7 @@ function parseRequiredString(
 }
 
 function exampleFor(tool: CurrentToolId): string {
-  if (tool === 'read_section') return '{"section_id":"检索结果中的小节 ID"}'
+  if (tool === 'read') return '{"section_id":"检索结果中的小节 ID"}'
   if (tool === 'facts_search') return '{"queries":["完整词条"]}'
   return '{"query":"查询"}'
 }
@@ -576,13 +750,35 @@ function runOperation(
   hitIds: string[]
   injectedIds: string[]
   factsItems?: FactsResolutionItem[]
+  /** tags 路径的分页计数；queries 路径缺省（按 hitIds 完整返回） */
+  factsPage?: { matchedCount: number; returnedCount: number; complete: boolean; tagPage?: FactsTagPage }
   fulltextRanges?: FulltextRange[]
+  fragmentRanges?: FragmentRange[]
   attachedFacts?: AttachedFactsObservation[]
+  linkedEntries?: LinkedEntryObservation[]
+  readDelivery?: ReadPageDelivery
   status?: ToolResultStatus
+  fatal?: boolean
 } {
   if (operation === 'rag_search') return ragSearchOperation(parsed.value!, context, config)
-  if (operation === 'read_section') return readSectionOperation(parsed.value!, context, config)
+  if (operation === 'read') return readOperation(parsed.value!, context, config)
   return factsSearchOperation(parsed, context)
+}
+
+/** facts_search 入口：按解析出的分支走 queries 或 tags。 */
+function factsSearchOperation(
+  parsed: ParsedToolParams,
+  context: KnowledgeToolContext,
+): {
+  data: string
+  hitIds: string[]
+  injectedIds: string[]
+  factsItems: FactsResolutionItem[]
+  factsPage?: { matchedCount: number; returnedCount: number; complete: boolean; tagPage?: FactsTagPage }
+} {
+  return parsed.factsMode === 'tags'
+    ? factsSearchTagsOperation(parsed, context)
+    : factsSearchQueriesOperation(parsed, context)
 }
 
 /**
@@ -594,7 +790,7 @@ function runOperation(
  * TODO(tech-debt) R5-7：首版按词完整返回，无分页/截断，maxItems 只约束词数、不代表输出容量上限，
  * 宽查单词输出可超过 maxContextChars；重启条件：引入分页或截断时须同时重定义 complete 与 matchedCount/returnedCount 的送达口径。
  */
-function factsSearchOperation(
+function factsSearchQueriesOperation(
   parsed: ParsedToolParams,
   context: KnowledgeToolContext,
 ): {
@@ -658,6 +854,111 @@ function factsSearchOperation(
   return { data: segments.join('\n\n'), hitIds, injectedIds: [...hitIds], factsItems: items }
 }
 
+/** tags 路径的反查说明；描述与完整效果等价的区别（ADR-019）。 */
+const FACTS_TAG_NOTICE = '说明：同标签不等于完整效果等价；已逐条保留持有者、解锁与替换，不计算综合收益。'
+
+/**
+ * facts_search 的 tags 路径：标签 → 设施 → 技能 → grant → 干员，卡级去重后按最小设施序稳定排序。
+ * 不静默 Top-N、不截断卡片：按 FACTS_TAG_PAGE_CARDS 显式分页，offset 续读；越界返回空页并明确提示。
+ * complete=true 仅表示本次匹配的卡已在本页读完，不代表标签能力或来源范围穷尽。
+ */
+function factsSearchTagsOperation(
+  parsed: ParsedToolParams,
+  context: KnowledgeToolContext,
+): {
+  data: string
+  hitIds: string[]
+  injectedIds: string[]
+  factsItems: FactsResolutionItem[]
+  factsPage: { matchedCount: number; returnedCount: number; complete: boolean; tagPage: FactsTagPage }
+} {
+  const store = loadFactsStore(context)
+  const entries = parsed.factsItems ?? []
+  const offset = typeof parsed.value?.offset === 'number' ? parsed.value.offset : 0
+  const legalTags = entries.flatMap((entry) => (entry.query === null ? [] : [entry.query]))
+  const result = store.factsSearchByTags(legalTags)
+
+  const matchedCount = result.cards.length
+  const page = result.cards.slice(offset, offset + FACTS_TAG_PAGE_CARDS)
+  const returnedCount = page.length
+  const complete = offset + returnedCount >= matchedCount
+  const nextOffset = complete ? null : offset + returnedCount
+  const outOfRange = offset > matchedCount
+  const tagPage: FactsTagPage = { offset, limit: FACTS_TAG_PAGE_CARDS, matchedCount, returnedCount, complete, nextOffset }
+
+  // 逐标签记录：canonicals 取该标签命中的卡（跨标签共享卡在各标签下都保留）。
+  const canonicalsForTag = (tag: string): string[] => dedupeCanonicals(
+    result.cards.filter((match) => match.hits.some((hit) => hit.tag === tag)).map((match) => match.card.canonical),
+  )
+  const items: FactsResolutionItem[] = entries.map((entry) => {
+    if (entry.query === null) {
+      return { index: entry.index, query: null, status: 'invalid', paths: [], canonicals: [], message: entry.message ?? '参数错误' }
+    }
+    const canonicals = canonicalsForTag(entry.query)
+    return {
+      index: entry.index,
+      query: entry.query,
+      status: canonicals.length > 0 ? 'success' : 'empty',
+      paths: [],
+      canonicals,
+      message: null,
+    }
+  })
+
+  const summary = [
+    `标签反查｜命中总数 ${matchedCount}`,
+    `本页返回 ${returnedCount}`,
+    `已覆盖全部命中卡：${complete}`,
+    complete ? '无续读' : `续读 next_offset=${nextOffset}`,
+  ].join('｜')
+  const lines = [summary, FACTS_TAG_NOTICE]
+  if (result.missingTags.length > 0) lines.push(`未收录标签：${result.missingTags.join('、')}`)
+  if (outOfRange) lines.push(`offset 超出命中总数（${matchedCount}）：${offset}`)
+  for (const match of page) {
+    lines.push(`${serializeTagCard(match)}\n命中依据：${renderTagHitBasis(match)}`)
+  }
+
+  const hitIds = page.map((match) => match.card.canonical)
+  return {
+    data: lines.join('\n\n'),
+    hitIds,
+    injectedIds: [...hitIds],
+    factsItems: items,
+    factsPage: { matchedCount, returnedCount, complete, tagPage },
+  }
+}
+
+/**
+ * 命中设施技能前置：命中技能 → 同设施其他技能（含替换关系）→ 其他设施技能；
+ * 各组内保持原卡顺序；同卡命中多个设施时这些设施都算命中设施。整卡完整返回，不裁剪。
+ */
+function serializeTagCard(match: TagCardMatch): string {
+  const hitGrantIds = new Set(match.matchedGrantIds)
+  const hitSkillKeys = new Set(match.hits.filter((hit) => hit.grantId === undefined).map((hit) => `${hit.room}\u0000${hit.skillName}`))
+  const isHit = (skill: { grantId?: string; room?: string; name: string }): boolean => skill.grantId !== undefined
+    ? hitGrantIds.has(skill.grantId)
+    : hitSkillKeys.has(`${skill.room ?? ''}\u0000${skill.name}`)
+  const hitRooms = new Set(match.hits.map((hit) => hit.room))
+  const inHitRoom = (skill: { room?: string }): boolean => hitRooms.has(skill.room ?? '')
+  const skills = [
+    ...match.card.skills.filter(isHit),
+    ...match.card.skills.filter((skill) => !isHit(skill) && inHitRoom(skill)),
+    ...match.card.skills.filter((skill) => !isHit(skill) && !inHitRoom(skill)),
+  ]
+  return serializeCard({ ...match.card, skills }, {})
+}
+
+/** 每卡一行命中依据：标签、设施、技能名、解锁与替换。 */
+function renderTagHitBasis(match: TagCardMatch): string {
+  return match.hits.map((hit) => {
+    const replaced = hit.replacesGrantId === undefined
+      ? undefined
+      : match.card.skills.find((skill) => skill.grantId === hit.replacesGrantId)?.name
+    const replacement = replaced === undefined ? '' : `，替换「${replaced}」`
+    return `标签「${hit.tag}」｜设施：${hit.room || '未知设施'}｜技能「${hit.skillName}」｜解锁：${hit.unlockType}${replacement}`
+  }).join('；')
+}
+
 /**
  * rag_search：RAG 检索与原文扩展，并在 hybrid 下按 ADR-013 步骤 3 附加内部 facts。
  * 组装为原子过程：全部分支（含 facts store 加载与 factsSearch）算完并确认最终输出后，
@@ -672,13 +973,15 @@ function ragSearchOperation(
   hitIds: string[]
   injectedIds: string[]
   fulltextRanges: FulltextRange[]
+  fragmentRanges: FragmentRange[]
   attachedFacts?: AttachedFactsObservation[]
+  linkedEntries?: LinkedEntryObservation[]
   status: ToolResultStatus
 } {
   const query = params.query as string
   const hits = search(context.index, query, config.topK)
   const hitIds = hits.map((index) => context.chunks[index]?.id).filter((id): id is string => Boolean(id))
-  const built = buildRagData(context.chunks, hits, config.maxContextChars, context.sections, config.expandFulltext)
+  const built = buildRagData(context.chunks, hits, config.maxContextChars, context.sections, config.expandFulltext, context.links)
 
   let attachment: FactsAttachment | undefined
   if (effectiveAttachFacts(config)) {
@@ -697,13 +1000,15 @@ function ragSearchOperation(
   // 仅有命中编号但未送达任何正文证据时判空；极小上限放不下必要元数据时报容量错误。
   // RAG 与内部 facts 任一部分实际送达非空证据即计成功；提示与路径元数据本身不算证据。
   const delivered = built.delivered || Boolean(attachment?.delivered)
-  const status: ToolResultStatus = built.capacityError ? 'error' : delivered ? 'success' : 'empty'
+  const status: ToolResultStatus = delivered ? 'success' : built.capacityError ? 'error' : 'empty'
   return {
     data,
     hitIds,
     injectedIds: built.injectedIds,
     fulltextRanges: built.fulltextRanges,
+    fragmentRanges: built.fragmentRanges,
     attachedFacts: attachment && attachment.observations.length > 0 ? attachment.observations : undefined,
+    linkedEntries: built.linkedEntries.length > 0 ? built.linkedEntries : undefined,
     status,
   }
 }
@@ -712,7 +1017,7 @@ function ragSearchOperation(
 function loadFactsStore(context: KnowledgeToolContext): CardStore {
   let store: CardStore
   try {
-    store = getCardStore()
+    store = context.factsStore ? context.factsStore() : getCardStore()
   } catch (error) {
     try {
       context.onFactsStoreLoadFailed?.(error)
@@ -734,10 +1039,10 @@ interface RagBlock {
   section?: SectionEntry
 }
 
-/** 父级引导展示上限；超出时截断并标注。 */
-const PARENT_LEAD_LIMIT = 300
-/** 每个命中文档的小节导航上限。 */
-const NAVIGATION_LIMIT = 8
+/** 命中节点就地展开的正文预览上限（UTF-16 字符）。 */
+const PREVIEW_CHARS = 100
+/** 目录树表头：说明缩进含义、命中标记与带 ID 的行。 */
+const TREE_HEADER = '【文件目录】缩进=标题层级；◆=检索命中；带 ID 的行可 read'
 
 interface BuiltRagData {
   data: string
@@ -745,13 +1050,18 @@ interface BuiltRagData {
   delivered: boolean
   capacityError: boolean
   fulltextRanges: FulltextRange[]
+  /** 实际送达的连续正文片段；全文扩展模式不重复登记。 */
+  fragmentRanges: FragmentRange[]
+  /** 关联事实入口提示观测；无提示时为空数组。 */
+  linkedEntries: LinkedEntryObservation[]
 }
 
 /**
- * 组装 RAG 命中正文（ADR-013）：
- *   - 关闭原文扩展或没有小节目录时，沿用既有「按命中块拼接 + 硬截断」行为；
- *   - 开启扩展时，base/guides 命中按文件去重并扩展到原文文档范围（运行级快照），references 仍按块返回；
- *     容量不足时按可续读的连续原文范围送达并给出元数据，极小上限放不下必要元数据时报容量错误。
+ * 组装 RAG 送达正文（ADR-022 决策 7）：
+ *   - 默认按文件展示目录树，命中行提供阅读 ID 与最多 100 个 UTF-16 字符的原文预览；
+ *     预览与片段坐标取同一原文快照，目录根行提供整篇入口；
+ *   - 显式 expandFulltext=1 时沿用 ADR-013 的按文件整篇扩展（base/guides 去重），续读指向 read；
+ *   - 默认路径缺少可定位原文时明确失败，避免送达没有阅读 ID 和连续范围的正文。
  */
 function buildRagData(
   chunks: DocChunk[],
@@ -759,23 +1069,165 @@ function buildRagData(
   maxChars: number,
   sections: SectionDirectory | undefined,
   expandFulltext: boolean,
+  links: ProseLinkIndex | undefined,
 ): BuiltRagData {
   const blocks: RagBlock[] = hits.map((index) => {
     const chunk = chunks[index]!
     return { chunk, section: sections?.findByChunk(chunk.file, chunk.heading, chunk.startLine) }
   })
 
-  if (!expandFulltext || !sections) {
-    return { ...buildRagDataLegacy(blocks, maxChars, sections), capacityError: false, fulltextRanges: [] }
+  if (!expandFulltext) return buildHitBlockData(blocks, maxChars, sections, links)
+  if (!sections) {
+    return { ...buildRagDataLegacy(blocks, maxChars), capacityError: false, fulltextRanges: [], fragmentRanges: [], linkedEntries: [] }
   }
-  return buildExpandedRagData(blocks, maxChars, sections)
+  return { ...buildExpandedRagData(blocks, maxChars, sections, links), fragmentRanges: [] }
 }
 
-/** 既有行为：按 topK 顺序拼接命中块，整段硬截断到 maxChars，再按剩余空间附加小节上下文。 */
-function buildRagDataLegacy(
+/** 命中块在原文快照中的连续行范围及其坐标；用于正文送达、续读偏移与片段登记。 */
+interface HitBlockSlice {
+  text: string
+  /** 块首行在所属小节 body 中的 UTF-16 偏移（read 续读基准）。 */
+  bodyOffset: number
+  /** 块正文相对同运行 documentRange.body 的 UTF-16 半开区间。 */
+  docOffset: number
+  startLine: number
+}
+
+/** 一次命中：块、其阅读目标（命中小节或文档范围）与在原文快照中的切片。 */
+interface TreeHit {
+  chunk: DocChunk
+  target: SectionEntry
+  slice: HitBlockSlice
+}
+
+/** 一个命中文件：目录范围、文件目录与本次命中。 */
+interface FileTreeSource {
+  file: string
+  doc: SectionEntry
+  outline: FileOutline
+  hits: TreeHit[]
+}
+
+/**
+ * 默认送达（ADR-022 决策 7、本地第二轮）：按文件给出 Markdown 目录树，命中节点就地展开正文预览。
+ * 只有根行与命中节点带可调用 ID；非命中节点只给标题与层级缩进；父级引导与上级范围入口不再输出。
+ * 必需条目（表头、根行、命中行与其祖先）与命中预览优先于其余结构行；整棵非命中子树在预算不足时折叠为一行计数。
+ */
+function buildHitBlockData(
   blocks: RagBlock[],
   maxChars: number,
   sections: SectionDirectory | undefined,
+  links: ProseLinkIndex | undefined,
+): BuiltRagData {
+  const hits = resolveTreeHits(blocks, sections)
+  // 无命中时保持既有的 empty 语义：不发送表头，也不按容量错误报出。
+  if (hits.length === 0) {
+    return { data: '', injectedIds: [], delivered: false, capacityError: false, fulltextRanges: [], fragmentRanges: [], linkedEntries: [] }
+  }
+  const sources = collectFileTrees(hits, sections!)
+  const folded = new Set<string>()
+  let plan = buildTreePlan(sections!, sources, links, folded, true)
+  while (treeEntriesLength(plan.entries) > maxChars) {
+    const candidate = plan.foldCandidates.at(-1)
+    if (candidate === undefined) break
+    folded.add(candidate)
+    plan = buildTreePlan(sections!, sources, links, folded, true)
+  }
+
+  const rendered = renderTreeEntries(plan.entries, maxChars)
+  const written = plan.previews.filter((preview) => rendered.written.has(preview.entryIndex))
+  // 一条预览都没送达时不发送只有结构的树，按容量错误报出，避免把「没有证据」当成已送达。
+  if (written.length === 0) {
+    return {
+      data: renderHitCapacityError(maxChars),
+      injectedIds: [],
+      delivered: false,
+      capacityError: true,
+      fulltextRanges: [],
+      fragmentRanges: [],
+      linkedEntries: [],
+    }
+  }
+  return {
+    data: rendered.data,
+    injectedIds: written.map((preview) => preview.chunkId),
+    delivered: written.length > 0,
+    capacityError: false,
+    fulltextRanges: [],
+    fragmentRanges: written.map((preview) => preview.range),
+    linkedEntries: plan.offers.map((offer) => ({
+      sectionId: offer.sectionId,
+      file: offer.file,
+      objectCount: offer.objectCount,
+      written: rendered.data.includes(offer.line),
+    })),
+  }
+}
+
+/** 命中映射：命中小节优先，标题前首部（无对应小节）以同文件文档范围为阅读入口。 */
+function resolveTreeHits(blocks: RagBlock[], sections: SectionDirectory | undefined): TreeHit[] {
+  const hits: TreeHit[] = []
+  for (const block of blocks) {
+    const { chunk } = block
+    const doc = sections?.documentRange(chunk.file)
+    const target = block.section ?? doc
+    const slice = doc && target ? hitBlockSlice(chunk, target, doc) : undefined
+    if (!slice || !target) {
+      throw new Error(`rag_search 无法定位命中块的原文阅读范围：${chunk.file}（L${chunk.startLine}-${chunk.endLine}）；请提供同一运行的小节目录。`)
+    }
+    hits.push({ chunk, target, slice })
+  }
+  return hits
+}
+
+/** 按首次命中顺序（检索 rank 顺序）收集文件树；文档范围与文件目录缺失属于装配缺陷，直接失败。 */
+function collectFileTrees(hits: readonly TreeHit[], sections: SectionDirectory): FileTreeSource[] {
+  const files = [...new Set(hits.map((hit) => hit.chunk.file))]
+  return files.map((file) => {
+    const doc = sections.documentRange(file)
+    const outline = sections.outlineFor(file)
+    if (!doc || !outline) {
+      throw new Error(`rag_search 无法定位命中文件的目录结构：${file}；请提供同一运行的小节目录。`)
+    }
+    return { file, doc, outline, hits: hits.filter((hit) => hit.chunk.file === file) }
+  })
+}
+
+/** 取 [fromLine, toLine] 行区间在同一原文快照中的连续正文；行超出快照时不伪造。 */
+function snapshotLines(bodyLines: string[], bodyStartLine: number, fromLine: number, toLine: number): string | undefined {
+  const start = fromLine - bodyStartLine
+  const end = toLine - bodyStartLine
+  if (start < 0 || end < start || end >= bodyLines.length) return undefined
+  return bodyLines.slice(start, end + 1).join('\n')
+}
+
+/** 某一行在给定正文中的起始 UTF-16 偏移；行超出范围时返回 null。 */
+function lineStartOffset(bodyLines: string[], bodyStartLine: number, line: number): number | null {
+  const index = line - bodyStartLine
+  if (index < 0 || index > bodyLines.length) return null
+  return index === 0 ? 0 : bodyLines.slice(0, index).join('\n').length + 1
+}
+
+/** 命中块的原文切片；行错位或与目标正文不同源时返回 undefined，由装配方报错。 */
+function hitBlockSlice(chunk: DocChunk, target: SectionEntry, doc: SectionEntry): HitBlockSlice | undefined {
+  const docLines = doc.body.split('\n')
+  const text = snapshotLines(docLines, doc.startLine, chunk.startLine, chunk.endLine)
+  const docOffset = lineStartOffset(docLines, doc.startLine, chunk.startLine)
+  const bodyOffset = lineStartOffset(target.body.split('\n'), target.startLine, chunk.startLine)
+  if (text === undefined || text.length === 0 || docOffset === null || bodyOffset === null) return undefined
+  if (docOffset + text.length > doc.body.length) return undefined
+  if (target.body.slice(bodyOffset, bodyOffset + text.length) !== text) return undefined
+  return { text, bodyOffset, docOffset, startLine: chunk.startLine }
+}
+
+function renderHitCapacityError(maxChars: number): string {
+  return `rag_search 无法在 maxContextChars=${maxChars} 内返回命中块（必要元数据加正文放不下）：请提高 maxContextChars 后重试。`
+}
+
+/** 既有行为：按 topK 顺序拼接命中块，整段硬截断到 maxChars（仅在缺少小节目录时使用）。 */
+function buildRagDataLegacy(
+  blocks: RagBlock[],
+  maxChars: number,
 ): { data: string; injectedIds: string[]; delivered: boolean } {
   let body = ''
   const injectedIds: string[] = []
@@ -786,11 +1238,7 @@ function buildRagDataLegacy(
     const textStart = body.length - block.chunk.text.length
     if (Math.min(maxChars, body.length) > textStart) injectedIds.push(block.chunk.id)
   }
-  let data = body.slice(0, maxChars)
-  if (sections && data.length < maxChars && blocks.some((block) => block.section)) {
-    data = appendSectionContext(data, buildSectionContext(sections, blocks, new Set(injectedIds)), maxChars)
-  }
-  return { data, injectedIds, delivered: injectedIds.length > 0 }
+  return { data: body.slice(0, maxChars), injectedIds, delivered: injectedIds.length > 0 }
 }
 
 type FulltextBlockAddition =
@@ -798,7 +1246,7 @@ type FulltextBlockAddition =
   | { kind: 'tooSmall' }
 
 /** base/guides 命中扩展到整篇原文；放不下时按行边界送达可续读前缀，再放不下则停在此块。 */
-function buildExpandedRagData(blocks: RagBlock[], maxChars: number, sections: SectionDirectory): BuiltRagData {
+function buildExpandedRagData(blocks: RagBlock[], maxChars: number, sections: SectionDirectory, links: ProseLinkIndex | undefined): Omit<BuiltRagData, 'fragmentRanges'> {
   let body = ''
   const injectedIds: string[] = []
   const fulltextRanges: FulltextRange[] = []
@@ -831,7 +1279,7 @@ function buildExpandedRagData(blocks: RagBlock[], maxChars: number, sections: Se
       if (addition.kind === 'partial') stopped = true
       continue
     }
-    // references（或无文档范围）：沿用原块，按行边界送达；放不下即停止，不伪造后续证据。
+    // 目录中无该文件文档范围的块（当前语料不含，防御分支）：沿用原块，按行边界送达；放不下即停止，不伪造后续证据。
     const header = renderRagHeader(block)
     const room = maxChars - body.length - separator.length - header.length - 1
     if (room <= 0) { stopped = true; break }
@@ -843,15 +1291,26 @@ function buildExpandedRagData(blocks: RagBlock[], maxChars: number, sections: Se
   }
 
   let data = body
+  let linkedEntries: LinkedEntryObservation[] = []
+  // 整篇正文已送达，目录树只补结构与命中位置，不再重复展开预览。
   if (!stopped && !capacityError && data.length < maxChars && blocks.some((block) => block.section)) {
-    data = appendSectionContext(data, buildSectionContext(sections, blocks, new Set(injectedIds)), maxChars)
+    const sources = collectFileTrees(resolveTreeHits(blocks, sections), sections)
+    const plan = buildTreePlan(sections, sources, links, new Set<string>(), false)
+    const rendered = renderTreeEntries(plan.entries, maxChars - data.length - 2)
+    data += rendered.data ? `\n\n${rendered.data}` : ''
+    linkedEntries = plan.offers.map((offer) => ({
+      sectionId: offer.sectionId,
+      file: offer.file,
+      objectCount: offer.objectCount,
+      written: rendered.data.includes(offer.line),
+    }))
   }
-  return { data, injectedIds, delivered: injectedIds.length > 0, capacityError, fulltextRanges }
+  return { data, injectedIds, delivered: injectedIds.length > 0, capacityError, fulltextRanges, linkedEntries }
 }
 
 /** 单个文档范围的送达：整篇放得下则 complete，否则元数据先留位、按行边界送达可续读前缀。 */
 function appendFulltextBlock(body: string, separator: string, doc: SectionEntry, maxChars: number): FulltextBlockAddition {
-  const header = `【${doc.file}｜原文扩展｜L${doc.startLine}-${doc.endLine}】`
+  const header = `【${fileBaseNameOf(doc.file)}｜原文扩展｜L${doc.startLine}-${doc.endLine}】`
   const prefix = `${separator}${header}\n`
   const remaining = maxChars - body.length - prefix.length
   if (remaining >= doc.body.length) {
@@ -895,9 +1354,9 @@ function appendFulltextBlock(body: string, separator: string, doc: SectionEntry,
   }
 }
 
-/** 续读元数据行；含可复用文档范围 ID，可用 read_section(section_id=ID, offset=next_offset) 续读。 */
+/** 续读元数据行；给出可直接复制的 read 调用，用 offset 续读同一范围的原文。 */
 function renderFulltextContinuation(doc: SectionEntry, offset: number, nextOffset: number, totalChars: number): string {
-  return `续读：ID ${doc.sectionId}｜offset ${offset}｜next_offset ${nextOffset}｜complete false｜正文 ${totalChars} 字符`
+  return `续读：read(section_id="${doc.sectionId}", offset=${nextOffset})｜complete false｜正文 ${totalChars} 字符`
 }
 
 function renderFulltextCapacityError(file: string, maxChars: number): string {
@@ -1077,6 +1536,18 @@ function indentBlock(text: string): string {
   return text.split('\n').map((line) => `  ${line}`).join('\n')
 }
 
+function countNewlines(text: string): number {
+  let count = 0
+  for (let i = 0; i < text.length; i++) if (text.charCodeAt(i) === 10) count++
+  return count
+}
+
+/** 在最后一个换行处截断；单行超长时保留原样，避免空页导致无法续读。 */
+function cutAtLine(text: string): string {
+  const newline = text.lastIndexOf('\n')
+  return newline > 0 ? text.slice(0, newline) : text
+}
+
 function dedupeCanonicals(values: readonly string[]): string[] {
   const seen = new Set<string>()
   const result: string[] = []
@@ -1088,207 +1559,321 @@ function dedupeCanonicals(values: readonly string[]): string[] {
   return result
 }
 
-/** 来源头保持既有格式；新增小节信息一律放到正文之后，只用剩余预算，避免挤占原正文送达。 */
+/** 防御分支块头（仅在缺少小节目录时使用）：保留文件来源，避免来源信息完全丢失。 */
 function renderRagHeader(block: RagBlock): string {
   const { chunk } = block
-  return `【${chunk.file} | ${chunk.heading} | L${chunk.startLine}-${chunk.endLine}】`
+  return `【${fileBaseNameOf(chunk.file)} | ${chunk.heading} | L${chunk.startLine}-${chunk.endLine}】`
 }
 
-/** 含可调用小节 ID 的行必须整行放入；空间不足时省略，绝不输出被截断的 ID。 */
-interface SectionContextLine {
+/** 相对路径的文件名部分；展示层只用文件名，跨目录重名由语料白名单机械校验拦住。 */
+function fileBaseNameOf(file: string): string {
+  return file.slice(file.lastIndexOf('/') + 1)
+}
+
+/** 目录树条目：必需（表头/根行/命中行/祖先行）与命中预览优先，其余结构行让位。 */
+interface TreeEntry {
   text: string
-  atomic?: boolean
+  /** 与上一条之间的分隔符。 */
+  separator: string
+  priority: 'essential' | 'preview' | 'structure'
+  /** 父条目已写入时才展示，保持树的层级与预览归属。 */
+  parentIndex?: number
+}
+
+/** 命中预览条目：按实际写入登记注入记录与片段范围。 */
+interface PreviewRecord {
+  entryIndex: number
+  chunkId: string
+  range: FragmentRange
+}
+
+/** 一条关联事实入口提示：所在命中行的整行文本，供送达观测按行核对是否实际写入。 */
+interface LinkedOffer {
+  sectionId: string
+  file: string
+  objectCount: number
+  line: string
+}
+
+/** 一个文件的目录树渲染计划；foldCandidates 是本轮仍可继续折叠的子树根（文档顺序）。 */
+interface TreePlan {
+  entries: TreeEntry[]
+  previews: PreviewRecord[]
+  offers: LinkedOffer[]
+  foldCandidates: string[]
+}
+
+/** 目录树节点：同文件小节的父子关系，仅用于渲染与折叠。 */
+interface OutlineNode {
+  section: SectionEntry
+  children: OutlineNode[]
+}
+
+/** 平铺小节装回父子结构；父级不在目录内（一级标题或无标题文件）时作为森林根。 */
+function buildOutlineForest(nodes: readonly SectionEntry[]): { forest: OutlineNode[]; parentOf: Map<string, string | undefined> } {
+  const byId = new Map<string, OutlineNode>()
+  const parentOf = new Map<string, string | undefined>()
+  const forest: OutlineNode[] = []
+  for (const section of nodes) {
+    const node: OutlineNode = { section, children: [] }
+    byId.set(section.sectionId, node)
+    const parent = section.parentId === undefined ? undefined : byId.get(section.parentId)
+    parentOf.set(section.sectionId, parent?.section.sectionId)
+    if (parent) parent.children.push(node)
+    else forest.push(node)
+  }
+  return { forest, parentOf }
+}
+
+/** 节点在树里的缩进：一级标题由根行承载，二级起每级两空格。 */
+function nodeIndent(section: SectionEntry): string {
+  return '  '.repeat(Math.max(0, section.level - 1))
+}
+
+/** 子树内的小节数（不含自身）。 */
+function descendantCount(node: OutlineNode): number {
+  return node.children.reduce((sum, child) => sum + 1 + descendantCount(child), 0)
+}
+
+/** 未命中子树折叠后的计数后缀。 */
+function foldSuffix(count: number): string {
+  return `（含 ${count} 个小节未展开）`
+}
+
+/** 命中预览：按原文换行逐行加 `> ` 前缀，硬截断到 PREVIEW_CHARS 并在断点标出全文长度。 */
+function previewBlock(text: string, indent: string): { block: string; delivered: string } {
+  const delivered = safeCutToLength(text, PREVIEW_CHARS)
+  const lines = delivered.split('\n').map((line) => (line === '' ? `${indent}>` : `${indent}> ${line}`))
+  if (delivered.length < text.length) {
+    lines[lines.length - 1] = `${lines[lines.length - 1]}…（截断，全文 ${text.length} 字符）`
+  }
+  return { block: lines.join('\n'), delivered }
+}
+
+/** 按字符数硬截断，且不拆 UTF-16 代理对。 */
+function safeCutToLength(text: string, limit: number): string {
+  if (text.length <= limit) return text
+  const head = text.slice(0, limit)
+  const last = head.charCodeAt(head.length - 1)
+  return last >= 0xd800 && last <= 0xdbff ? head.slice(0, -1) : head
+}
+
+/** 文件根行：H1 标题、整篇入口 ID 与全文规模；标题前首部命中时标记落在根行。 */
+function renderRootRow(source: FileTreeSource, hit: boolean): string {
+  return `- ${source.outline.title}｜${source.doc.sectionId}｜全文 ${source.doc.body.length} 字符${hit ? ' ◆' : ''}`
 }
 
 /**
- * 组装小节上下文，顺序固定为：当前小节标识 → 上级范围入口 → 既有父级引导 → 兄弟导航。
- * 上级范围入口只针对实际送达的命中小节，复用 parentId/get，不虚造无父级入口。
+ * 组装目录树（ADR-022 决策 7 的阅读 ID、ADR-020 决策 3 的关联提示）：
+ *   根行给文件标题、整篇入口与全文规模；命中节点带小节 ID 与 ◆，并在 withPreview 时就地展开正文预览；
+ *   非命中节点只给标题，命中祖先链之外的子树在预算不足时折叠为一行计数；
+ *   关联对象数只标在命中行（树上唯一还能展开关联的可调用节点），不再输出上级范围入口与父级引导。
  */
-function buildSectionContext(
+function buildTreePlan(
   sections: SectionDirectory,
-  blocks: RagBlock[],
-  delivered: Set<string>,
-): SectionContextLine[] {
-  const unique: Array<{ block: RagBlock; section: SectionEntry }> = []
-  const seenSections = new Set<string>()
-  for (const block of blocks) {
-    const section = block.section
-    if (!section || seenSections.has(section.sectionId)) continue
-    seenSections.add(section.sectionId)
-    unique.push({ block, section })
+  sources: readonly FileTreeSource[],
+  links: ProseLinkIndex | undefined,
+  folded: ReadonlySet<string>,
+  withPreview: boolean,
+): TreePlan {
+  const entries: TreeEntry[] = [{ text: TREE_HEADER, separator: '', priority: 'essential' }]
+  const previews: PreviewRecord[] = []
+  const offers: LinkedOffer[] = []
+  const foldCandidates: string[] = []
+
+  for (const source of sources) {
+    const { forest, parentOf } = buildOutlineForest(source.outline.nodes)
+    // 同小节只展开一次（同节被多个块命中时保留首次命中）；标题前首部命中挂在根行。
+    const bySection = new Map<string, TreeHit>()
+    let rootHit: TreeHit | undefined
+    for (const hit of source.hits) {
+      if (hit.target.level === 0) {
+        rootHit ??= hit
+        continue
+      }
+      if (!bySection.has(hit.target.sectionId)) bySection.set(hit.target.sectionId, hit)
+    }
+    const essential = new Set<string>()
+    for (const hit of bySection.values()) {
+      let current: string | undefined = hit.target.sectionId
+      while (current !== undefined) {
+        essential.add(current)
+        current = parentOf.get(current)
+      }
+    }
+
+    let first = true
+    const push = (text: string, priority: TreeEntry['priority'], parentIndex: number): number => {
+      const index = entries.length
+      entries.push({ text, separator: first ? '\n\n' : '\n', priority, parentIndex })
+      first = false
+      return index
+    }
+    const pushPreview = (hit: TreeHit, indent: string, parentIndex: number): void => {
+      const preview = previewBlock(hit.slice.text, indent)
+      const index = push(preview.block, 'preview', parentIndex)
+      previews.push({
+        entryIndex: index,
+        chunkId: hit.chunk.id,
+        range: {
+          kind: 'hit',
+          file: source.file,
+          sectionId: hit.target.sectionId,
+          chunkId: hit.chunk.id,
+          docOffset: hit.slice.docOffset,
+          docEndOffset: hit.slice.docOffset + preview.delivered.length,
+          startLine: hit.slice.startLine,
+          endLine: hit.slice.startLine + countNewlines(preview.delivered),
+        },
+      })
+    }
+
+    const rootIndex = push(renderRootRow(source, rootHit !== undefined), 'essential', 0)
+    if (rootHit && withPreview) pushPreview(rootHit, '  ', rootIndex)
+
+    const walk = (node: OutlineNode, parentIsNonEssential: boolean, parentIndex: number): void => {
+      const { section } = node
+      const id = section.sectionId
+      const isEssential = essential.has(id)
+      if (!isEssential && folded.has(id)) {
+        push(`${nodeIndent(section)}- ${section.heading}${foldSuffix(descendantCount(node))}`, 'structure', parentIndex)
+        return
+      }
+      if (!isEssential && !parentIsNonEssential && descendantCount(node) > 0) foldCandidates.push(id)
+      const hit = bySection.get(id)
+      let nodeIndex: number
+      if (hit) {
+        const objects = links ? readObjectsFor(id, sections, links).length : 0
+        const linked = objects > 0 ? `｜关联 ${objects} 个对象` : ''
+        const line = `${nodeIndent(section)}- ${id}｜${section.heading} ◆${linked}`
+        nodeIndex = push(line, 'essential', parentIndex)
+        if (objects > 0) offers.push({ sectionId: id, file: source.file, objectCount: objects, line })
+        if (withPreview) pushPreview(hit, `${nodeIndent(section)}  `, nodeIndex)
+      } else {
+        nodeIndex = push(`${nodeIndent(section)}- ${section.heading}`, isEssential ? 'essential' : 'structure', parentIndex)
+      }
+      for (const child of node.children) walk(child, !isEssential, nodeIndex)
+    }
+    for (const node of forest) walk(node, false, rootIndex)
   }
 
-  const lines: SectionContextLine[] = [{ text: '【小节上下文】' }]
-  for (const { block, section } of unique) {
-    const context = sections.contextFor(section.sectionId)
-    const path = context && context.headingPath.length > 0 ? context.headingPath.join(' > ') : '（文档根节点）'
-    lines.push({ text: `- ${section.sectionId}｜${block.chunk.file}｜标题路径：${path}`, atomic: true })
-  }
+  return { entries, previews, offers, foldCandidates }
+}
 
-  const parentLines: SectionContextLine[] = []
-  const seenParents = new Set<string>()
-  for (const { block, section } of unique) {
-    if (!delivered.has(block.chunk.id) || !section.parentId || seenParents.has(section.parentId)) continue
-    const parent = sections.get(section.parentId)
-    if (!parent) continue
-    seenParents.add(parent.sectionId)
-    parentLines.push({ text: renderParentRangeEntry(parent), atomic: true })
-  }
-  if (parentLines.length > 0) {
-    lines.push({ text: '【上级范围入口】以下为包含下级小节的原文范围，不等同于符合问题条件的完整答案集。' })
-    lines.push(...parentLines)
-  }
+/** 目录树条目的总字符数（含分隔符），用于判断是否需要折叠。 */
+function treeEntriesLength(entries: readonly TreeEntry[]): number {
+  return entries.reduce((sum, entry) => sum + entry.separator.length + entry.text.length, 0)
+}
 
-  for (const { section } of unique) {
-    const context = sections.contextFor(section.sectionId)
-    if (context?.parentLead) {
-      lines.push({ text: `  父级引导（L${context.parentLead.startLine}-${context.parentLead.endLine}）：${truncateLead(context.parentLead.text)}` })
+/**
+ * 按必需条目、预览、其余结构的优先级分配额度，再按原文顺序输出。
+ * 条目整行保留或省略；父条目未写入时一并省略其下级。
+ */
+function renderTreeEntries(entries: readonly TreeEntry[], maxChars: number): { data: string; written: Set<number> } {
+  let used = 0
+  const written = new Set<number>()
+  for (const priority of ['essential', 'preview', 'structure'] as const) {
+    for (const [index, entry] of entries.entries()) {
+      if (entry.priority !== priority) continue
+      if (entry.parentIndex !== undefined && !written.has(entry.parentIndex)) continue
+      const size = entry.separator.length + entry.text.length
+      if (used + size <= maxChars) {
+        used += size
+        written.add(index)
+      }
     }
   }
-
-  for (const file of [...new Set(unique.map(({ block }) => block.chunk.file))]) {
-    const first = unique.find(({ block }) => block.chunk.file === file)
-    if (!first) continue
-    const navigation = sections.navigationFor(first.section.sectionId, NAVIGATION_LIMIT)
-    lines.push({ text: `【小节导航】${file}` })
-    for (const item of navigation.items) lines.push({ text: `- ${item.sectionId}｜${item.heading}`, atomic: true })
-    if (navigation.omitted > 0) lines.push({ text: `（省略 ${navigation.omitted} 项）` })
-  }
-  return lines
+  const data = entries.filter((_, index) => written.has(index)).map((entry) => `${entry.separator}${entry.text}`).join('')
+  return { data, written }
 }
 
-/** 上级范围入口行：完整可复制 ID、文件、标题路径与正文 UTF-16 字符数。 */
-function renderParentRangeEntry(parent: SectionEntry): string {
-  const path = parent.level === 0 ? '（文档根节点）' : [...parent.ancestors, parent.heading].join(' > ')
-  return `- ${parent.sectionId}｜${parent.file}｜标题路径：${path}｜正文 ${parent.body.length} 字符`
+/** 无关联索引时的空索引：read 仍可读取原文，只是没有登记事实可送。 */
+const EMPTY_PROSE_LINK_INDEX: ProseLinkIndex = { links: [], bySection: new Map(), issues: [] }
+
+const TRUNCATED_ID_MARKER = '…（已截断）'
+
+/**
+ * 回显模型提供的 section_id 的安全提示：整条文本不超过 maxContextChars，
+ * 超预算时按字符截断 ID 且不拆 UTF-16 代理对，保证 empty 结果的 data 同样守住预算。
+ */
+function boundIdMessage(prefix: string, sectionId: string, suffix: string, maxChars: number): string {
+  const message = `${prefix}${sectionId}${suffix}`
+  if (message.length <= maxChars) return message
+  const budget = maxChars - prefix.length - suffix.length - TRUNCATED_ID_MARKER.length
+  if (budget <= 0) return message.slice(0, Math.max(0, maxChars))
+  const head = sectionId.slice(0, budget)
+  const last = head.length === 0 ? 0 : head.charCodeAt(head.length - 1)
+  const safeHead = last >= 0xd800 && last <= 0xdbff ? head.slice(0, -1) : head
+  return `${prefix}${safeHead}${TRUNCATED_ID_MARKER}${suffix}`
 }
 
-function truncateLead(text: string): string {
-  return text.length <= PARENT_LEAD_LIMIT ? text : `${text.slice(0, PARENT_LEAD_LIMIT)}…（截断）`
-}
-
-/** 按行追加小节上下文；含 ID 的行只整行放入或省略，普通引导文字仍按既有方式截断。 */
-function appendSectionContext(data: string, lines: SectionContextLine[], maxChars: number): string {
-  let out = data
-  lines.forEach((line, index) => {
-    if (out.length >= maxChars) return
-    const separator = index === 0 ? '\n\n' : '\n'
-    if (out.length + separator.length + line.text.length <= maxChars) {
-      out += `${separator}${line.text}`
-      return
-    }
-    if (line.atomic) return
-    const marker = '…（截断）'
-    const room = maxChars - out.length - separator.length - marker.length
-    if (room > 0) out += `${separator}${line.text.slice(0, room)}${marker}`
-  })
-  return out
-}
-
-/** 单次 read_section 的正文页上限（UTF-16 字符）。 */
-const READ_SECTION_PAGE_CHARS = 6000
-
-function readSectionOperation(
+/**
+ * read（ADR-022 决策 1、4、6）：一次调用同时返回所读范围的原文子树与明确登记关联的事实，
+ * 两侧各自分页。本函数只做定位、范围校验与快照装配；内容组装、容量契约与行范围在 read.ts。
+ * 未知 ID 返回 empty 并提示使用本次返回的 ID，不做模糊搜索、不访问文件系统。
+ */
+function readOperation(
   params: Record<string, unknown>,
   context: KnowledgeToolContext,
   config: BenchConfig,
-): { data: string; hitIds: string[]; injectedIds: string[]; status: ToolResultStatus } {
+): { data: string; hitIds: string[]; injectedIds: string[]; status: ToolResultStatus; readDelivery: ReadPageDelivery; fatal?: boolean } {
   const sectionId = params.section_id as string
-  const offset = params.offset as number
   const directory = context.sections
   if (!directory) {
-    return { data: `本运行未启用小节阅读（没有小节目录），无法读取：${sectionId}。`, hitIds: [], injectedIds: [], status: 'empty' }
+    return {
+      data: boundIdMessage('本运行未启用小节阅读（没有小节目录），无法读取：', sectionId, '。使用当前返回的 ID。', config.maxContextChars),
+      hitIds: [],
+      injectedIds: [],
+      status: 'empty',
+      readDelivery: {},
+    }
   }
   const section = directory.get(sectionId)
   if (!section) {
-    return { data: `本运行目录中没有该小节：${sectionId}。不会改为模糊搜索。`, hitIds: [], injectedIds: [], status: 'empty' }
-  }
-  if (offset > section.body.length) {
+    // 模型可能回传任意长度的 ID；回显提示同样受 maxContextChars 约束，不整段超发。
     return {
-      data: `read_section 的 offset 超出小节正文长度（${section.body.length}）：${offset}`,
+      data: boundIdMessage('本运行目录中没有该小节：', sectionId, '。不会改为模糊搜索；请使用本次返回的 ID。', config.maxContextChars),
       hitIds: [],
       injectedIds: [],
-      status: 'invalid_params',
+      status: 'empty',
+      readDelivery: {},
     }
   }
-  const remaining = section.body.length - offset
-  const metaLength = sectionMetaLength(section, offset)
-  // 元数据无法容纳，或剩余正文连一个字符都放不下时，明确报错，不静默放宽上限。
-  if (metaLength > config.maxContextChars || (remaining > 0 && metaLength + 1 > config.maxContextChars)) {
+  // 关联对象与原文来自同一次运行快照；关联索引损坏时显式报错，不静默降级成空关联。
+  const objects = readObjectsFor(section.sectionId, directory, context.links ?? EMPTY_PROSE_LINK_INDEX)
+  const factsOffset = params.facts_offset as number
+  try {
+    const store = objects.some((object) => object.kind === 'card') ? loadFactsStore(context) : undefined
+    const page = buildReadPage({
+      section,
+      directory,
+      objects,
+      ...(store === undefined ? {} : { store }),
+      offset: params.offset as number,
+      factsOffset,
+      maxChars: config.maxContextChars,
+      factsResultVersion: FACTS_RESULT_VERSION,
+    })
     return {
-      data: `read_section 无法在 maxContextChars=${config.maxContextChars} 内返回正文：分页元数据已占约 ${metaLength} 字符。请提高 maxContextChars 后重试。`,
+      data: page.data,
+      hitIds: page.hitIds,
+      injectedIds: page.injectedIds,
+      status: page.status,
+      readDelivery: page.delivery,
+    }
+  } catch (error) {
+    // 已知对象序列与有效偏移仍须留档；实际证据未送达，原有 fatal 错误语义保持。
+    return {
+      data: error instanceof Error ? error.message : String(error),
       hitIds: [],
       injectedIds: [],
       status: 'error',
+      fatal: true,
+      readDelivery: factsOffset <= objects.length
+        ? { factsPage: { offset: factsOffset, nextOffset: null, total: objects.length, returned: 0, complete: false } }
+        : {},
     }
   }
-  // 末尾读取（offset 恰等于正文长度）或空小节正文只返回分页元数据，按非空证据判定为 empty，不扣成功额度。
-  return {
-    data: renderSectionPage(section, offset, config.maxContextChars, directory),
-    hitIds: [],
-    injectedIds: [],
-    status: remaining > 0 ? 'success' : 'empty',
-  }
-}
-
-/** 分页元数据（含与正文之间的空行）的保守长度，用于先扣除元数据预算。 */
-function sectionMetaLength(section: SectionEntry, offset: number): number {
-  return sectionMetaPrefix(section, offset, '', Number.MAX_SAFE_INTEGER, false).length + 2
-}
-
-/** 固定格式的分页元数据；正文页决定实际行范围。 */
-function sectionMetaPrefix(
-  section: SectionEntry,
-  offset: number,
-  page: string,
-  nextOffset: number | null,
-  complete: boolean,
-): string {
-  const path = section.level === 0 ? '（文档根节点）' : [...section.ancestors, section.heading].join(' > ')
-  const startLine = section.startLine + countNewlines(section.body.slice(0, offset))
-  const endLine = page.length === 0 ? startLine - 1 : startLine + countNewlines(page)
-  return [
-    `【read_section】${section.sectionId}`,
-    `标题路径：${path}`,
-    `行范围：L${startLine}-${endLine}｜offset：${offset}｜next_offset：${nextOffset === null ? 'null' : nextOffset}｜complete：${complete}`,
-  ].join('\n')
-}
-
-/** 渲染一页原文；元数据先占预算，必要时在行边界缩短，保证可续读且不丢中段。 */
-function renderSectionPage(section: SectionEntry, offset: number, maxContextChars: number, directory?: SectionDirectory): string {
-  const remaining = section.body.length - offset
-  const budget = Math.min(READ_SECTION_PAGE_CHARS, remaining, Math.max(0, maxContextChars - sectionMetaLength(section, offset)))
-  let page = section.body.slice(offset, offset + budget)
-  if (offset + page.length < section.body.length) page = cutAtLine(page)
-  const nextOffset = offset + page.length
-  const complete = nextOffset >= section.body.length
-  const core = `${sectionMetaPrefix(section, offset, page, complete ? null : nextOffset, complete)}\n\n${page}`
-  const parentLine = renderSectionParentLine(section, directory)
-  // 先按原算法确定正文页、next_offset 与 complete；仅在剩余空间足够时附加完整父级行，不重切正文。
-  if (!parentLine || core.length + 1 + parentLine.length > maxContextChars) return core
-  const separator = core.indexOf('\n\n')
-  return separator < 0 ? `${core}\n${parentLine}` : `${core.slice(0, separator)}\n${parentLine}${core.slice(separator)}`
-}
-
-/** 直接父级行：完整 ID、文件、标题路径与正文长度；无父级返回 null，不虚造。 */
-function renderSectionParentLine(section: SectionEntry, directory?: SectionDirectory): string | null {
-  if (!directory || !section.parentId) return null
-  const parent = directory.get(section.parentId)
-  if (!parent) return null
-  const path = parent.level === 0 ? '（文档根节点）' : [...parent.ancestors, parent.heading].join(' > ')
-  return `父级范围：${parent.sectionId}｜${parent.file}｜标题路径：${path}｜正文 ${parent.body.length} 字符（包含下级小节的原文范围）`
-}
-
-function countNewlines(text: string): number {
-  let count = 0
-  for (let i = 0; i < text.length; i++) if (text.charCodeAt(i) === 10) count++
-  return count
-}
-
-/** 在最后一个换行处截断；单行超长时保留原样，避免空页导致无法续读。 */
-function cutAtLine(text: string): string {
-  const newline = text.lastIndexOf('\n')
-  return newline > 0 ? text.slice(0, newline) : text
 }
 
 /** 将执行结果写成 tool message；同一对象同时用于 trace 的 writtenContent。 */

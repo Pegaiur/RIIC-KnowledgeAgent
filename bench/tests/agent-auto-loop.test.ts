@@ -33,7 +33,7 @@ describe('Agent auto 主循环', () => {
   it('能力块只暴露当前独立工具，并描述双上限预算', () => {
     const prompt = buildSystemPrompt('hybrid', '规则', 2)
 
-    expect(prompt).toContain('可用工具：rag_search、facts_search、read_section')
+    expect(prompt).toContain('可用工具：rag_search、facts_search、read')
     expect(prompt).toContain('2 点成功额度 + 10 次获准尝试上限')
     expect(prompt).toContain('仅非空执行成功扣 1 点')
     // 单调用约束由人工契约承载，能力块只补充运行时事实。
@@ -45,14 +45,15 @@ describe('Agent auto 主循环', () => {
   })
 
   it('同批超量：只准入首项，其余按位置拒绝并按原顺序回写', async () => {
-    const config = loadConfig()
+    // 无目录夹具显式沿用全文回退，保持本用例的循环／预算前置条件。
+    const config = { ...loadConfig(), expandFulltext: true }
     config.retriever = 'hybrid'
     config.toolBudget = 2
     const trace = createQueryTrace({ id: 'AUTO-BATCH', category: 'fact', question: '制造站？' })
     mockCall
       .mockResolvedValueOnce(result({ toolCalls: [
         toolCall('a', 'rag_search'),
-        toolCall('b', 'read_section', { section_id: 'sec-不存在' }),
+        toolCall('b', 'read', { section_id: 'sec-不存在' }),
         toolCall('c', 'rag_search', { query: '制造站效率' }),
         toolCall('d', 'rag_search', { query: '超额' }),
       ] }))
@@ -108,7 +109,8 @@ describe('Agent auto 主循环', () => {
   })
 
   it('允许五次有依赖的工具步骤后由模型作答，不再使用旧 maxRounds 上限', async () => {
-    const config = loadConfig()
+    // 无目录夹具显式沿用全文回退，保持本用例的循环／预算前置条件。
+    const config = { ...loadConfig(), expandFulltext: true }
     config.toolBudget = 5
     const calls = Array.from({ length: 5 }, (_, index) => result({ toolCalls: [toolCall(`step-${index + 1}`)] }))
     mockCall.mockResolvedValueOnce(calls[0])
@@ -157,7 +159,8 @@ describe('Agent auto 主循环', () => {
   })
 
   it('预算归零后仍继续提供独立工具/auto，模型可基于拒绝结果作答', async () => {
-    const config = loadConfig()
+    // 无目录夹具显式沿用全文回退，保持本用例的循环／预算前置条件。
+    const config = { ...loadConfig(), expandFulltext: true }
     config.toolBudget = 1
     mockCall
       .mockResolvedValueOnce(result({ toolCalls: [toolCall('first')] }))
@@ -177,7 +180,8 @@ describe('Agent auto 主循环', () => {
   })
 
   it('获准尝试上限耗尽后只拒绝、不新增执行，模型仍可作答', async () => {
-    const config = loadConfig()
+    // 无目录夹具显式沿用全文回退，保持本用例的循环／预算前置条件。
+    const config = { ...loadConfig(), expandFulltext: true }
     config.retriever = 'bm25'
     config.toolBudget = 5
     config.toolAttemptLimit = 1

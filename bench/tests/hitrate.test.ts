@@ -201,13 +201,13 @@ describe('renderHitrate', () => {
         precHits: [0],
         precSlots: [1],
         ndcg: [0],
-        misses: [{ key: 'references/技能-甲.md#技能', bestRank: null, excluded: true }],
+        misses: [{ key: 'base/技能-甲.md#技能', bestRank: null, excluded: true }],
         excludedKeys: 1,
       }],
       scope: { directoryChunks: 5, retrievalChunks: 4, excludedChunks: 1, excludedGoldenKeys: 1 },
     })
 
-    expect(markdown).toContain('references/技能-甲.md#技能（被检索范围排除）')
+    expect(markdown).toContain('base/技能-甲.md#技能（被检索范围排除）')
   })
 })
 
@@ -215,8 +215,8 @@ describe('runHitrate 范围口径（ADR-013 步骤 5）', () => {
   const skillChunks: DocChunk[] = [
     ...chunks,
     {
-      id: 'references/技能-甲.md### 电力',
-      file: 'references/技能-甲.md',
+      id: 'base/技能-甲.md### 电力',
+      file: 'base/技能-甲.md',
       heading: '电力',
       text: '发电站无人机充能机制 电力 电力 电力 电力 电力',
       startLine: 2,
@@ -225,10 +225,10 @@ describe('runHitrate 范围口径（ADR-013 步骤 5）', () => {
   ]
 
   it('被范围排除的真源键计未命中，但保留 recall 分母并计入范围计数', () => {
-    const retrieval = skillChunks.filter((chunk) => chunk.file !== 'references/技能-甲.md')
+    const retrieval = skillChunks.filter((chunk) => chunk.file !== 'base/技能-甲.md')
     const index = buildIndex(retrieval)
-    // golden 指向被排除的技能表块；真源存在（directory 解析成功），检索范围内不可达。
-    const gold = { Q1: { golden: ['references/技能-甲.md#电力', 'a.md#电力'] } }
+    // golden 指向被排除的分块；真源存在（directory 解析成功），检索范围内不可达。
+    const gold = { Q1: { golden: ['base/技能-甲.md#电力', 'a.md#电力'] } }
 
     const result = runHitrate(index, retrieval, [questions[0]], gold, [3], { directoryChunks: skillChunks })
     const q1 = result.perQuestion[0]!
@@ -237,7 +237,7 @@ describe('runHitrate 范围口径（ADR-013 步骤 5）', () => {
     expect(q1.hits[0]).toBe(1) // 仅可达键命中
     expect(q1.excludedKeys).toBe(1)
     // 逐题明细按键区分：被范围排除的键标 excluded，不混同为「视野外」
-    expect(q1.misses).toEqual([{ key: 'references/技能-甲.md#电力', bestRank: null, excluded: true }])
+    expect(q1.misses).toEqual([{ key: 'base/技能-甲.md#电力', bestRank: null, excluded: true }])
     expect(result.scope).toEqual({
       directoryChunks: 4,
       retrievalChunks: 3,
@@ -247,7 +247,7 @@ describe('runHitrate 范围口径（ADR-013 步骤 5）', () => {
   })
 
   it('真源不存在的键仍抛错，不被范围排除掩盖', () => {
-    const retrieval = skillChunks.filter((chunk) => chunk.file !== 'references/技能-甲.md')
+    const retrieval = skillChunks.filter((chunk) => chunk.file !== 'base/技能-甲.md')
     const index = buildIndex(retrieval)
     expect(() => runHitrate(index, retrieval, [questions[0]], { Q1: { golden: ['a.md#幽灵节'] } }, [3], { directoryChunks: skillChunks }))
       .toThrow(/幽灵节/)

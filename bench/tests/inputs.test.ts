@@ -1,7 +1,7 @@
 import { mkdirSync, readFileSync, readdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { describe, expect, it, afterEach, vi } from 'vitest'
+import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest'
 import { EXPERIMENT, loadConfig } from '../src/config.js'
 import { buildIndex } from '../src/retriever.js'
 import { buildSectionDirectory } from '../src/sections.js'
@@ -31,10 +31,16 @@ function providerResult(partial: Partial<ProviderResult>): ProviderResult {
 }
 
 describe('运行输入记录', () => {
+  let previous: Pick<typeof EXPERIMENT, 'tokenizer' | 'entityBoost'>
+
+  beforeEach(() => {
+    previous = { tokenizer: EXPERIMENT.tokenizer, entityBoost: EXPERIMENT.entityBoost }
+  })
+
   afterEach(() => {
     mockCall.mockReset()
-    EXPERIMENT.tokenizer = 'bigram'
-    EXPERIMENT.entityBoost = 0
+    EXPERIMENT.tokenizer = previous.tokenizer
+    EXPERIMENT.entityBoost = previous.entityBoost
   })
 
   it('首个模型调用前已经写入 inputs，且 prompt/schema 与实际调用一致', async () => {
@@ -70,10 +76,12 @@ describe('运行输入记录', () => {
       expect(inputs.captureStatus).toBe('complete')
       expect(inputs.systemPrompt.text).toBe((mockCall.mock.calls[0]?.[0] as Array<{ role: string; content: string }>)[0]?.content)
       expect(inputs.toolSchema.definitions).toEqual(mockCall.mock.calls[0]?.[1])
-      expect(inputs.config).toMatchObject({ maxTokens: 4096, temperature: null, retriever: 'hybrid', toolAttemptLimit: 10, factsQueryListLimit: 3, parallelToolCalls: false, includeSkillTables: false, expandFulltext: true, attachFacts: true })
+      expect(inputs.config).toMatchObject({ maxTokens: 4096, temperature: null, retriever: 'hybrid', toolAttemptLimit: 10, factsQueryListLimit: 3, parallelToolCalls: false, retrievalScope: 'base-guides', expandFulltext: false, injectKeywordCatalog: false, attachFacts: true })
+      expect(inputs.config).not.toHaveProperty('includeSkillTables')
       expect(inputs.facts).toEqual({ status: 'not_used' })
       const meta = JSON.parse(readFileSync(output.metaPath, 'utf-8')) as Record<string, unknown>
-      expect(meta).toMatchObject({ maxTokens: 4096, inputsSchemaVersion: 1, includeSkillTables: false, expandFulltext: true, attachFacts: true })
+      expect(meta).toMatchObject({ maxTokens: 4096, inputsSchemaVersion: 1, retrievalScope: 'base-guides', expandFulltext: false, injectKeywordCatalog: false, attachFacts: true })
+      expect(meta).not.toHaveProperty('includeSkillTables')
     } finally {
       rmSync(outDir, { recursive: true, force: true })
     }
@@ -101,6 +109,38 @@ describe('运行输入记录', () => {
       expect(inputs.config).toMatchObject({ toolBudget: 3, toolAttemptLimit: 4 })
       const meta = JSON.parse(readFileSync(output.metaPath, 'utf-8')) as Record<string, unknown>
       expect(meta).toMatchObject({ toolBudget: 3, toolAttemptLimit: 4 })
+    } finally {
+      rmSync(outDir, { recursive: true, force: true })
+    }
+  })
+
+  it.each([
+    [0, 0, false, false],
+    [0, 1, false, true],
+    [1, 0, true, false],
+    [1, 1, true, true],
+  ] as const)('expand-fulltext=%i / inject-keyword-catalog=%i 组合按有效配置装配并留档', async (expand, inject, effectiveExpand, effectiveInject) => {
+    const outDir = mkdtempSync(join(tmpdir(), 'rag-inputs-switches-'))
+    try {
+      const config = loadConfig('qwen')
+      config.retriever = 'hybrid'
+      config.feedbackOnNoToolAnswer = false
+      config.expandFulltext = expand === 1
+      config.injectKeywordCatalog = inject === 1
+      mockCall.mockImplementation(async (messages: Array<{ role: string; content: string }>) => {
+        expect(messages[0]?.content?.includes('查询关键词目录')).toBe(effectiveInject)
+        return providerResult({ content: '完成' })
+      })
+      const output = await runBenchmark(
+        [{ id: 'INPUT-SWITCHES', category: 'fact', question: '开关组合' }],
+        { thinking: 'off', dry: false, outDir, config },
+      )
+
+      const inputs = JSON.parse(readFileSync(output.inputsPath, 'utf-8')) as Record<string, any>
+      expect(inputs.config).toMatchObject({ expandFulltext: effectiveExpand, injectKeywordCatalog: effectiveInject })
+      expect(inputs.systemPrompt.text.includes('查询关键词目录')).toBe(effectiveInject)
+      const meta = JSON.parse(readFileSync(output.metaPath, 'utf-8')) as Record<string, unknown>
+      expect(meta).toMatchObject({ expandFulltext: effectiveExpand, injectKeywordCatalog: effectiveInject })
     } finally {
       rmSync(outDir, { recursive: true, force: true })
     }
@@ -156,6 +196,60 @@ describe('运行输入记录', () => {
     } finally {
       rmSync(corpusDir, { recursive: true, force: true })
     }
+  })
+
+  it('可选关联索引只在提供时写入，仅计条目/对象数与解析问题', () => {
+    const config = loadConfig()
+    const base = {
+      config,
+      thinking: 'off' as const,
+      dry: true,
+      agentInstructions: '规则',
+      systemPrompt: '规则',
+      toolSchema: { toolSchemaVersion: 6, toolNames: ['rag_search'] },
+      toolDefinitions: [],
+      questions: [],
+      chunks: [],
+      sourceAtStart: collectSourceMetadata(process.cwd(), () => ''),
+    }
+    const links = {
+      links: [{
+        sectionId: 'sec-a',
+        file: 'base/a.md',
+        headingPath: ['总览', '制造站'],
+        occurrence: 1,
+        scope: 'section' as const,
+        documentRoot: false,
+        objects: [
+          { kind: 'card' as const, ref: 'operator:甲', canonical: '甲' },
+          { kind: 'card' as const, ref: '制造站｜「技能」｜乙', canonical: '乙', grantId: 'g-1', skillId: 's-1' },
+        ],
+        unresolved: [],
+      }],
+      bySection: new Map(),
+      issues: ['第 1 条标注：未找到小节'],
+    }
+
+    expect(createRunInputs({ ...base, links }).links).toEqual({
+      version: 2,
+      linkCount: 1,
+      objectCount: 2,
+      issues: ['第 1 条标注：未找到小节'],
+      // 每条 v2 登记保留定位与可读引用；概念精确位置与送达记录按 ref 关联。
+      entries: [{
+        sectionId: 'sec-a',
+        file: 'base/a.md',
+        headingPath: ['总览', '制造站'],
+        occurrence: 1,
+        scope: 'section',
+        objects: [
+          { kind: 'operator', ref: 'operator:甲', canonical: '甲' },
+          { kind: 'skill', ref: '制造站｜「技能」｜乙', canonical: '乙', grantId: 'g-1' },
+        ],
+      }],
+    })
+    expect(createRunInputs(base).links).toBeUndefined()
+    expect(createRunInputs(base).factsResultVersion).toBe(8)
   })
 
   it('敏感正文脱敏并标记 redacted', () => {
@@ -239,7 +333,8 @@ describe('运行输入记录', () => {
     }))
     try {
       const { createKnowledgeToolExecutor } = await import('../src/tool-executor.js')
-      const config = loadConfig()
+    // 无目录夹具显式沿用全文回退，本用例核对 facts 加载与观测回调。
+      const config = { ...loadConfig(), expandFulltext: true }
       const used: unknown[] = []
       const failures: unknown[] = []
       const rag = createKnowledgeToolExecutor({
@@ -275,8 +370,10 @@ describe('运行输入记录', () => {
   it('runner 将 facts 加载失败状态写入 inputs，且不落盘已知密钥', async () => {
     vi.resetModules()
     const loadError = new Error('加载失败 opaque-runner-secret')
-    vi.doMock('../src/facts/final.js', () => ({
-      loadValidatedRecordCards: () => { throw loadError },
+    // 运行级 raw facts 共享快照正常加载，卡片投影阶段失败：facts 工具取用 store 时才暴露（运行级快照注入）。
+    vi.doMock('../src/facts/final.js', async (importOriginal) => ({
+      ...(await importOriginal<typeof import('../src/facts/final.js')>()),
+      projectValidatedRecordCards: () => { throw loadError },
     }))
     vi.doMock('../src/provider.js', () => ({ callLLM: mockCall }))
     const outDir = mkdtempSync(join(tmpdir(), 'rag-inputs-failure-'))

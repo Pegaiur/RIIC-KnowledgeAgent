@@ -109,16 +109,21 @@ describe('sections：原文小节目录', () => {
     expect(dir.sections.some((s) => s.heading === 'operators: [甲]')).toBe(false)
   })
 
-  it('父级引导取父标题到第一个子标题之间的正文', () => {
+  it('文件目录给出可展示标题与二级以下小节，一级标题不作为树节点', () => {
     setupCorpus()
     const dir = buildSectionDirectory(docsDir)
-    const efficiency = dir.sections.find((s) => s.heading === '效率')!
-    const context = dir.contextFor(efficiency.sectionId)!
-    expect(context.headingPath).toEqual(['总览', '制造站', '效率'])
-    expect(context.parentLead).toEqual({ text: '制造站引言。', startLine: 10, endLine: 10 })
+    const outline = dir.outlineFor('base/a.md')!
+    expect(outline.title).toBe('总览')
+    expect(outline.nodes.map((node) => [node.level, node.heading])).toEqual([
+      [2, '制造站'],
+      [3, '效率'],
+      [3, '排班'],
+      [2, '制造站'],
+    ])
 
-    const overview = dir.sections[0]!
-    expect(dir.contextFor(overview.sectionId)?.parentLead).toBeUndefined()
+    // 无一级标题的文件回退为去扩展名的文件名，且没有树节点可展示。
+    expect(dir.outlineFor('base/b.md')).toMatchObject({ title: 'b', nodes: [] })
+    expect(dir.outlineFor('base/不存在.md')).toBeUndefined()
   })
 
   it('无标题文档提供文档根节点并排除 frontmatter', () => {
@@ -127,7 +132,6 @@ describe('sections：原文小节目录', () => {
     const rootNode = dir.sections.find((s) => s.file === 'base/b.md')!
     expect(rootNode).toMatchObject({ level: 0, heading: '', headingLine: 0, startLine: 4, endLine: 5 })
     expect(rootNode.body).toBe('只有正文。\n第二行。')
-    expect(dir.contextFor(rootNode.sectionId)?.headingPath).toEqual([])
   })
 
   it('按来源行把 chunk 映射回小节', () => {

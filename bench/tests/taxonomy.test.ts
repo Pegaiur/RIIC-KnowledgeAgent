@@ -48,6 +48,6 @@ describe('taxonomy：类别.md 干员组与技能类别', () => {
   })
 
   it('类别.md 是唯一读取源且关键节存在', () => {
-    expect(readFileSync(join(ROOT, 'knowledge/references/类别.md'), 'utf-8')).toContain('## 干员组（28 条）')
+    expect(readFileSync(join(ROOT, 'knowledge/guides/类别.md'), 'utf-8')).toContain('## 干员组（28 条）')
   })
 })

@@ -25,7 +25,7 @@ export interface AttachedFactsObservation {
 /** 原文扩展的实际送达范围（ADR-013）：offset/行范围对应原文，用于观测与续读。 */
 export interface FulltextRange {
   file: string
-  /** 可调用续读的文档范围 ID（read_section 可解析）。 */
+  /** 可调用续读的文档范围 ID（read 可解析）。 */
   docId: string
   /** 已送达正文在文档正文中的起止 UTF-16 offset。 */
   offset: number
@@ -39,10 +39,115 @@ export interface FulltextRange {
 /** 持久化路径只保留解析身份与成员；完整来源登记继续保存在 trace/inputs。 */
 export type DeliveryPath = Pick<ResolutionPath, 'kind' | 'term' | 'memberIds'> & { category?: string }
 
+/**
+ * rag_search 关联事实入口提示的观测（ADR-020 决策 3）。
+ * 提示只做导航、不返回事实：written 表示该提示行是否实际写入本次返回正文，供「提示与实际送达可区分」。
+ */
+export interface LinkedEntryObservation {
+  sectionId: string
+  file: string
+  objectCount: number
+  written: boolean
+}
+
+/**
+ * rag_search 实际送达的连续正文片段（ADR-022 决策 6）：offset 相对同运行 documentRange.body，
+ * 与 readDelivery 的 docOffset 同坐标，跨小节可直接比较重叠；父级引导纳入，不漏算为新证据。
+ */
+export interface FragmentRange {
+  kind: 'hit' | 'parent_lead'
+  file: string
+  /** 片段所属小节 ID；父级引导记其所属父级小节 */
+  sectionId: string
+  /** 命中块片段对应的切块 ID；父级引导不携带 */
+  chunkId?: string
+  docOffset: number
+  docEndOffset: number
+  startLine: number
+  endLine: number
+}
+
 /** 单次外部 RAG 的送达台账；数组缺失表示异常时不可用，空数组表示已观察为零。 */
 export interface RagDeliveryRecord {
   callId: string
   status: string
   fulltextRanges?: FulltextRange[]
+  /** 命中块与父级引导的连续正文片段；全文扩展模式不重复登记（历史记录缺字段表示不可用）。 */
+  fragmentRanges?: FragmentRange[]
   attachedFacts?: Array<Omit<AttachedFactsObservation, 'paths'> & { paths: DeliveryPath[] }>
+  /** 关联事实入口提示观测（ADR-020）：rag_search 每次确定性给出数组（无提示为空数组）；历史记录缺字段表示不可用。 */
+  linkedEntries?: LinkedEntryObservation[]
+}
+
+/**
+ * read 单次正文送达范围（ADR-022 决策 6）：offset/endOffset 相对所读 section.body，
+ * docOffset/docEndOffset 相对同运行 documentRange.body，均为 UTF-16 半开区间。
+ */
+export interface ReadBodyRange {
+  file: string
+  sectionId: string
+  offset: number
+  endOffset: number
+  docOffset: number
+  docEndOffset: number
+  startLine: number
+  endLine: number
+  /** 该次读取的原文部分是否已读到范围末尾（只表示这一部分） */
+  complete: boolean
+}
+
+/** read 的关联事实分页计数：offset/nextOffset 为最终去重对象序列下标。 */
+export interface ReadFactsPage {
+  offset: number
+  nextOffset: number | null
+  total: number
+  returned: number
+  complete: boolean
+}
+
+/** 送达对象的登记来源：登记 entry.objects 的零基下标。 */
+export interface ReadDeliveryOrigin {
+  sectionId: string
+  objectIndex: number
+}
+
+export interface ReadDeliveredCard {
+  kind: 'card'
+  canonical: string
+  /** full 表示 operator 引用（完整卡），skills 表示精确技能投影 */
+  projection: 'full' | 'skills'
+  /** 实际展示的 grant（投影卡含替换依据）；完整卡列出该卡全部 grant */
+  grantIds: string[]
+  origins: ReadDeliveryOrigin[]
+}
+
+export interface ReadDeliveredConcept {
+  kind: 'concept'
+  file: string
+  headingPath: string[]
+  occurrence: number
+  term?: string
+  termOccurrence?: number
+  startLine: number
+  endLine: number
+  origins: ReadDeliveryOrigin[]
+}
+
+export type ReadDeliveredObject = ReadDeliveredCard | ReadDeliveredConcept
+
+/**
+ * read 的实际送达台账（ADR-022 决策 6）。字段固定为下列八项：
+ * bodyRange/factsPage 无法取得时省略；已观察无证据时 bodyRange=null、deliveredObjects=[]；
+ * 失败发生在送达前不得记实际范围，容量失败也不写成空关联。
+ */
+export interface ReadDeliveryRecord {
+  callId: string
+  status: string
+  /** 本次调用的 section_id；无法解析（参数级非法）时为 null */
+  sectionId: string | null
+  factsResultVersion: number
+  bodyRange?: ReadBodyRange | null
+  factsPage?: ReadFactsPage | null
+  deliveredObjects?: ReadDeliveredObject[]
+  resultChars: number
 }

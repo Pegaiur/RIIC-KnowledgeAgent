@@ -1,6 +1,41 @@
 import { describe, expect, it } from 'vitest'
 import { aggregate, renderCsv, renderMarkdown } from '../src/report.js'
+import type { ReadDeliveryRecord } from '../src/delivery.js'
 import type { CostRecord } from '../src/types.js'
+
+/** 构造 read 台账：默认一条只送达正文的成功页，可按用例覆盖计数。 */
+function readDeliveryRecord(input: {
+  callId?: string
+  status?: string
+  bodyChars?: number
+  deliveredCards?: number
+  deliveredConcepts?: number
+}): ReadDeliveryRecord {
+  const bodyChars = input.bodyChars ?? 0
+  const deliveredCards = input.deliveredCards ?? 0
+  const deliveredConcepts = input.deliveredConcepts ?? 0
+  const deliveredObjects: ReadDeliveryRecord['deliveredObjects'] = [
+    ...Array.from({ length: deliveredCards }, () => ({ kind: 'card' as const, canonical: '干员甲', projection: 'full' as const, grantIds: [], origins: [] })),
+    ...Array.from({ length: deliveredConcepts }, () => ({
+      kind: 'concept' as const, file: 'guides/类别.md', headingPath: ['甲'], occurrence: 1, startLine: 1, endLine: 1, origins: [],
+    })),
+  ]
+  return {
+    callId: input.callId ?? 'read-1',
+    status: input.status ?? 'success',
+    sectionId: 'sec-0000000000000000',
+    factsResultVersion: 8,
+    bodyRange: bodyChars > 0
+      ? { file: 'base/甲.md', sectionId: 'sec-0000000000000000', offset: 0, endOffset: bodyChars, docOffset: 0, docEndOffset: bodyChars, startLine: 1, endLine: 1, complete: true }
+      : null,
+    factsPage: { offset: 0, nextOffset: null, total: deliveredObjects.length, returned: deliveredObjects.length, complete: true },
+    deliveredObjects,
+    resultChars: 200,
+  }
+}
+
+/** 运行级观测声明：只有明确下发 read 的运行，才把「没有 read 调用」记成 0（历史运行保持不可用）。 */
+const READ_RUN = { toolNames: ['rag_search', 'facts_search', 'read'] }
 
 function rec(partial: Partial<CostRecord>): CostRecord {
   return {
@@ -128,8 +163,31 @@ describe('report：聚合与渲染', () => {
     const fact = { term: '测试', start: 0, end: 2, matched: ['甲'], delivered: ['甲'], omittedReason: null, chars: 20, elapsedMs: 0, paths: [] }
     const current = rec({ tools: ['rag_search'], ragDelivery: [{ callId: 'a', status: 'success', fulltextRanges: [], attachedFacts: [fact, { ...fact, term: '别名' }] }] })
     expect(aggregate([current, { ...current, round: 2 }]).ragDeliveryStats).toEqual({
-      internalFactsQueries: 4, attachedCalls: 2, omittedTerms: 0, deliveredCards: 2, expandedRanges: 0,
+      internalFactsQueries: 4, attachedCalls: 2, omittedTerms: 0, deliveredCards: 2, expandedRanges: 0, fragmentRanges: null, linkedHints: null,
     })
+    // 命中片段按实际返回的连续正文计数；零长度范围不计，历史缺字段判不可用。
+    const fragments = rec({
+      tools: ['rag_search'],
+      ragDelivery: [{
+        callId: 'a', status: 'success', fulltextRanges: [],
+        fragmentRanges: [
+          { kind: 'hit', file: 'base/甲.md', sectionId: 'sec-1', chunkId: 'base/甲.md#甲节', docOffset: 0, docEndOffset: 12, startLine: 3, endLine: 3 },
+          { kind: 'parent_lead', file: 'base/甲.md', sectionId: 'sec-2', docOffset: 40, docEndOffset: 40, startLine: 9, endLine: 9 },
+        ],
+      }],
+    })
+    expect(aggregate([fragments]).ragDeliveryStats.fragmentRanges).toBe(1)
+    // 关联事实入口提示按「实际写入正文」计数；历史缺 linkedEntries 观测时判不可用，不补零。
+    const linked = rec({
+      tools: ['rag_search'],
+      ragDelivery: [{
+        callId: 'a', status: 'success', fulltextRanges: [], linkedEntries: [
+          { sectionId: 'sec-1', file: 'base/甲.md', objectCount: 2, written: true },
+          { sectionId: 'sec-2', file: 'base/甲.md', objectCount: 3, written: false },
+        ],
+      }],
+    })
+    expect(aggregate([linked]).ragDeliveryStats.linkedHints).toBe(1)
     expect(aggregate([current, rec({ tools: ['rag_search'] })]).ragDeliveryStats.internalFactsQueries).toBeNull()
     expect(aggregate([rec({ tools: ['rag_search'], ragDelivery: [{ callId: 'a', status: 'error' }] })]).ragDeliveryStats.internalFactsQueries).toBeNull()
     const omitted = { ...fact, delivered: [], omittedReason: '容量不足' }
@@ -144,11 +202,11 @@ describe('report：聚合与渲染', () => {
       ragDelivery: [{ callId: 'a', status: 'success', fulltextRanges: [], attachedFacts: [fact] }],
     })
     expect(aggregate([mixed]).ragDeliveryStats).toEqual({
-      internalFactsQueries: 1, attachedCalls: 1, omittedTerms: 0, deliveredCards: 1, expandedRanges: 0,
+      internalFactsQueries: 1, attachedCalls: 1, omittedTerms: 0, deliveredCards: 1, expandedRanges: 0, fragmentRanges: null, linkedHints: null,
     })
     // 请求过 rag_search 却缺整套台账（历史/异常）仍判不可用，不伪造成零送达。
     expect(aggregate([rec({ tools: ['rag_search'] })]).ragDeliveryStats).toEqual({
-      internalFactsQueries: null, attachedCalls: null, omittedTerms: null, deliveredCards: null, expandedRanges: null,
+      internalFactsQueries: null, attachedCalls: null, omittedTerms: null, deliveredCards: null, expandedRanges: null, fragmentRanges: null, linkedHints: null,
     })
   })
 
@@ -322,10 +380,10 @@ describe('report：聚合与渲染', () => {
     expect(report.toolUsage).toEqual(expect.arrayContaining([{ tool: 'rag_search', calls: 1 }]))
   })
 
-  it('read_section 计入工具调用统计，但不进入搜索命中口径', () => {
+  it('read 计入工具调用统计，但不进入搜索命中口径', () => {
     const report = aggregate([
       rec({
-        tools: ['read_section'],
+        tools: ['read'],
         toolBatch: {
           requested: 1,
           granted: 1,
@@ -338,10 +396,129 @@ describe('report：聚合与渲染', () => {
           budgetAfter: 4,
           resultChars: 120,
         },
+        readDelivery: [readDeliveryRecord({ status: 'success' })],
       }),
-    ])
-    expect(report.toolUsage).toEqual(expect.arrayContaining([{ tool: 'read_section', calls: 1 }]))
+    ], [], READ_RUN)
+    expect(report.toolUsage).toEqual(expect.arrayContaining([{ tool: 'read', calls: 1 }]))
     expect(report.toolStats).toMatchObject({ executed: 1, hitCount: 0, hitUnknown: 0 })
+    expect(renderMarkdown(report)).toContain('read 送达：调用 1')
+  })
+
+  it('readDeliveryStats 从台账重算，提示与实际证据分开；旧 read_section 运行与未声明支持新观测的运行都不补零', () => {
+    const report = aggregate([
+      rec({
+        tools: ['read'],
+        readDelivery: [readDeliveryRecord({ status: 'success', bodyChars: 100, deliveredCards: 2, deliveredConcepts: 1 })],
+      }),
+      rec({ round: 2, tools: ['read'], readDelivery: [readDeliveryRecord({ callId: 'read-2', status: 'empty' })] }),
+      rec({ round: 3, tools: ['read'], readDelivery: [readDeliveryRecord({ callId: 'read-3', status: 'error' })] }),
+    ], [], READ_RUN)
+    expect(report.readDeliveryStats).toEqual({
+      calls: 3,
+      successes: 1,
+      empty: 1,
+      errors: 1,
+      bodyChars: 100,
+      deliveredCards: 2,
+      deliveredConcepts: 1,
+    })
+
+    // 同批超量拒绝的 read 不产生台账条目：首项是 rag_search 时整体仍为已观察的 0。
+    const rejectedSameBatch = aggregate([
+      rec({ tools: ['rag_search', 'read'], readDelivery: [] }),
+    ], [], READ_RUN)
+    expect(rejectedSameBatch.readDeliveryStats).toMatchObject({ calls: 0, successes: 0, empty: 0, errors: 0, bodyChars: 0, deliveredCards: 0, deliveredConcepts: 0 })
+
+    // 历史运行使用 read_section，新观测未覆盖：保持不可用，不写成 0。
+    const legacy = aggregate([rec({ tools: ['read_section'] })], [], { toolNames: ['rag_search', 'read_section'] })
+    expect(legacy.readDeliveryStats.calls).toBeNull()
+
+    // 请求过 read 却缺台账同样不可用。
+    const missing = aggregate([rec({ tools: ['read'] })], [], READ_RUN)
+    expect(missing.readDeliveryStats.calls).toBeNull()
+
+    // 明确下发 read 且没有任何 read 调用时记 0，不把未调用与未观测混同。
+    const none = aggregate([rec({ tools: ['rag_search'] })], [], READ_RUN)
+    expect(none.readDeliveryStats).toMatchObject({ calls: 0, successes: 0, empty: 0, errors: 0, bodyChars: 0, deliveredCards: 0, deliveredConcepts: 0 })
+  })
+
+  it('无法证明下发过 read 的运行（无声明）即使没有 read 调用也不记 0', () => {
+    // 正式旧快照（toolSchemaVersion 12、只下发 read_section）与无 meta 的裸 records 都无法证明支持新观测。
+    const undeclared = aggregate([rec({ tools: ['rag_search'] })])
+    expect(undeclared.readDeliveryStats).toEqual({
+      calls: null, successes: null, empty: null, errors: null, bodyChars: null, deliveredCards: null, deliveredConcepts: null,
+    })
+    expect(renderMarkdown(undeclared)).toContain('read 送达：调用 不可用')
+  })
+
+  it('read 台账条目数与实际准入的调用不一致时整体不可用，不按残缺台账出数', () => {
+    // 请求了 read（首项即被准入）却留下空台账：覆盖不完整。
+    const shortLedger = aggregate([rec({ tools: ['read'], readDelivery: [] })], [], READ_RUN)
+    expect(shortLedger.readDeliveryStats.calls).toBeNull()
+
+    // 未请求 read 却出现台账条目：记录自相矛盾。
+    const extraLedger = aggregate([
+      rec({ tools: ['rag_search'], readDelivery: [readDeliveryRecord({ status: 'success' })] }),
+    ], [], READ_RUN)
+    expect(extraLedger.readDeliveryStats.calls).toBeNull()
+
+    // 首项 read 的第二步 read 属同批超量拒绝：只应有一条台账，合计 1 次调用。
+    const sameBatchSecond = aggregate([
+      rec({ tools: ['read', 'read'], readDelivery: [readDeliveryRecord({ status: 'success', bodyChars: 10 })] }),
+    ], [], READ_RUN)
+    expect(sameBatchSecond.readDeliveryStats).toMatchObject({ calls: 1, successes: 1, bodyChars: 10 })
+  })
+
+  it('readDeliveryStats 的字段不完整时整体不可用，不把缺失观测记成零送达', () => {
+    const partial = {
+      callId: 'read-2',
+      status: 'error',
+      sectionId: null,
+      factsResultVersion: 8,
+      resultChars: 40,
+    } as ReadDeliveryRecord
+    const report = aggregate([
+      rec({
+        tools: ['read'],
+        readDelivery: [readDeliveryRecord({ status: 'success', bodyChars: 100, deliveredCards: 2 })],
+      }),
+      rec({ round: 2, tools: ['read'], readDelivery: [partial] }),
+    ], [], READ_RUN)
+
+    // 调用次数与状态口径仍可用；缺实际范围的这页只影响对应字段。
+    expect(report.readDeliveryStats).toMatchObject({
+      calls: 2,
+      successes: 1,
+      errors: 1,
+      bodyChars: null,
+      deliveredCards: null,
+      deliveredConcepts: null,
+    })
+
+    const withObjects = aggregate([
+      rec({
+        tools: ['read'],
+        readDelivery: [{ ...readDeliveryRecord({ status: 'success', bodyChars: 0, deliveredCards: 1 }), bodyRange: undefined }],
+      }),
+    ], [], READ_RUN)
+    expect(withObjects.readDeliveryStats).toMatchObject({ bodyChars: null, deliveredCards: 1, deliveredConcepts: 0 })
+  })
+
+  it('预算拒绝的 read 台账计入调用但没有实际范围', () => {
+    const report = aggregate([
+      rec({
+        tools: ['read'],
+        readDelivery: [{
+          callId: 'read-1',
+          status: 'budget_exhausted',
+          sectionId: null,
+          factsResultVersion: 8,
+          resultChars: 30,
+        }],
+      }),
+    ], [], READ_RUN)
+
+    expect(report.readDeliveryStats).toMatchObject({ calls: 1, successes: 0, empty: 0, errors: 1, bodyChars: null, deliveredCards: null })
   })
 
   it('Markdown 渲染含表头与总数', () => {

@@ -4,8 +4,12 @@
 import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join, relative, resolve } from 'node:path'
 import { effectiveAttachFacts, loadConfig, validateBenchConfig, type BenchConfig } from './config.js'
-import { loadCorpus, selectRetrievalChunks } from './corpus.js'
+import { loadCorpus } from './corpus.js'
 import { buildSectionDirectory } from './sections.js'
+import { buildProseLinkIndex } from './prose-links.js'
+import { createRunCardStore, type CardStore } from './facts/store.js'
+import { loadValidatedFacts, projectValidatedRecordCards } from './facts/final.js'
+import type { ReferenceFacts } from './facts/references.js'
 import { buildIndex, currentEntityBoost, currentTokenizer } from './retriever.js'
 import { buildSystemPrompt, loadKnowledgeAgentInstructions, runQuery, type AgentOptions } from './agent.js'
 import type { BenchQuery, CostRecord, TerminationReason, ThinkingMode } from './types.js'
@@ -75,18 +79,33 @@ export async function runBenchmark(
   // 程序化入口与 CLI 共用同一份校验，避免在写盘前用失效/未知模式构建工具与 meta。
   validateBenchConfig(config)
   const started = Date.now()
-  const agentInstructions = loadKnowledgeAgentInstructions()
+  const agentInstructions = loadKnowledgeAgentInstructions(process.cwd(), config.injectKeywordCatalog)
   const systemPrompt = buildSystemPrompt(config.retriever, agentInstructions, config.toolBudget, config.toolAttemptLimit)
   const toolSchema = toolSchemaMetadata(config.retriever, config.factsQueryListLimit)
   const toolDefinitions = toolsForRetriever(config.retriever, config.factsQueryListLimit)
   const sourceAtStart = collectSourceMetadata()
 
-  // 语料 + 索引（一次构建，全部查询复用）；检索范围按 ADR-013 在装配层过滤，真源与 manifest 不变。
-  const corpusChunks = loadCorpus(config.corpusDir, config.maxContextChars)
-  const chunks = selectRetrievalChunks(corpusChunks, { includeSkillTables: config.includeSkillTables })
+  // 语料 + 索引（一次构建，全部查询复用）；检索范围等于 manifest 声明的全部块（ADR-021，不再有技能表过滤）。
+  const chunks = loadCorpus(config.corpusDir, config.maxContextChars)
   const index = buildIndex(chunks)
-  // 当前全部模式（bm25/hybrid）都开放 read_section，恒构建小节目录；与检索同用白名单原文来源。
+  // 运行快照（ADR-022 决策 6）：小节目录、raw facts 与卡片投影各装配一次，关联解析与 read 共用同一份实例；
+  // 当前全部模式（bm25/hybrid）都开放 read，恒构建小节目录；与检索同用白名单原文来源。
   const sections = buildSectionDirectory(config.corpusDir)
+  let factsSnapshot: ReferenceFacts | undefined
+  const loadFactsSnapshot = (): ReferenceFacts => (factsSnapshot ??= loadValidatedFacts(process.cwd()))
+  // 散文小节关联索引：装配期连接上述小节目录与同一份 raw facts，元数据不进入检索分词/切块/排序。
+  const links = buildProseLinkIndex({
+    root: process.cwd(),
+    corpusDir: config.corpusDir,
+    directory: sections,
+    facts: loadFactsSnapshot,
+  })
+  // 运行级卡片 store：从同一份 raw facts 快照投影，首次被 facts 工具或 read 使用时构建一次；
+  // 不使用模块级单例，避免跨运行复用（同一份快照在运行内不重读真源）。
+  let factsStore: CardStore | undefined
+  const loadFactsStore = (): CardStore => (factsStore ??= createRunCardStore(
+    projectValidatedRecordCards(process.cwd(), loadFactsSnapshot(), 'curated'),
+  ))
 
   const temperatureTag = config.temperature === undefined ? 'default' : `t${config.temperature}`
   const runTag = `${new Date().toISOString().replace(/[:.]/g, '-')}-${config.provider}-${opts.thinking}-${temperatureTag}`
@@ -111,6 +130,7 @@ export async function runBenchmark(
     questions,
     chunks,
     sections,
+    links,
     sourceAtStart,
   })
   // inputs.json 必须在首个 provider 调用前存在；之后只更新同一内存快照的 facts 观测状态。
@@ -132,8 +152,10 @@ export async function runBenchmark(
     agentInstructions,
     systemPrompt,
     sections,
+    links,
     onFactsStoreUsed: observeFactsStore,
     onFactsStoreLoadFailed: observeFactsFailure,
+    factsStore: loadFactsStore,
     thinking: opts.thinking,
     dry: opts.dry,
   }
@@ -243,7 +265,8 @@ export async function runBenchmark(
   const injectedPath = join(runDir, 'injected.json')
   writeFileSync(injectedPath, JSON.stringify(injectedMap, null, 2) + '\n', 'utf-8')
   const runRecords = lines.map((line) => JSON.parse(line) as CostRecord)
-  const runReport = aggregate(runRecords)
+  // 本轮明确下发 read（工具 schema 声明）：read 观测可用，零次调用才记 0（ADR-022 决策 6）。
+  const runReport = aggregate(runRecords, [], { toolNames: toolSchema.toolNames })
   // 全部题目结束后再落盘最终 inputs.json，保持先于 meta.json 写入的时序。
   completeRunInputs(runInputs)
   writeRunInputs(inputsPath, runInputs)
@@ -263,8 +286,9 @@ export async function runBenchmark(
         temperature: config.temperature ?? null,
         baseUrl: config.baseUrl,
         retriever: config.retriever,
-        includeSkillTables: config.includeSkillTables,
+        retrievalScope: 'base-guides',
         expandFulltext: config.expandFulltext,
+        injectKeywordCatalog: config.injectKeywordCatalog,
         attachFacts: effectiveAttachFacts(config),
         toolBudget: config.toolBudget,
         toolAttemptLimit: config.toolAttemptLimit,
@@ -283,8 +307,9 @@ export async function runBenchmark(
         topK: config.topK,
         maxContextChars: config.maxContextChars,
         corpusDir: config.corpusDir,
+        // 检索范围等于 manifest 声明的全部块：chunks 与 corpusChunks 同源同值（ADR-021）。
         chunks: chunks.length,
-        corpusChunks: corpusChunks.length,
+        corpusChunks: chunks.length,
         questions: questions.length,
         questionIds: questions.map((question) => question.id),
         questionsPath: relativeQuestionPath(opts.questionsPath ?? join(process.cwd(), 'bench', 'questions.json')),
@@ -314,6 +339,7 @@ export async function runBenchmark(
         toolAttempts: runReport.toolStats.attempts,
         toolSuccesses: runReport.toolStats.successes,
         ragDeliveryStats: runReport.ragDeliveryStats,
+        readDeliveryStats: runReport.readDeliveryStats,
         toolResultChars: runReport.toolStats.resultChars,
         toolHitCount: runReport.toolStats.hitCount,
         toolHitUnknown: runReport.toolStats.hitUnknown,
