@@ -12,7 +12,7 @@
 
 本草案不改检索算法、Agent 指令、工具预算或评分标准，不启动新一轮付费测试，不把答案错误自动转成开发缺陷。机械事实仍以 knowledge/raw/ 为准；guides/类别.md、guides/歧义.md 直出层保持原格式。查询别名、实体消歧和检索策略的改变仍归各自需求。
 
-日常语料写作与审阅遵循 docs/spec/rag-prose-writing.md 和 docs/rules/rag-prose-terminology.md。下述固定 query 对照、模型运行与效果判定仅适用于另行授权的效果试验，不作为普通改写的前置要求。
+日常语料写作与审阅遵循 docs/spec/rag-prose-writing.md 和 docs/spec/rag-prose-terminology.md。下述固定 query 对照、模型运行与效果判定仅适用于另行授权的效果试验，不作为普通改写的前置要求。
 
 ## 背景与依据
 

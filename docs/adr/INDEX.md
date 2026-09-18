@@ -29,3 +29,4 @@
 | [021](ADR-021-facts-source-layout.md) | 已实施 | facts 真源目录归并与事实出口 | 2026-09-15 |
 | [022](ADR-022-progressive-disclosure.md) | 已实施 | 渐进披露的阅读、关联与默认送达契约 | 2026-09-15 |
 | [023](ADR-023-rag-directory-preview.md) | 已实施 | RAG 采用文件目录树与命中预览 | 2026-09-17 |
+| [024](ADR-024-facts-storage-and-raw-lifecycle.md) | 已决策 | 正式 facts 输入与 raw 临时材料分离 | 2026-09-18 |

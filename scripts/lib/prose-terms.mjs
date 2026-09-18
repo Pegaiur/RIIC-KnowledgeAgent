@@ -1,7 +1,7 @@
 /**
  * RAG 玩家侧散文统一术语表与文本命中检测。
  *
- * 真源为 docs/rules/rag-prose-terminology.md 的规范词表。本模块只承载术语表与纯匹配逻辑，
+ * 真源为 docs/spec/rag-prose-terminology.md 的规范词表。本模块只承载术语表与纯匹配逻辑，
  * 扫描范围、文件豁免与退出码由各消费者自行决定。
  *
  * 消费者：
@@ -11,7 +11,7 @@
 
 /**
  * 禁词表：与规范词表逐条对应，命中即视为非规范写法。
- * 修改此处会同时改变合并门禁与导入预检的行为，须与 docs/rules/rag-prose-terminology.md 同步。
+ * 修改此处会同时改变合并门禁与导入预检的行为，须与 docs/spec/rag-prose-terminology.md 同步。
  */
 export const FORBIDDEN_PROSE_TERMS = [
   { pattern: /星级/u, replacement: '稀有度' },

@@ -32,9 +32,10 @@
 | 2 | 分支工作流：禁止直接在主分支提交，走 `feature/<描述>` 分支；合并后删除分支 | — |
 | 3 | 合并门槛：合并前一律执行 `node scripts/verify.mjs merge -- --base main`（门禁唯一入口，命令清单见 `scripts/gates.mjs`） | `docs/rules/document-lifecycle.md` |
 | 4 | 文档模板：ADR 参照 `docs/templates/adr.md`，plan 参照 `docs/templates/plan.md`，草案参照 `docs/templates/draft.md`，实施笔记参照 `docs/templates/notes.md`，试验参照 `docs/templates/exp.md` | — |
-| 5 | 新增、导入、改写或审阅 knowledge/base、knowledge/guides 人工散文前，必须读取并遵循写作 spec 与术语规则；类别.md、歧义.md 直出层保留原格式 | `docs/spec/rag-prose-writing.md` + `docs/rules/rag-prose-terminology.md` |
+| 5 | 新增、导入、改写或审阅 knowledge/base、knowledge/guides 人工散文前，必须读取并遵循写作与术语两份 spec；类别.md、歧义.md 直出层保留原格式 | `docs/spec/rag-prose-writing.md` + `docs/spec/rag-prose-terminology.md` |
 | 6 | 文档引用仓库内其他文档一律写名称（路径/编号），不使用 Markdown 链接；例外为 ADR 索引与归档索引的机械契约表格 | `docs/rules/document-lifecycle.md` |
 | 7 | 新增或修改 bench/src、scripts 运行时行为，或新增/修改/删除相关测试时遵循测试约定 | `docs/rules/testing.md` |
+| 8 | 添加、导入语料或处理 raw 材料时，必须读取并执行 corpus-addition 技能；普通措辞修订或单独审稿按两份 spec 执行 | `skills/corpus-addition/SKILL.md` |
 
 ## 工作流路由
 
@@ -49,6 +50,7 @@
 | 技术债治理 | `skills/tech-debt-governance` |
 | 验证（合并前） | `node scripts/verify.mjs merge`（门禁唯一入口） |
 | 文档生命周期 | `docs/rules/document-lifecycle`（ADR/plan/draft/notes/exp 模板见 `docs/templates/`） |
+| 添加语料与临时材料清理 | `skills/corpus-addition/SKILL.md`（选材、来源、采用、审阅、验证、清理） |
 
 ## 仓库结构
 
@@ -57,12 +59,13 @@ RIIC-KnowledgeAgent/
 ├── AGENTS.md                       ← 本文件（规则索引 + 结构导航 + 工作流路由）
 ├── package.json                    ← 根包（bench 工具入口，pnpm）
 ├── tsconfig.json                   ← TypeScript 严格模式（NodeNext/ESM）
-├── knowledge/                      ← 明日方舟基建知识库（raw 含本地 facts 输入；base/guides 为人工维护语料）
+├── knowledge/                      ← 明日方舟基建知识库（正式 facts 与人工散文分开维护）
 │   ├── AGENTS.md                   ← 查询 Agent 唯一人工指令源（所有检索模式注入）
 │   ├── corpus-manifest.json        ← 检索白名单真源（显式登记可检索语料；raw 默认不进入）
 │   ├── base/                       ← 机制基线语料（机制-*.md / 基建物流链.md）
 │   ├── guides/                     ← 已审定的 RAG 玩家散文（组合 / 新手 / 散件 / 类别 / 歧义）
-│   └── raw/                        ← 本地 facts 输入（名册 / 技能分片×9 / 技能等价组）及待核验来源留档；不进检索白名单
+│   ├── facts/                      ← 规划的正式 facts 输入位置，迁移尚未实施（见 ADR-024）
+│   └── raw/                        ← 语料添加临时落点，完成后清理；现有 11 份 facts 输入待迁出
 ├── bench/                          ← 查询输出成本基准（简化版 Agent）
 │   ├── src/                        ← provider / retriever / agent / runner / report / cli
 │   ├── tests/                      ← vitest 单元测试
@@ -84,14 +87,15 @@ RIIC-KnowledgeAgent/
 ## AI 代理发现流程
 
 1. **首先**：阅读本文件，了解全局规则和项目架构
-2. **按需读取复杂规则**：任务涉及文档/ADR/发版/合并 → 读 `docs/rules/document-lifecycle.md`；涉及 bench/src、scripts 运行时行为或测试 → 读 `docs/rules/testing.md`；涉及知识库散文 → 读下一步的写作 spec 与 `docs/rules/rag-prose-terminology.md`；其余按「全局规则」的规则索引表（第三列）挑选。`docs/rules/` 为软件中立目录，宿主不自动注入时必须显式读取
+2. **按需读取规则、规格与技能**：任务涉及文档/ADR/发版/合并 → 读 `docs/rules/document-lifecycle.md`；涉及 bench/src、scripts 运行时行为或测试 → 读 `docs/rules/testing.md`；涉及知识库散文 → 读下一步的写作与术语两份 spec；添加/导入语料或处理 raw 材料 → 同时读 `skills/corpus-addition/SKILL.md`；其余按「全局规则」的规则索引表（第三列）挑选。这些入口均由仓库维护，宿主不自动注入时必须显式读取
 3. **新需求入口**：所有新需求/决策从 `docs/inbox.md` 起步，评估后路由到 `docs/plan-*.md`（工程定稿）、`docs/draft-*.md`（未定稿工程提案）、`docs/exp-*.md`（试验）或 `docs/adr/ADR-NNN.md`（架构决策）
 4. **确定任务范围**：判断当前任务涉及哪些模块（bench 工具 / 语料 / 过程管理文档）
 5. **长期规格**：涉及知识库散文写作/审阅或回答核查时，按下表读取对应 spec（完整正文见 `docs/spec/`；版本与状态由 spec 文内承载）
 
-| Spec | 触发场景 | 版本 | 关联规则 |
+| Spec | 触发场景 | 版本 | 配套规格与流程 |
 | --- | --- | --- | --- |
-| `docs/spec/rag-prose-writing.md` | 新增、导入、改写或审阅 knowledge/base、knowledge/guides 人工散文 | v2 | `docs/rules/rag-prose-terminology.md` |
+| `docs/spec/rag-prose-writing.md` | 新增、导入、改写或审阅 knowledge/base、knowledge/guides 人工散文 | v3 | `docs/spec/rag-prose-terminology.md`；添加流程见 `skills/corpus-addition/SKILL.md` |
+| `docs/spec/rag-prose-terminology.md` | 同上，规范词、概念边界与练度表达 | v1 | `docs/spec/rag-prose-writing.md` |
 | `docs/spec/rag-answer-baseline.md` | 按 20 题核查基线记录与复核回答 | v6 | — |
 
 6. **阅读代码**：参考同模块内其他实现风格

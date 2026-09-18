@@ -3,6 +3,7 @@
 > 创建日期：2026-09-18
 > 状态：施工中
 > 范围来源：docs/inbox.md「语料补充与整理」与 docs/plan-knowledge-correctness.md 的下一实施切片。本批交付「固定版本清单轻量校准＋怪猎组合一节」；其余批次与存量迁移由该计划承载。
+> 后续生命周期更正：本批来源稿转存为当时实施记录；按用户后续明确，raw 改为临时落点，完成用途的原稿由 docs/plan-facts-storage-and-raw-cleanup.md 处理，不永久留档。本计划已完成项保持实际历史状态。
 > 与前一计划的关系：docs/plan-corpus-cleaning-and-pilot.md 已交付外部语料导入预检工具及加工站、训练室、共享建设升级三篇正文。本计划沿用该工具链。
 > 修订说明：2026-09-18 — 按用户要求调整批次范围、内容采用边界与校核方式，依据见 docs/plan-corpus-rebase-and-gaps-notes.md；本次修订未实施语料导入。
 

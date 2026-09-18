@@ -27,11 +27,15 @@
 
 ## 待办区
 
-- [x] **将散文写作示例提升为 Agent 必须遵循的 spec** — 已建立 docs/spec/rag-prose-writing.md，与 docs/rules/rag-prose-terminology.md 共同约束语料编写与审阅；根 AGENTS.md 已接入必读路由。v1 写作示例与独立审阅记录见 docs/plan-corpus-rebase-and-gaps-notes.md；v2 按用户澄清补充 facts 唯一上游、外部散文采用与联合审阅边界，记录见 docs/plan-knowledge-correctness-notes.md。 — 2026-09-18 — v2 已生效；v1 的独立审阅结论仅适用于当时版本
+- [x] **语料工作流与术语规范调整落点** — 添加流程已迁至 skills/corpus-addition/SKILL.md，RAG 术语已迁至 docs/spec/rag-prose-terminology.md v1；AGENTS 保留明确的必读路由，skill 引用写作与术语 spec，迁移状态留在 plan。当前引用与脚本注释已同步，旧规则正文已移除；术语词表、检查逻辑和语料内容不变。 — 2026-09-18 — 已完成；验证记录见 docs/plan-knowledge-correctness-notes.md
+
+- [ ] **raw 临时定位与语料添加工作流** — 用户明确 knowledge/raw 仅为添加语料过程中的临时落点，完成后不保留原稿。skills/corpus-addition/SKILL.md 已规定选材、来源记录、facts/散文处理、正式落位、联合审阅、验证与清理的完整流程；写作 spec 升为 v3。当前 raw 含 11 份运行时 facts 输入和 8 份来源材料，按 ADR-024 与 docs/plan-facts-storage-and-raw-cleanup.md 将正式输入迁至 knowledge/facts，再清理已结束用途的来源稿；迁移不代替解包来源映射评估。 — 2026-09-18 — 本轮依用户选择只完善规范与迁移计划；迁移及删除尚未实施
+
+- [x] **将散文写作示例提升为 Agent 必须遵循的 spec** — 已建立 docs/spec/rag-prose-writing.md，与 docs/spec/rag-prose-terminology.md 共同约束语料编写与审阅；根 AGENTS.md 已接入必读路由。v1 写作示例与独立审阅记录见 docs/plan-corpus-rebase-and-gaps-notes.md；v2 明确来源与联合审阅边界，v3 补 raw 临时定位并接入添加工作流，记录见 docs/plan-knowledge-correctness-notes.md。 — 2026-09-18 — v3 已生效；v1 的独立审阅结论仅适用于当时版本
 
 - [x] **从既有组合散文提炼写作示例并改写怪猎小队** — 按用户反馈，从已有组合篇提炼成员分工、条件表达与缺人回退的写作示例，并在 knowledge/guides/跨设施组合.md 的怪猎小节实践精简；示例现由 docs/spec/rag-prose-writing.md 承载，实施记录见 docs/plan-corpus-rebase-and-gaps-notes.md。 — 2026-09-18 — 示例与改写完成，必要事实的实际读取已核对
 
-- [ ] **knowledge 承载分类与存量目录迁移** — 用户采纳保留 base / guides / raw 顶层分工、按主题逐步增加子目录。docs/plan-corpus-cleaning-and-pilot.md 已完成加工站、训练室落位 base/设施，共享建设升级篇落位 base/通则。按 docs/plan-knowledge-correctness.md「明确存量路径处置」，本轮不迁移存量正文与来源留档；以后出现具体本地维护问题时单独评估，不为对齐外部目录而迁移。操作、布局、用人等新增内容随后续主题批次落位；目录分类不改变检索路由，也不据此推定 token 或问答收益。 — 2026-09-18 — 新增分类已落位；存量迁移本轮不实施
+- [ ] **knowledge 承载分类与存量目录迁移** — base/guides 按主题逐步增加子目录；试点已完成加工站、训练室落位 base/设施，共享建设升级篇落位 base/通则。本轮不重排存量散文目录，操作、布局、用人等新增内容随后续主题批次落位。raw 临时定位涉及的正式 facts 迁出与来源稿清理已另列 docs/plan-facts-storage-and-raw-cleanup.md；原长期留档安排随之取消，不能以“存量不迁移”豁免批次清理。分类不改变检索路由，也不据此推定 token 或问答收益。 — 2026-09-18 — 散文分类已落位；facts 迁出与临时材料清理待实施
 
 - [ ] **优化清洗预检与新导入正文的表格表达** — 源表格便于维护，但长说明行、对齐空白与逐候选重复上下文增加阅读负担。按用户选择纳入 docs/plan-corpus-cleaning-and-pilot.md：预检按源行合并候选并共享完整上下文，规则表行转为带列名的字段表达；新导入正文按内容选择紧凑数值表或自包含条目，保留条件、单位、例外和来源。只在本批清洗与导入层实施，不改查询 Agent 的 RAG/read 送达契约；字符减少不直接等同 token 或问答质量收益。 — 2026-09-18 — 预检优化已实施并验证；正文规则已随三篇正文落位执行
 

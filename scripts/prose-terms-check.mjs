@@ -1,10 +1,10 @@
 /**
  * RAG 玩家侧散文术语检查。
  *
- * 只扫描人工清洗层 knowledge/base 与 knowledge/guides；knowledge/raw 为版本控制内的
- * 机械真源，保留字段格式与原始措辞，不整套进入本检查。
+ * 只扫描人工清洗层 knowledge/base 与 knowledge/guides；正式 facts 输入与 raw 临时稿
+ * 保留各自字段格式和原始措辞，不进入本检查。
  * knowledge/guides/类别.md 与 knowledge/guides/歧义.md 是保留原格式的参考资料，
- * 按下方精确路径整文件豁免（规则见 docs/rules/rag-prose-terminology.md）。
+ * 按下方精确路径整文件豁免（规格见 docs/spec/rag-prose-terminology.md）。
  *
  * 禁词表真源为 scripts/lib/prose-terms.mjs（与外部语料导入预检共用），本脚本只负责扫描范围与退出码。
  */
