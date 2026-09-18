@@ -17,9 +17,11 @@ import { CATALOG_DESCRIPTIONS, type CatalogDescriptions, type CatalogText } from
 export const CATALOG_RELATIVE_PATH = 'knowledge/关键词目录.md'
 
 /**
- * TODO(tech-debt) IDX-1：关键词目录约 1.75 万字符，显式开启 injectKeywordCatalog 时随 system prompt 注入，
- * 多类说明文本重复，成本与时延未测量。重启条件：成本或质量试验表明不划算时，评估压缩呈现（合并同类说明、按需展开），
- * 须保持覆盖与入口如实。默认关闭注入（ADR-022 决策 8）不改变本条债务的对象。
+ * TODO(tech-debt) IDX-1：关键词目录约 1.75 万字符，仅在显式开启 injectKeywordCatalog 时随 system prompt 注入
+ * （ADR-022 决策 8 起默认关闭），多类说明文本重复，成本与时延未测量。
+ * 2026-09-14 的两轮压缩（单名称 JSON 与有限模板，注入正文 10,430 → 7,317 字符）未复测费用与质量；
+ * 当前收益未获证据，用户决定暂不投入压缩与形态优化（方向与产物保留），承载其改动的暂存已于 2026-09-18 删除且不恢复。
+ * 重启条件：先用费用或质量试验证明目录注入的收益，再评估目录形态，须保持覆盖与入口如实。
  */
 /** 生成物首行说明；提醒人工不要手改。 */
 export const CATALOG_GENERATED_HEADER =

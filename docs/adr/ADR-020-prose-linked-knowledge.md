@@ -76,7 +76,7 @@
 
 ## 关联
 
-- 规划文档：docs/plan-prose-linked-knowledge.md（步骤 1–4）
+- 规划文档：docs/archive/plan-prose-linked-knowledge.md（步骤 1–4）
 - 前置决策：ADR-008（原文小节阅读）、ADR-010（明确引用与自然语言搜索边界）、ADR-013（检索范围、原文扩展与 RAG 内部 facts 附带）
-- 共同语义：docs/plan-index-and-tags.md 第 1 步（最小事实对象与明确引用边界）
-- 内容维护：docs/plan-corpus-supplement.md 第 3 步
+- 共同语义：docs/archive/plan-index-and-tags.md 第 1 步（最小事实对象与明确引用边界）
+- 内容维护：docs/draft-corpus-supplement.md「维护关联内容并反馈框架」

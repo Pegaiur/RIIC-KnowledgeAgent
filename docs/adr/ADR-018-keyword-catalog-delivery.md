@@ -5,7 +5,7 @@
 
 ## 背景
 
-docs/plan-index-and-tags.md 第 2 步要求为查询 Agent 提供常驻主题关键词目录，明确每个词能查什么、使用哪个入口。当前 knowledge/AGENTS.md 是查询 Agent 唯一人工指令源（ADR-004），承载人工决策契约。目录需覆盖全部已登记设施、标签、类别、组合，以及人工补充的产物、功能与机制词；其中结构部分可从事实真源机械枚举，条目量大。若手写进 AGENTS.md，会形成第二份需要人工同步的长名单并与真源漂移。运行时指令装配通道为 `loadKnowledgeAgentInstructions → buildSystemPrompt → system message`，并在 runner 首个请求前捕获为运行级快照；目录须经同一通道如实送达。
+docs/archive/plan-index-and-tags.md 第 2 步要求为查询 Agent 提供常驻主题关键词目录，明确每个词能查什么、使用哪个入口。当前 knowledge/AGENTS.md 是查询 Agent 唯一人工指令源（ADR-004），承载人工决策契约。目录需覆盖全部已登记设施、标签、类别、组合，以及人工补充的产物、功能与机制词；其中结构部分可从事实真源机械枚举，条目量大。若手写进 AGENTS.md，会形成第二份需要人工同步的长名单并与真源漂移。运行时指令装配通道为 `loadKnowledgeAgentInstructions → buildSystemPrompt → system message`，并在 runner 首个请求前捕获为运行级快照；目录须经同一通道如实送达。
 
 ## 决策
 
@@ -32,9 +32,10 @@ docs/plan-index-and-tags.md 第 2 步要求为查询 Agent 提供常驻主题关
 - system prompt 内容增加，agentInstructionsSha256 随之变化；相关测试断言与历史运行可比性注释需同步。
 - 目录覆盖、生成一致性与运行时实际送达均需验证；不以文件存在代替已注入。
 - 目录只列真实可用入口；标签入口接通前如实标注当前路径，接通后同步更新。
+- 恒定注入后续已被改为默认关闭的显式开关（见索引中编号更大的相关记录）。截至 2026-09-18，目录注入仍未取得费用或质量收益证据，两轮文本压缩亦未复测，因此暂不投入压缩与形态优化；生成器、人工说明、生成物与该开关保留，方向未被否定。债务与重启条件以 bench/src/catalog.ts 顶部的 TODO(tech-debt) IDX-1 为准。
 
 ## 关联
 
 - ADR-004 — 查询 Agent 采用单一指令源与分层证据；本 ADR 在其指令通道内追加机器汇总目录，不改变单一人工指令源定位。
 - ADR-013 — 检索范围、原文扩展与 RAG 内部 facts 附带契约；本 ADR 不修改其契约。
-- 规划文档：docs/plan-index-and-tags.md 第 2 步。
+- 规划文档：docs/archive/plan-index-and-tags.md 第 2 步。

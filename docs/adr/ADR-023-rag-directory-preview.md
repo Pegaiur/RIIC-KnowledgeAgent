@@ -36,4 +36,4 @@ RAG 结果中的文件路径、阅读入口与导航说明多处重复。用户�
 ## 关联
 
 - 前置决策：ADR-013、ADR-020、ADR-022。
-- 实施计划：docs/plan-rag-delivery-format-slim.md 第二轮。
+- 实施计划：docs/archive/plan-rag-delivery-format-slim.md 第二轮。

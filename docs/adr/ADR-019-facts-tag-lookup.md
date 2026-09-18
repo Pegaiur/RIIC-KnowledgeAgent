@@ -6,7 +6,7 @@
 
 ## 背景
 
-docs/plan-index-and-tags.md 第 3 步要求「现有 facts 工具增加显式标签入口」，派生链为 标签 → 设施 → 技能 → grant → 干员，卡级去重聚合、同卡多命中保留依据，并明确「不自动合并同名职业、设施和标签」「补证据不扩大候选」。当前来源标签只以原文形式落在 `RecordSkill.target`（`〔标签：…〕` 注记），`FactsMatchCategory` 六类不含标签，`termQuery` 仅按 `target` 子串偶然命中，不存在标签 → 持有者的反查入口。
+docs/archive/plan-index-and-tags.md 第 3 步要求「现有 facts 工具增加显式标签入口」，派生链为 标签 → 设施 → 技能 → grant → 干员，卡级去重聚合、同卡多命中保留依据，并明确「不自动合并同名职业、设施和标签」「补证据不扩大候选」。当前来源标签只以原文形式落在 `RecordSkill.target`（`〔标签：…〕` 注记），`FactsMatchCategory` 六类不含标签，`termQuery` 仅按 `target` 子串偶然命中，不存在标签 → 持有者的反查入口。
 
 现状约束：`facts_search` 参数为字符串数组 `queries`（ADR-015），名称与职业/设施/技能组/标签可能同名；工具结果引用完整的记录卡并要求技能—持有者—解锁—替换逐项呈现（ADR-010）。宽查（设施/职业词）当前完整返回、无分页，ADR-015 §50 要求若引入分页须同时重定义 `complete` 与送达计数。
 
@@ -46,4 +46,4 @@ docs/plan-index-and-tags.md 第 3 步要求「现有 facts 工具增加显式标
 - ADR-013 — 检索范围、原文扩展与 RAG 内部 facts 附带契约；本 ADR 不修改其附带语义。
 - ADR-015 — facts 多词条数组查询；本 ADR 局部例外其「不新增第二字段」，并落实其分页须重定义 `complete` 与计数的要求。
 - ADR-018 — 关键词目录随查询 Agent 指令交付；本 ADR 在其来源标签入口标记接通后同步为 `F：tags` 并重算生成物。
-- 规划文档：docs/plan-index-and-tags.md 第 3 步。
+- 规划文档：docs/archive/plan-index-and-tags.md 第 3 步。
