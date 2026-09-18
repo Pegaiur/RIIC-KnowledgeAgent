@@ -548,6 +548,51 @@
         { "kind": "skill", "operator": "若叶睦", "room": "控制中枢", "name": "演技的怪物" },
         { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "规则说明（25 条）"], "term": "热情值" }
       ]
+    },
+    {
+      "file": "base/机制-办公室.md",
+      "headingPath": ["办公室机制", "感染力的联络阈值与中枢加成"],
+      "scope": "section",
+      "objects": [
+        { "kind": "skill", "operator": "琴柳", "room": "控制中枢", "name": "感染力" },
+        { "kind": "skill", "operator": "八幡海铃", "room": "控制中枢", "name": "可靠伙伴" },
+        { "kind": "skill", "operator": "焰狐龙梓兰", "room": "控制中枢", "name": "办公室年度人物" },
+        { "kind": "skill", "operator": "絮雨", "room": "办公室", "name": "巡游" }
+      ]
+    },
+    {
+      "file": "base/机制-宿舍.md",
+      "headingPath": ["宿舍机制", "菲亚梅塔的固定恢复与心情互换"],
+      "scope": "section",
+      "objects": [
+        { "kind": "skill", "operator": "菲亚梅塔", "room": "宿舍", "name": "自律" },
+        { "kind": "skill", "operator": "菲亚梅塔", "room": "宿舍", "name": "患难之交" }
+      ]
+    },
+    {
+      "file": "guides/高效率散件.md",
+      "headingPath": ["高效率散件", "会客室的速度、心情与搭档取舍"],
+      "scope": "section",
+      "objects": [
+        { "kind": "skill", "operator": "伊内丝", "room": "会客室", "name": "聚影" },
+        { "kind": "skill", "operator": "跃跃", "room": "会客室", "name": "线索搜集·α" },
+        { "kind": "skill", "operator": "跃跃", "room": "会客室", "name": "无辜笑脸" },
+        { "kind": "skill", "operator": "信仰搅拌机", "room": "会客室", "name": "社交达人" },
+        { "kind": "skill", "operator": "信仰搅拌机", "room": "会客室", "name": "不泯童心" },
+        { "kind": "skill", "operator": "见行者", "room": "会客室", "name": "逻辑推理" }
+      ]
+    },
+    {
+      "file": "guides/高效率散件.md",
+      "headingPath": ["高效率散件", "中枢席位的全局加成与组合取舍"],
+      "scope": "section",
+      "objects": [
+        { "kind": "skill", "operator": "阿米娅", "room": "控制中枢", "name": "合作协议" },
+        { "kind": "skill", "operator": "凯尔希", "room": "控制中枢", "name": "最高权限" },
+        { "kind": "skill", "operator": "八幡海铃", "room": "控制中枢", "name": "可靠伙伴" },
+        { "kind": "skill", "operator": "八幡海铃", "room": "控制中枢", "name": "家族认可" },
+        { "kind": "skill", "operator": "琴柳", "room": "控制中枢", "name": "感染力" }
+      ]
     }
   ]
 }
