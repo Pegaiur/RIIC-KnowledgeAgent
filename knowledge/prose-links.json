@@ -135,7 +135,8 @@
         { "kind": "skill", "operator": "柏喙", "room": "贸易站", "name": "裁缝·β" },
         { "kind": "skill", "operator": "折光", "room": "贸易站", "name": "鉴定师的手段" },
         { "kind": "skill", "operator": "明椒", "room": "贸易站", "name": "裁缝·β" },
-        { "kind": "skill", "operator": "卡夫卡", "room": "贸易站", "name": "手工艺品·β" }
+        { "kind": "skill", "operator": "卡夫卡", "room": "贸易站", "name": "手工艺品·β" },
+        { "kind": "skill", "operator": "巫恋", "room": "贸易站", "name": "裁缝·α" }
       ]
     },
     {
@@ -155,7 +156,8 @@
         { "kind": "skill", "operator": "伺夜", "room": "贸易站", "name": "新城贸易" },
         { "kind": "skill", "operator": "贝洛内", "room": "贸易站", "name": "家族经营·β" },
         { "kind": "skill", "operator": "八幡海铃", "room": "控制中枢", "name": "家族认可" },
-        { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "干员组（28 条）"], "term": "叙拉古" }
+        { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "干员组（28 条）"], "term": "叙拉古" },
+        { "kind": "skill", "operator": "贝洛内", "room": "贸易站", "name": "未偿还的债务" }
       ]
     },
     {
@@ -167,7 +169,11 @@
         { "kind": "skill", "operator": "银灰", "room": "贸易站", "name": "喀兰之主" },
         { "kind": "skill", "operator": "孑", "room": "贸易站", "name": "摊贩经济" },
         { "kind": "skill", "operator": "孑", "room": "贸易站", "name": "市井之道" },
-        { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "干员组（28 条）"], "term": "谢拉格" }
+        { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "干员组（28 条）"], "term": "谢拉格" },
+        { "kind": "skill", "operator": "崖心", "room": "贸易站", "name": "喀兰贸易·β" },
+        { "kind": "skill", "operator": "琳琅诗怀雅", "room": "贸易站", "name": "招商引资" },
+        { "kind": "skill", "operator": "讯使", "room": "贸易站", "name": "喀兰贸易·α" },
+        { "kind": "skill", "operator": "角峰", "room": "贸易站", "name": "喀兰贸易·α" }
       ]
     },
     {
@@ -213,7 +219,8 @@
       "objects": [
         { "kind": "skill", "operator": "德克萨斯", "room": "贸易站", "name": "恩怨" },
         { "kind": "skill", "operator": "拉普兰德", "room": "贸易站", "name": "醉翁之意·β" },
-        { "kind": "skill", "operator": "能天使", "room": "贸易站", "name": "物流专家" }
+        { "kind": "skill", "operator": "能天使", "room": "贸易站", "name": "物流专家" },
+        { "kind": "skill", "operator": "德克萨斯", "room": "贸易站", "name": "默契" }
       ]
     },
     {
@@ -440,6 +447,47 @@
       "objects": [
         { "kind": "skill", "operator": "左乐", "room": "训练室", "name": "思而后行" },
         { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "规则说明（25 条）"], "term": "武道" }
+      ]
+    },
+    {
+      "file": "guides/贸易站组合.md",
+      "headingPath": ["贸易站组合", "但书、可露希尔的核心散件定位", "但书：违约订单与同站加速"],
+      "scope": "section",
+      "objects": [
+        { "kind": "skill", "operator": "但书", "room": "贸易站", "name": "合同法" },
+        { "kind": "skill", "operator": "但书", "room": "贸易站", "name": "违约索赔·β" },
+        { "kind": "skill", "operator": "龙舌兰", "room": "贸易站", "name": "投资·β" }
+      ]
+    },
+    {
+      "file": "guides/贸易站组合.md",
+      "headingPath": ["贸易站组合", "但书、可露希尔的核心散件定位", "可露希尔：固定特别订单与队友选择"],
+      "scope": "section",
+      "objects": [
+        { "kind": "skill", "operator": "可露希尔", "room": "贸易站", "name": "特别订单" }
+      ]
+    },
+    {
+      "file": "base/机制-贸易站.md",
+      "headingPath": ["贸易站机制", "特殊订单的耗时、报酬与属性继承"],
+      "scope": "section",
+      "objects": [
+        { "kind": "skill", "operator": "佩佩", "room": "贸易站", "name": "慧眼独到" },
+        { "kind": "skill", "operator": "可露希尔", "room": "贸易站", "name": "特别订单" },
+        { "kind": "skill", "operator": "U-Official", "room": "贸易站", "name": "天真的谈判者" },
+        { "kind": "skill", "operator": "但书", "room": "贸易站", "name": "合同法" },
+        { "kind": "skill", "operator": "但书", "room": "贸易站", "name": "违约索赔·β" },
+        { "kind": "skill", "operator": "龙舌兰", "room": "贸易站", "name": "投资·β" }
+      ]
+    },
+    {
+      "file": "base/机制-贸易站.md",
+      "headingPath": ["贸易站机制", "赤金订单概率与高品质订单条件"],
+      "scope": "section",
+      "objects": [
+        { "kind": "skill", "operator": "巫恋", "room": "贸易站", "name": "裁缝·α" },
+        { "kind": "skill", "operator": "巫恋", "room": "贸易站", "name": "低语" },
+        { "kind": "skill", "operator": "柏喙", "room": "贸易站", "name": "裁缝·β" }
       ]
     }
   ]
