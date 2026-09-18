@@ -49,7 +49,7 @@
 
 - [x] **散文断言与事实的机械核对（不采用）** — 2026-09-18 用户明确：散文是基于解包数据与游戏实践形成的理解，正确性由人类与 Agent 联合审阅，不建立严格机械断言。机械正确性校验集中于 arkntools/arknights-toolbox-data 到 facts 的映射与转换，转 docs/plan-knowledge-correctness.md；现有术语格式、结构与送达检查保留。 — 2026-09-18 — 按用户决定关闭正文断言方向
 
-- [ ] **语料补充与整理** — 见 docs/plan-knowledge-correctness.md（由 docs/draft-corpus-supplement.md 定稿重命名，前身为 docs/archive/plan-prose-title-optimization.md 拆出的语料增量方向）。facts 的唯一上游真源已确定为 arkntools/arknights-toolbox-data 的解包数据；lejciy/arknights-base-vault 的散文也纳入知识库，按主题整理与改写，由人类和 Agent 联合审阅，不纳入正文正确性的机械校验。本计划限定交付为规范落位、facts 来源映射评估、存量路径处置；管道实现及具体主题导入分别收口，不以全量导入阻塞本计划验收。清洗试点三篇、53cf2f7 清单校准与怪猎中枢组合已交付，现有 manifest 为 22 篇 / 156 检索块 / 33 定位文档。 — 2026-09-18 — 来源与核查职责已明确；facts 映射评估待实施，后续主题增量继续推进
+- [ ] **语料补充与整理** — 见 docs/plan-knowledge-correctness.md。facts 唯一上游为 arkntools/arknights-toolbox-data；lejciy/arknights-base-vault 散文按写作与术语 spec 吸纳，由人类和 Agent 联合审阅。规范、添加 skill、迁移方案、清洗试点三篇及怪猎正文已交付；本计划复用 RIIC-Web 与 base-vault 现有脚本，评估本地 11 份 facts 输入的映射、差异和最小适配，并完成贸易、制造、基础与辅助设施三批增量。新增候选另列后续，正式 facts 迁出与存量 raw 清理由独立计划实施。 — 2026-09-18 — 派生链路已核对源码；复用对照评估和三批吸纳待实施
 
 - [ ] **查询侧分类、去歧义与黑话词典（暂缓）** — 后续统一讨论自然语言问题分类、玩家问法到功能范围的映射、查询意图路由，以及同名词去歧义、黑话/俗称/简称词典与现有精确入口的衔接。2026-09-13 用户明确本轮不做查询分类，避免与语料补充及标签索引耦合；本项不作为 docs/archive/plan-index-and-tags.md 或 docs/plan-knowledge-correctness.md 的依赖，不提前实现。重启时先明确查询侧职责与词典维护方式。 — 2026-09-13 — 保留 inbox
 

@@ -66,7 +66,7 @@ docs/exp/exp-title-optimization-20q-answer-check.md 的真实三轮及此次定�
 
 ### 3. 改写前固定验证设计
 
-每批效果试验先在 inbox 路由，并在 exp 说明基准版本、候选版本、唯一主要假设、修改文件、固定配置、观测指标、题目范围和停止边界。既有标题与结构工作见 docs/archive/plan-prose-title-optimization.md；语料增量按 docs/plan-knowledge-correctness.md「后续内容批次与依赖」分别确定采用范围，不并入其规范与 facts 映射评估验收。本草案本身不表示后续批次已经实施或效果试验已获授权。
+每批效果试验先在 inbox 路由，并在 exp 说明基准版本、候选版本、唯一主要假设、修改文件、固定配置、观测指标、题目范围和停止边界。既有标题与结构工作见 docs/archive/plan-prose-title-optimization.md；语料吸纳按 docs/plan-knowledge-correctness.md「本计划实施批次」执行，其余候选按「后续内容批次与依赖」另定范围。内容采用不自动触发效果试验，本草案不表示试验已获授权。
 
 准备三类问题：已知失败用于诊断；相邻但未改的主题用于回归；未参与选文和措辞调整的新问题用于泛化验证。新问题应覆盖新的条件组合或应用情境，单纯替换原题同义词只能验证问法鲁棒性。先确定来源与判定要点，再看候选版本结果，不按结果挑选保留问题。
 
