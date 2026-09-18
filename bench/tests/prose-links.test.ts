@@ -624,7 +624,7 @@ describe('prose-links：真实语料核对', () => {
     expect(projectedSkills).toEqual(expect.arrayContaining(requiredSkills))
   })
 
-  it('深海猎人组的同名规则分别定位原文，不合并定义或推断技能档位', () => {
+  it('深海猎人组分别定位两档加成，只关联已确认的叠加规则', () => {
     const directory = buildSectionDirectory(join(process.cwd(), 'knowledge'))
     const index = buildProseLinkIndex({ root: process.cwd() })
     const link = index.links.find((candidate) => candidate.headingPath.at(-1) === '深海猎人组：中枢协作、制造席位与心情代价')!
@@ -635,9 +635,9 @@ describe('prose-links：真实语料核对', () => {
     expect(bonuses[0]!.definition).toContain('提供5%生产力，最多给单个制造站提供45%生产力')
     expect(bonuses[1]!.definition).toContain('提供10%生产力，最多给单个制造站提供90%生产力')
     const stacking = concepts.filter((concept) => concept.term === '特殊叠加规则')
-    expect(stacking.map((concept) => concept.termOccurrence)).toEqual([1, 2])
+    // 固定解包 cc.c.abyssal2_3 对应第一条规则，第二条属于其他机制。
+    expect(stacking.map((concept) => concept.termOccurrence)).toEqual([1])
     expect(stacking[0]!.definition).toContain('无法与配合意识进行叠加')
-    expect(stacking[1]!.definition).toContain('无法单独与天道酬勤·α、天道酬勤·β进行叠加')
     const seats = concepts.find((concept) => concept.name === '制造站等级对应的工位、仓库容量与耗电')!
     expect(seats.file).toBe('base/机制-制造站.md')
     expect(seats.definition).toContain('进驻人员上限')

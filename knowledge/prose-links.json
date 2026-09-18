@@ -241,7 +241,10 @@
         { "kind": "skill", "operator": "承曦格雷伊", "room": "发电站", "name": "晨曦" },
         { "kind": "skill", "operator": "森蚺", "room": "制造站", "name": "自动化·β" },
         { "kind": "skill", "operator": "森蚺", "room": "控制中枢", "name": "我寻思能行" },
-        { "kind": "skill", "operator": "冬时", "room": "制造站", "name": "流程优化" }
+        { "kind": "skill", "operator": "冬时", "room": "制造站", "name": "流程优化" },
+        { "kind": "skill", "operator": "温蒂", "room": "制造站", "name": "自动化·β" },
+        { "kind": "skill", "operator": "异客", "room": "制造站", "name": "自动化·α" },
+        { "kind": "skill", "operator": "掠风", "room": "制造站", "name": "自动化·α" }
       ]
     },
     {
@@ -287,7 +290,9 @@
         { "kind": "skill", "operator": "灰毫", "room": "制造站", "name": "红松骑士团·β" },
         { "kind": "skill", "operator": "远牙", "room": "制造站", "name": "红松骑士团·β" },
         { "kind": "skill", "operator": "野鬃", "room": "制造站", "name": "红松骑士团·β" },
-        { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "干员组（28 条）"], "term": "红松骑士团" }
+        { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "干员组（28 条）"], "term": "红松骑士团" },
+        { "kind": "skill", "operator": "砾", "room": "制造站", "name": "金属工艺·β" },
+        { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "干员组（28 条）"], "term": "骑士" }
       ]
     },
     {
@@ -302,7 +307,7 @@
         { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "规则说明（25 条）"], "term": "特殊加成", "termOccurrence": 1 },
         { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "规则说明（25 条）"], "term": "特殊加成", "termOccurrence": 2 },
         { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "规则说明（25 条）"], "term": "特殊叠加规则", "termOccurrence": 1 },
-        { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "规则说明（25 条）"], "term": "特殊叠加规则", "termOccurrence": 2 }
+        { "kind": "skill", "operator": "歌蕾蒂娅", "room": "控制中枢", "name": "集群狩猎·α" }
       ]
     },
     {
@@ -342,7 +347,8 @@
         { "kind": "skill", "operator": "淬羽赫默", "room": "制造站", "name": "莱茵科技·γ" },
         { "kind": "skill", "operator": "娜斯提", "room": "制造站", "name": "莱茵科技·β" },
         { "kind": "skill", "operator": "娜斯提", "room": "制造站", "name": "造价高昂" },
-        { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "技能组（5 条）"], "term": "莱茵科技类技能" }
+        { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "技能组（5 条）"], "term": "莱茵科技类技能" },
+        { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "干员组（28 条）"], "term": "莱茵生命" }
       ]
     },
     {
@@ -366,7 +372,9 @@
         { "kind": "skill", "operator": "塑心", "room": "宿舍", "name": "无词颂歌" },
         { "kind": "skill", "operator": "琴柳", "room": "控制中枢", "name": "感染力" },
         { "kind": "skill", "operator": "琴柳", "room": "宿舍", "name": "维多利亚文学" },
-        { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "规则说明（25 条）"], "term": "感知信息" }
+        { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "规则说明（25 条）"], "term": "感知信息" },
+        { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "规则说明（25 条）"], "term": "思维链环" },
+        { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "规则说明（25 条）"], "term": "无声共鸣" }
       ]
     },
     {
@@ -488,6 +496,57 @@
         { "kind": "skill", "operator": "巫恋", "room": "贸易站", "name": "裁缝·α" },
         { "kind": "skill", "operator": "巫恋", "room": "贸易站", "name": "低语" },
         { "kind": "skill", "operator": "柏喙", "room": "贸易站", "name": "裁缝·β" }
+      ]
+    },
+    {
+      "file": "base/机制-制造站.md",
+      "headingPath": ["制造站机制", "自动化与流程优化的归零范围"],
+      "scope": "section",
+      "objects": [
+        { "kind": "skill", "operator": "温蒂", "room": "制造站", "name": "仿生海龙" },
+        { "kind": "skill", "operator": "清流", "room": "制造站", "name": "再生能源" },
+        { "kind": "skill", "operator": "冬时", "room": "制造站", "name": "科学改造" },
+        { "kind": "skill", "operator": "冬时", "room": "制造站", "name": "流程优化" },
+        { "kind": "skill", "operator": "望", "room": "控制中枢", "name": "权变" },
+        { "kind": "skill", "operator": "丰川祥子", "room": "控制中枢", "name": "丰富工作经验", "unlock": "精英 2 提升，替换「丰富工作经验」" },
+        { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "规则说明（25 条）"], "term": "特殊叠加规则", "termOccurrence": 1 }
+      ]
+    },
+    {
+      "file": "base/机制-制造站.md",
+      "headingPath": ["制造站机制", "配合意识的读取范围与上限"],
+      "scope": "section",
+      "objects": [
+        { "kind": "skill", "operator": "槐琥", "room": "制造站", "name": "配合意识" },
+        { "kind": "skill", "operator": "清流", "room": "制造站", "name": "再生能源" },
+        { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "规则说明（25 条）"], "term": "特殊叠加规则", "termOccurrence": 1 }
+      ]
+    },
+    {
+      "file": "base/机制-控制中枢.md",
+      "headingPath": ["控制中枢机制", "权变的设施计数与分支切换"],
+      "scope": "section",
+      "objects": [
+        { "kind": "skill", "operator": "望", "room": "控制中枢", "name": "权变" },
+        { "kind": "skill", "operator": "承曦格雷伊", "room": "发电站", "name": "晨曦" },
+        { "kind": "skill", "operator": "森蚺", "room": "控制中枢", "name": "我寻思能行" },
+        { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "全局资源（6 条）"], "term": "外势" },
+        { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "全局资源（6 条）"], "term": "实地" }
+      ]
+    },
+    {
+      "file": "base/机制-控制中枢.md",
+      "headingPath": ["控制中枢机制", "热情值与贵金属配方加成"],
+      "scope": "section",
+      "objects": [
+        { "kind": "skill", "operator": "丰川祥子", "room": "控制中枢", "name": "丰富工作经验", "unlock": "初始解锁" },
+        { "kind": "skill", "operator": "丰川祥子", "room": "控制中枢", "name": "丰富工作经验", "unlock": "精英 2 提升，替换「丰富工作经验」" },
+        { "kind": "skill", "operator": "丰川祥子", "room": "控制中枢", "name": "生活的重压" },
+        { "kind": "skill", "operator": "八幡海铃", "room": "控制中枢", "name": "可靠伙伴" },
+        { "kind": "skill", "operator": "三角初华", "room": "控制中枢", "name": "偶像光环" },
+        { "kind": "skill", "operator": "祐天寺若麦", "room": "控制中枢", "name": "勤学苦练" },
+        { "kind": "skill", "operator": "若叶睦", "room": "控制中枢", "name": "演技的怪物" },
+        { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "规则说明（25 条）"], "term": "热情值" }
       ]
     }
   ]
