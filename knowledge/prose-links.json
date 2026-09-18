@@ -380,6 +380,52 @@
         { "kind": "skill", "operator": "凯尔希·思衡托", "room": "办公室", "name": "“泰拉的方舟”" },
         { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "干员组（28 条）"], "term": "精英干员" }
       ]
+    },
+    {
+      "file": "base/设施/机制-加工站.md",
+      "headingPath": ["加工站机制", "技能的作用面"],
+      "scope": "section",
+      "objects": [
+        { "kind": "skill", "operator": "罗小黑", "room": "加工站", "name": "化猫" }
+      ]
+    },
+    {
+      "file": "base/设施/机制-加工站.md",
+      "headingPath": ["加工站机制", "保底与副产物定向"],
+      "scope": "section",
+      "objects": [
+        { "kind": "skill", "operator": "九色鹿", "room": "加工站", "name": "因果" },
+        { "kind": "skill", "operator": "九色鹿", "room": "加工站", "name": "业报" },
+        { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "规则说明（25 条）"], "term": "因果" },
+        { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "规则说明（25 条）"], "term": "业报" }
+      ]
+    },
+    {
+      "file": "base/设施/机制-训练室.md",
+      "headingPath": ["训练室机制", "训练速度公式"],
+      "scope": "section",
+      "objects": [
+        { "kind": "skill", "operator": "W", "room": "训练室", "name": "伺机而动" },
+        { "kind": "skill", "operator": "艾丽妮", "room": "训练室", "name": "剑与手炮" }
+      ]
+    },
+    {
+      "file": "base/设施/机制-训练室.md",
+      "headingPath": ["训练室机制", "减半机制（精神锻炼／言语之义）"],
+      "scope": "section",
+      "objects": [
+        { "kind": "skill", "operator": "艾丽妮", "room": "训练室", "name": "精神锻炼" },
+        { "kind": "skill", "operator": "逻各斯", "room": "训练室", "name": "言语之义" }
+      ]
+    },
+    {
+      "file": "base/设施/机制-训练室.md",
+      "headingPath": ["训练室机制", "武道机制（思而后行）"],
+      "scope": "section",
+      "objects": [
+        { "kind": "skill", "operator": "左乐", "room": "训练室", "name": "思而后行" },
+        { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "规则说明（25 条）"], "term": "武道" }
+      ]
     }
   ]
 }
