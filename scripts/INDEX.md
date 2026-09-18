@@ -50,6 +50,7 @@
 | ref-check | collectRefIssues | 文档/脚本引用存在性检查（doc-check D4） | doc-check |
 | skill-check | checkSkillStructure | skills/ 开放格式结构校验（S1-S5） | doc-check |
 | plan-scan | listActivePlans / parsePlanChecklist | 活动 plan 枚举与验收清单/冻结标记解析（统一口径） | doc-check、release/check、release/archive-plan |
+| prose-terms | FORBIDDEN_PROSE_TERMS / IMPORT_HINT_PROSE_TERMS / matchTermsInLine | RAG 玩家侧散文术语表（门禁禁词 + 导入期提示）与单行命中匹配 | prose-terms-check、knowledge/external-corpus-scan |
 | verify-profile | PROFILE_VERSION | 门禁 profile 版本事实源（命令构成变化时递增） | verify |
 
 ## 临时路径边界（所有权分离 + 清理白名单）
@@ -68,6 +69,7 @@
 - `tasks/git/head-diff.mjs` — 多 lib 基元组合范例（git + process + dev-workspace + output）
 - `tasks/git/show-file.mjs` — 只读边界 + 核心逻辑可测（runShowFile 注入 root）范例
 - `tasks/knowledge/update-reference-projection.mjs` — knowledge/raw 技能分片公共练度说明的统一投影与检查
+- `tasks/knowledge/external-corpus-scan.mjs` — 只读预检 + 术语表下沉 lib 复用（prose-terms）范例；按源行共享候选上下文，表格行带列名，JSON 使用 factCandidateGroups
 - `tasks/release/archive-plan.mjs` — 文档状态机机械实现 + dry-run/--apply 范例
 - `tasks/release/changelog.mjs` — 同源双视图 renderer（人类分类分节 / Agent 限行单行）+ 追加写防重范例
 
