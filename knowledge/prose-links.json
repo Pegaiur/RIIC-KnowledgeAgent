@@ -382,6 +382,21 @@
       ]
     },
     {
+      "file": "guides/跨设施组合.md",
+      "headingPath": ["跨设施组合", "怪猎中枢：木天蓼分工、练度与缺人后的剩余效果"],
+      "scope": "section",
+      "objects": [
+        { "kind": "skill", "operator": "火龙S黑角", "room": "控制中枢", "name": "团队合作" },
+        { "kind": "skill", "operator": "火龙S黑角", "room": "控制中枢", "name": "秘传交涉术" },
+        { "kind": "skill", "operator": "麒麟R夜刀", "room": "控制中枢", "name": "耐力回复" },
+        { "kind": "skill", "operator": "麒麟R夜刀", "room": "控制中枢", "name": "以身作则" },
+        { "kind": "skill", "operator": "泰拉大陆调查团", "room": "贸易站", "name": "可爱的艾露猫" },
+        { "kind": "skill", "operator": "泰拉大陆调查团", "room": "制造站", "name": "可靠的随从们" },
+        { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "干员组（28 条）"], "term": "怪物猎人小队" },
+        { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "规则说明（25 条）"], "term": "木天蓼" }
+      ]
+    },
+    {
       "file": "base/设施/机制-加工站.md",
       "headingPath": ["加工站机制", "技能的作用面"],
       "scope": "section",
