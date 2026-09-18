@@ -3,7 +3,7 @@ description: 新增、导入、改写或审阅 knowledge/base 与 knowledge/guid
 ---
 # RAG 散文统一术语
 
-> 本规则只约束人工清洗的玩家侧散文（`knowledge/base/`、`knowledge/guides/`）。`knowledge/raw/` 是版本控制内的机械事实真源，保留其字段格式与原始措辞；代码字段名、历史归档和引用旧称不据此批量改写。
+> 本规则只约束人工清洗的玩家侧散文（`knowledge/base/`、`knowledge/guides/`）。`knowledge/raw/` 中的本地 facts 输入与来源留档保留其字段格式与原始措辞；上游来源与核查职责见配套 spec。代码字段名、历史归档和引用旧称不据此批量改写。
 
 新增、导入、改写或审阅上述人工散文前，必须同时读取并遵循 docs/spec/rag-prose-writing.md。本文件唯一维护规范词与练度写法，正文组织、表达要求和写作示例由该 spec 维护；类别.md、歧义.md 的直出层例外见下文。
 

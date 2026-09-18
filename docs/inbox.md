@@ -27,11 +27,11 @@
 
 ## 待办区
 
-- [x] **将散文写作示例提升为 Agent 必须遵循的 spec** — 已建立 docs/spec/rag-prose-writing.md v1，与 docs/rules/rag-prose-terminology.md 共同约束语料编写与审阅；根 AGENTS.md 已接入必读路由，草案重复要求已改为引用，实施记录见 docs/plan-corpus-rebase-and-gaps-notes.md。 — 2026-09-18 — 规范已生效，独立 Agent 审阅通过；两项澄清已采纳并复核通过
+- [x] **将散文写作示例提升为 Agent 必须遵循的 spec** — 已建立 docs/spec/rag-prose-writing.md，与 docs/rules/rag-prose-terminology.md 共同约束语料编写与审阅；根 AGENTS.md 已接入必读路由。v1 写作示例与独立审阅记录见 docs/plan-corpus-rebase-and-gaps-notes.md；v2 按用户澄清补充 facts 唯一上游、外部散文采用与联合审阅边界，记录见 docs/plan-knowledge-correctness-notes.md。 — 2026-09-18 — v2 已生效；v1 的独立审阅结论仅适用于当时版本
 
 - [x] **从既有组合散文提炼写作示例并改写怪猎小队** — 按用户反馈，从已有组合篇提炼成员分工、条件表达与缺人回退的写作示例，并在 knowledge/guides/跨设施组合.md 的怪猎小节实践精简；示例现由 docs/spec/rag-prose-writing.md 承载，实施记录见 docs/plan-corpus-rebase-and-gaps-notes.md。 — 2026-09-18 — 示例与改写完成，必要事实的实际读取已核对
 
-- [ ] **knowledge 承载分类与存量目录迁移** — 用户采纳保留 base / guides / raw 顶层分工、按主题逐步增加子目录的建议。新增落位纳入 docs/plan-corpus-cleaning-and-pilot.md：加工站、训练室进 base/设施，共享建设升级篇进 base/通则；存量 19 篇正文及现有上游留档的路径迁移，在当前试点验收后单列迁移批次，范围与依赖见 docs/draft-corpus-supplement.md「承载分类与实施归属」。操作、布局、用人等新内容随后续导入批次落位，不并入路径迁移。分类不改变检索路由，不以目录调整推定 token 或问答收益。 — 2026-09-18 — 实施归属已确定，存量迁移未启动
+- [ ] **knowledge 承载分类与存量目录迁移** — 用户采纳保留 base / guides / raw 顶层分工、按主题逐步增加子目录。docs/plan-corpus-cleaning-and-pilot.md 已完成加工站、训练室落位 base/设施，共享建设升级篇落位 base/通则。按 docs/plan-knowledge-correctness.md「明确存量路径处置」，本轮不迁移存量正文与来源留档；以后出现具体本地维护问题时单独评估，不为对齐外部目录而迁移。操作、布局、用人等新增内容随后续主题批次落位；目录分类不改变检索路由，也不据此推定 token 或问答收益。 — 2026-09-18 — 新增分类已落位；存量迁移本轮不实施
 
 - [ ] **优化清洗预检与新导入正文的表格表达** — 源表格便于维护，但长说明行、对齐空白与逐候选重复上下文增加阅读负担。按用户选择纳入 docs/plan-corpus-cleaning-and-pilot.md：预检按源行合并候选并共享完整上下文，规则表行转为带列名的字段表达；新导入正文按内容选择紧凑数值表或自包含条目，保留条件、单位、例外和来源。只在本批清洗与导入层实施，不改查询 Agent 的 RAG/read 送达契约；字符减少不直接等同 token 或问答质量收益。 — 2026-09-18 — 预检优化已实施并验证；正文规则已随三篇正文落位执行
 
@@ -43,11 +43,11 @@
 
 - [ ] **关键词目录：收益未证明，暂不投入（方向保留）** — 默认关闭的 injectKeywordCatalog 开关（含 CLI、fallback 与三处留档）已按 docs/archive/plan-progressive-disclosure.md 第 5 步与 ADR-022 决策 8 实施，注入不再是默认路径；生成器、人工说明、生成物与该开关均按现状保留，计划见 docs/archive/plan-index-and-tags.md。2026-09-14 的两轮压缩（单名称 JSON 与有限模板；注入正文 10,430 → 7,317 字符，178 条语义对照、617 项测试通过）未复测费用与质量，承载其改动的暂存已于 2026-09-18 删除、不恢复。当前暂不投入压缩与目录形态优化，但不否定该方向：重启条件为先用费用或质量试验证明目录注入的收益；债务细节与重启条件以代码 TODO(tech-debt) IDX-1 为准。 — 2026-09-13 — 已收束，暂不投入
 
-- [ ] **散文断言与事实的机械核对（暂缓）** — 对正文中的数值、阈值及练度断言做机械核对需要独立断言结构或语义抽取，关联对象存在性不能替代此能力。待明确可编码范围再单独评估，不作为关键词、按需展开或语料补充三项计划的依赖。 — 2026-09-13 — 保留 inbox
+- [x] **散文断言与事实的机械核对（不采用）** — 2026-09-18 用户明确：散文是基于解包数据与游戏实践形成的理解，正确性由人类与 Agent 联合审阅，不建立严格机械断言。机械正确性校验集中于 arkntools/arknights-toolbox-data 到 facts 的映射与转换，转 docs/plan-knowledge-correctness.md；现有术语格式、结构与送达检查保留。 — 2026-09-18 — 按用户决定关闭正文断言方向
 
-- [ ] **语料补充与整理** — 见 docs/draft-corpus-supplement.md（原 docs/plan-corpus-supplement.md 的语料导入部分；该计划已收缩为标题优化 docs/archive/plan-prose-title-optimization.md 并于 2026-09-18 归档）。共同语义明确、现有正文展开样本可用后逐批补机制、释义与组合，维护关联内容并及时反馈框架；不依赖全部标签功能完成，不恢复退役 raw 或全量刷新真源。首个切片 docs/plan-corpus-cleaning-and-pilot.md 已交付清洗预检工具与加工站、训练室、共享建设升级三篇正文，corpus-manifest 22 篇 / 155 检索块 / 33 定位文档；实施过程与门禁结果见对应实施笔记。下一切片 docs/plan-corpus-rebase-and-gaps.md 已交付：完成 53cf2f7 固定版本清单校准与新增候选登记，新增怪猎中枢组合一节并同步必要关联，corpus-manifest 22 篇 / 156 检索块 / 33 定位文档。下一批独立迁移存量路径，再按设施主题合并处理释义与组合增量；其余机制、组合及操作布局分别定范围。 — 2026-09-18 — 试点与清单校准批已交付，存量迁移未启动
+- [ ] **语料补充与整理** — 见 docs/plan-knowledge-correctness.md（由 docs/draft-corpus-supplement.md 定稿重命名，前身为 docs/archive/plan-prose-title-optimization.md 拆出的语料增量方向）。facts 的唯一上游真源已确定为 arkntools/arknights-toolbox-data 的解包数据；lejciy/arknights-base-vault 的散文也纳入知识库，按主题整理与改写，由人类和 Agent 联合审阅，不纳入正文正确性的机械校验。本计划限定交付为规范落位、facts 来源映射评估、存量路径处置；管道实现及具体主题导入分别收口，不以全量导入阻塞本计划验收。清洗试点三篇、53cf2f7 清单校准与怪猎中枢组合已交付，现有 manifest 为 22 篇 / 156 检索块 / 33 定位文档。 — 2026-09-18 — 来源与核查职责已明确；facts 映射评估待实施，后续主题增量继续推进
 
-- [ ] **查询侧分类、去歧义与黑话词典（暂缓）** — 后续统一讨论自然语言问题分类、玩家问法到功能范围的映射、查询意图路由，以及同名词去歧义、黑话/俗称/简称词典与现有精确入口的衔接。2026-09-13 用户明确本轮不做查询分类，避免与语料补充及标签索引耦合；本项不作为 docs/archive/plan-index-and-tags.md 或 docs/draft-corpus-supplement.md 的依赖，不提前实现。重启时先明确查询侧职责与词典维护方式。 — 2026-09-13 — 保留 inbox
+- [ ] **查询侧分类、去歧义与黑话词典（暂缓）** — 后续统一讨论自然语言问题分类、玩家问法到功能范围的映射、查询意图路由，以及同名词去歧义、黑话/俗称/简称词典与现有精确入口的衔接。2026-09-13 用户明确本轮不做查询分类，避免与语料补充及标签索引耦合；本项不作为 docs/archive/plan-index-and-tags.md 或 docs/plan-knowledge-correctness.md 的依赖，不提前实现。重启时先明确查询侧职责与词典维护方式。 — 2026-09-13 — 保留 inbox
 
 - [ ] **LLM provider 重试时不得丢失用量数据** — 现状：provider.ts 的 fetchWithRetry 对可重试状态码（含 500/502/503/504）最多尝试 3 次，ledger 与 agent 侧按 httpAttempts 聚合各次尝试用量；但 callLLM 返回的 ProviderResult.usage 取自最后一次成功响应（parseUsage(data.usage)），跨尝试的聚合值只体现在 ledger.usage，ProviderResult.usage 仅取末次响应，两处口径不一致（现有 provider.test.ts、agent-provider-ledger.test.ts 已断言该行为）。历史上曾出现重试期间用量数据丢失、导致基准被迫重跑的情况。拟核查并明确：重试各次尝试（含失败与可重试响应）的用量必须完整计入计量，ProviderResult.usage 与 httpAttempts/ledger 聚合口径统一，失败与取消路径不得静默归零；核查失败与取消路径的现有覆盖后再决定是否补回归测试与改实现。 — 2026-09-12 — 待评估，需先定位历史重跑证据再决定是否修实现
 

@@ -2,7 +2,7 @@
 
 ## 项目概述
 
-**RIIC-KnowledgeAgent** 是明日方舟基建 RAG 知识库（`knowledge/`，数据层为唯一真源）及其基准测试工具集。当前基准目标：基于 GLM-5.3-Flash 与 Qwen3.7-Flash 的 RAG + facts 查询 Agent 工具链与查询输出成本测量——参考 Concliude 的 agent loop 骨架实现简化版查询 Agent。
+**RIIC-KnowledgeAgent** 是明日方舟基建 RAG 知识库及其基准测试工具集。`knowledge/` 为本地数据层；facts 的唯一上游真源是 arkntools/arknights-toolbox-data 的解包数据，散文包括 lejciy/arknights-base-vault 的总结与本地实践理解，由人类与 Agent 联合审阅，具体分工见 docs/spec/rag-prose-writing.md。当前基准目标：基于 GLM-5.3-Flash 与 Qwen3.7-Flash 的 RAG + facts 查询 Agent 工具链与查询输出成本测量——参考 Concliude 的 agent loop 骨架实现简化版查询 Agent。
 
 - TypeScript / Node.js · pnpm 单包（ESM，NodeNext）· 仅本机运行
 - 默认 LLM：GLM-5.3-Flash（智谱 BigModel，OpenAI 兼容端点；默认思考档 low）与 Qwen3.7-Flash（阿里云百炼 DashScope）；单价见 bench/src/pricing.ts；Hy3 已退出，注册表保留以兼容历史运行
@@ -57,12 +57,12 @@ RIIC-KnowledgeAgent/
 ├── AGENTS.md                       ← 本文件（规则索引 + 结构导航 + 工作流路由）
 ├── package.json                    ← 根包（bench 工具入口，pnpm）
 ├── tsconfig.json                   ← TypeScript 严格模式（NodeNext/ESM）
-├── knowledge/                      ← 明日方舟基建知识库（raw 为机械事实真源；base/guides 为人工维护语料）
+├── knowledge/                      ← 明日方舟基建知识库（raw 含本地 facts 输入；base/guides 为人工维护语料）
 │   ├── AGENTS.md                   ← 查询 Agent 唯一人工指令源（所有检索模式注入）
 │   ├── corpus-manifest.json        ← 检索白名单真源（显式登记可检索语料；raw 默认不进入）
 │   ├── base/                       ← 机制基线语料（机制-*.md / 基建物流链.md）
 │   ├── guides/                     ← 已审定的 RAG 玩家散文（组合 / 新手 / 散件 / 类别 / 歧义）
-│   └── raw/                        ← 机械事实真源（名册 / 技能分片×9 / 技能等价组）及待核验原始语料；不进检索白名单
+│   └── raw/                        ← 本地 facts 输入（名册 / 技能分片×9 / 技能等价组）及待核验来源留档；不进检索白名单
 ├── bench/                          ← 查询输出成本基准（简化版 Agent）
 │   ├── src/                        ← provider / retriever / agent / runner / report / cli
 │   ├── tests/                      ← vitest 单元测试
@@ -91,7 +91,7 @@ RIIC-KnowledgeAgent/
 
 | Spec | 触发场景 | 版本 | 关联规则 |
 | --- | --- | --- | --- |
-| `docs/spec/rag-prose-writing.md` | 新增、导入、改写或审阅 knowledge/base、knowledge/guides 人工散文 | v1 | `docs/rules/rag-prose-terminology.md` |
+| `docs/spec/rag-prose-writing.md` | 新增、导入、改写或审阅 knowledge/base、knowledge/guides 人工散文 | v2 | `docs/rules/rag-prose-terminology.md` |
 | `docs/spec/rag-answer-baseline.md` | 按 20 题核查基线记录与复核回答 | v6 | — |
 
 6. **阅读代码**：参考同模块内其他实现风格
