@@ -27,6 +27,10 @@
 
 ## 待办区
 
+- [x] **将散文写作示例提升为 Agent 必须遵循的 spec** — 已建立 docs/spec/rag-prose-writing.md v1，与 docs/rules/rag-prose-terminology.md 共同约束语料编写与审阅；根 AGENTS.md 已接入必读路由，草案重复要求已改为引用，实施记录见 docs/plan-corpus-rebase-and-gaps-notes.md。 — 2026-09-18 — 规范已生效，独立 Agent 审阅通过；两项澄清已采纳并复核通过
+
+- [x] **从既有组合散文提炼写作示例并改写怪猎小队** — 按用户反馈，从已有组合篇提炼成员分工、条件表达与缺人回退的写作示例，并在 knowledge/guides/跨设施组合.md 的怪猎小节实践精简；示例现由 docs/spec/rag-prose-writing.md 承载，实施记录见 docs/plan-corpus-rebase-and-gaps-notes.md。 — 2026-09-18 — 示例与改写完成，必要事实的实际读取已核对
+
 - [ ] **knowledge 承载分类与存量目录迁移** — 用户采纳保留 base / guides / raw 顶层分工、按主题逐步增加子目录的建议。新增落位纳入 docs/plan-corpus-cleaning-and-pilot.md：加工站、训练室进 base/设施，共享建设升级篇进 base/通则；存量 19 篇正文及现有上游留档的路径迁移，在当前试点验收后单列迁移批次，范围与依赖见 docs/draft-corpus-supplement.md「承载分类与实施归属」。操作、布局、用人等新内容随后续导入批次落位，不并入路径迁移。分类不改变检索路由，不以目录调整推定 token 或问答收益。 — 2026-09-18 — 实施归属已确定，存量迁移未启动
 
 - [ ] **优化清洗预检与新导入正文的表格表达** — 源表格便于维护，但长说明行、对齐空白与逐候选重复上下文增加阅读负担。按用户选择纳入 docs/plan-corpus-cleaning-and-pilot.md：预检按源行合并候选并共享完整上下文，规则表行转为带列名的字段表达；新导入正文按内容选择紧凑数值表或自包含条目，保留条件、单位、例外和来源。只在本批清洗与导入层实施，不改查询 Agent 的 RAG/read 送达契约；字符减少不直接等同 token 或问答质量收益。 — 2026-09-18 — 预检优化已实施并验证；正文规则已随三篇正文落位执行

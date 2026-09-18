@@ -11,7 +11,7 @@
 
 以下规则适用于所有子模块，AI 代理在任何地方修改代码时必须遵守。
 
-> 编码核心约束内联于下方（常驻上下文，全仓生效）；其余复杂规则定义在 `docs/rules/` 目录（软件中立权威目录，不依赖任何 IDE/Agent 专属目录），任务开始前按需读取（触发场景见下方规则索引表）。AGENTS.md 仅保留本段编码约束、规则索引和工作流路由。
+> 编码核心约束内联于下方（常驻上下文，全仓生效）；其余复杂规则定义在 `docs/rules/`，长期内容与核查规格定义在 `docs/spec/`（均为软件中立权威目录，不依赖任何 IDE/Agent 专属目录），任务开始前按需读取（触发场景见下方规则索引表）。AGENTS.md 仅保留本段编码约束、规则索引和工作流路由。
 
 ### 编码核心约束（常驻上下文，全仓生效）
 
@@ -32,7 +32,7 @@
 | 2 | 分支工作流：禁止直接在主分支提交，走 `feature/<描述>` 分支；合并后删除分支 | — |
 | 3 | 合并门槛：合并前一律执行 `node scripts/verify.mjs merge -- --base main`（门禁唯一入口，命令清单见 `scripts/gates.mjs`） | `docs/rules/document-lifecycle.md` |
 | 4 | 文档模板：ADR 参照 `docs/templates/adr.md`，plan 参照 `docs/templates/plan.md`，草案参照 `docs/templates/draft.md`，实施笔记参照 `docs/templates/notes.md`，试验参照 `docs/templates/exp.md` | — |
-| 5 | RAG 散文清洗统一使用玩家侧规范词；guides/类别.md、guides/歧义.md 直出层保留原格式 | `docs/rules/rag-prose-terminology.md` |
+| 5 | 新增、导入、改写或审阅 knowledge/base、knowledge/guides 人工散文前，必须读取并遵循写作 spec 与术语规则；类别.md、歧义.md 直出层保留原格式 | `docs/spec/rag-prose-writing.md` + `docs/rules/rag-prose-terminology.md` |
 | 6 | 文档引用仓库内其他文档一律写名称（路径/编号），不使用 Markdown 链接；例外为 ADR 索引与归档索引的机械契约表格 | `docs/rules/document-lifecycle.md` |
 | 7 | 新增或修改 bench/src、scripts 运行时行为，或新增/修改/删除相关测试时遵循测试约定 | `docs/rules/testing.md` |
 
@@ -73,7 +73,7 @@ RIIC-KnowledgeAgent/
 │   ├── inbox.md                    ← 需求唯一入口
 │   ├── plan-*.md / draft-*.md      ← 版本计划 / 未定稿工程提案
 │   ├── exp-*.md / exp/             ← 活动试验记录 / 已结束或已取消的试验记录
-│   ├── spec/                       ← 评测/核查规格（长期复用资产，如 RAG 20 题回答核查基线）
+│   ├── spec/                       ← 长期内容与核查规格（散文写作、RAG 回答核查等）
 │   ├── templates/                  ← ADR/plan/draft/notes/exp 机械模板
 │   ├── rules/                      ← 复杂规则权威目录
 │   ├── adr/                        ← 架构决策记录（INDEX.md 为状态索引）
@@ -84,7 +84,7 @@ RIIC-KnowledgeAgent/
 ## AI 代理发现流程
 
 1. **首先**：阅读本文件，了解全局规则和项目架构
-2. **按需读取复杂规则**：任务涉及文档/ADR/发版/合并 → 读 `docs/rules/document-lifecycle.md`；新增或修改 bench/src、scripts 运行时行为，或新增/修改/删除相关测试 → 先读 `docs/rules/testing.md`（不等到已经决定写测试才读）；其余场景按规则索引表从 `docs/rules/` 挑选匹配描述
+2. **按需读取规则与规格**：任务涉及文档/ADR/发版/合并 → 读 `docs/rules/document-lifecycle.md`；新增、导入、改写或审阅 knowledge/base、knowledge/guides 人工散文 → 开始前必须读取并遵循 `docs/spec/rag-prose-writing.md` 与 `docs/rules/rag-prose-terminology.md`；新增或修改 bench/src、scripts 运行时行为，或新增/修改/删除相关测试 → 先读 `docs/rules/testing.md`（不等到已经决定写测试才读）；其余场景按规则索引表读取对应文件
 3. **新需求入口**：所有新需求/决策从 `docs/inbox.md` 起步，评估后路由到 `docs/plan-*.md`（工程定稿）、`docs/draft-*.md`（未定稿工程提案）、`docs/exp-*.md`（试验）或 `docs/adr/ADR-NNN.md`（架构决策）
 4. **确定任务范围**：判断当前任务涉及哪些模块（bench 工具 / 语料 / 过程管理文档）
 5. **阅读代码**：参考同模块内其他实现风格
@@ -123,6 +123,7 @@ node scripts/verify.mjs merge -- --base main   # 合并门禁
 | 文档 | 用途 |
 | ---- | ---- |
 | `docs/inbox.md` | 待办事项需求唯一入口 |
+| `docs/spec/rag-prose-writing.md` | 人工散文写作与审阅的生效规范及示例，与术语规则共同遵循 |
 | `docs/spec/rag-answer-baseline.md` | 评测/核查规格（版本与状态由 spec 自身承载，长期复用资产） |
 | `docs/exp/exp-answer-baseline-v4.md` | 试验记录（已结束）：按 spec v4 的两次既有运行回答核查（已完成全量复核，未经独立复核） |
 | `docs/exp/exp-harness-performance.md` | 试验记录（已结束）：性能测量与执行诊断 |
