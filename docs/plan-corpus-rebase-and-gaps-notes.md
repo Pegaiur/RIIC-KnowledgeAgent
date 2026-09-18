@@ -106,6 +106,16 @@
 - **读取与验证**：正文从 1,154 缩至 551 字符（不含标题），离线 read 一次完整返回正文、六项技能与两个概念，共 2,636 字符；移出正文的调查团技能数值仍完整送达。术语检查、构建、关联／读取／白名单／完整性四文件 78 项测试及 git diff --check 通过；manifest 仍为 22 篇、检索 156 块。本次仅改文档与散文，沿用既有覆盖，未改代码或测试、未运行模型、未产生临时文件。
 - **收尾范围**：本次写作请求已完成；原计划的步骤 4 回填保持待办。node scripts/doc-check.mjs 仍仅报该计划五项未勾选验收（D1），无新增文档错误。
 
+### 2026-09-18 — 步骤 4：新节离线读取核对、完整门禁与回填
+
+- **范围**：按用户本次授权完成计划步骤 4（新节离线读取核对、完整门禁、草案与 inbox 回填、临时产物收束）。步骤 1–3 的既有记录及正文、关联、计数保持不变。
+- **读取核对**：`pnpm run build` 通过后，用一次性脚本（dev-temp/work/corpus-supplement/read-check.mjs，按 scripts/INDEX.md 落位）从现有目录取新节 ID `sec-1de8bce877d1dd37`（guides/跨设施组合.md「怪猎中枢：木天蓼分工、练度与缺人后的剩余效果」，正文 L41–46），离线调用既有 read 路径。返回 status=success：正文 551 字符、body_complete=true；关联事实 5 项（火龙S黑角、麒麟R夜刀、泰拉大陆调查团三张技能卡，怪物猎人小队、木天蓼两个概念）、facts_complete=true，一次返回无分页；resultChars=2636。六项精确技能均随三张卡送达。此结果只说明该节正文与必要关联可送达，未运行 LLM、不设检索名次或回答正确率门槛，也不证明问答质量提升。
+- **门禁实况**：`pnpm run check:prose-terms` 通过；`pnpm run check:reference-projection` 通过（9 个分片一致）；`pnpm run typecheck` 通过；全套 `pnpm run test` 通过（52 文件 / 793 例）；`pnpm run build` 通过；`node dist/cli.js validate` 通过（20 题 / 22 白名单文档 / 156 切块 / 33 定位文档 / 777 定位切块 / 2 共享快照 / 296,261 字节）；`node scripts/doc-check.mjs` 勾选前退出 1、仅报本计划 5 项未勾选验收（D1），勾选后复跑「文档校验全部通过」。`git diff --check` 无行尾空白问题。计数来自批准内容与实际分块，非照抄输出。
+- **发版态观察（非本计划门禁项）**：另跑 `node scripts/tooling.mjs run release/check`，报 2 个 P1——本计划与前一试点计划均已全勾选但未冻结归档，另 2 条实施笔记待合并、inbox 有 2 个已完成条目待清理。归档与笔记合并属发版收束动作，本批不执行；本计划保持在活动 plan 目录等待发版，冻结标记按脚本在归档时替换。
+- **回填**：草案加交付补记，「当前执行顺序」表把小批标为已完成、存量迁移列为当前，53cf2f7 对照表的怪猎中枢行与二次确认注记标为已交付；inbox「语料补充与整理」路由状态同步为「试点与清单校准批已交付，存量迁移未启动」。不在 notes 或 inbox 复制完整候选清单。
+- **收束**：本轮一次性读取脚本经 `node scripts/tooling.mjs tmp manifest` 生成显式清单、预览后 `--apply` 删除（1 文件 / 1,604 字节，清单自删除）；工作副本 dev-temp/work/corpus-supplement/arknights-base-vault 按计划保留供后续主题选材。同目录 scan-noroom.txt、scan-pilot.txt 属前一试点计划产物，不在本批处置范围。
+- **验收**：勾选 plan 剩余五项验收；本批验收不等待存量迁移等后续批次。
+
 ## 债务记录
 
 ## 意外发现

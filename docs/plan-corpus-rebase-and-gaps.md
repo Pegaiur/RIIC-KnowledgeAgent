@@ -71,11 +71,11 @@
 - [x] 上游稿转存 knowledge/raw/upstream/上游稿-怪猎中枢.md，含来源头注，正文核对一致，未进检索与模型阅读目录。
 - [x] 完成怪猎稿预检与按主题采用清单，已识别的条件冲突有依据和处理结论。
 - [x] 怪猎正文及必要关联落位，完整阵容、部分生效、练度与取舍分开表达；manifest 与测试计数按实际采用范围同步。
-- [ ] 一次新节离线读取核对完成，正文与必要关联事实可取得，结果写入 notes。
-- [ ] 术语、事实投影、build 与 validate 通过；草案及 inbox 回填实施结果，临时产物按既有规范收束。
-- [ ] `pnpm run typecheck` 全通过。
-- [ ] `pnpm run test` 全通过。
-- [ ] `node scripts/doc-check.mjs` 通过。
+- [x] 一次新节离线读取核对完成，正文与必要关联事实可取得，结果写入 notes。
+- [x] 术语、事实投影、build 与 validate 通过；草案及 inbox 回填实施结果，临时产物按既有规范收束。
+- [x] `pnpm run typecheck` 全通过。
+- [x] `pnpm run test` 全通过。
+- [x] `node scripts/doc-check.mjs` 通过。
 
 ## 关联 ADR
 
