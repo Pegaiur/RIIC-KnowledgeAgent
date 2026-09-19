@@ -43,5 +43,5 @@ ADR-021 决策 7 规定 gold 定位真源与 RAG 检索范围分离，被策略�
 
 ## 关联
 
-- 规划文档：docs/plan-hitrate-reachable-scope.md
+- 规划文档：docs/archive/plan-hitrate-reachable-scope.md
 - 前置决策：ADR-013、ADR-021；执行记录见 docs/exp/exp-hitrate-migration-scope-compare.md

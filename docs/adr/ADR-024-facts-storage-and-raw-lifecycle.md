@@ -14,7 +14,7 @@
 2. knowledge/raw 仅暂存本批需要的来源稿、摘录及加工中间稿。材料采用、放弃或取消且无继续实施用途后清理，正式知识通过 facts 或 base/guides 保留。溯源保留来源仓库、提交、路径、对象或实践依据及必要采用结论，不另建永久原稿副本库。
 3. facts 加载器、相关维护脚本与 gold 定位一并改读 knowledge/facts，使用显式输入清单；RAG manifest 与模型原文目录继续限于 base/guides。raw 不作为运行时输入，也不设置旧路径回退、双份维护或兼容副本。
 4. 清理按批次开展，正式成果和来源记录先落位；清理已不被正式消费者使用的材料，不因全库尚有其他待办而保留已结束批次原稿。未完成工作只保留有具体续作用途的材料，交接时写清任务与清理时点。流程见 skills/corpus-addition/SKILL.md。
-5. 迁移与清理已于 2026-09-19 执行：11 份输入迁入 knowledge/facts，加载器、维护脚本与 gold 定位同步，并新增「raw 临时稿不被接受为 gold 定位真源」的用例；8 份来源材料中 7 份删除，1 份（心情消耗恢复与工休时间.md）因剩余工作时间面板口径待核验而暂留，偿还条件见 docs/plan-facts-storage-and-raw-cleanup-notes.md。
+5. 迁移与清理已于 2026-09-19 执行：11 份输入迁入 knowledge/facts，加载器、维护脚本与 gold 定位同步，并新增「raw 临时稿不被接受为 gold 定位真源」的用例；8 份来源材料中 7 份删除，1 份（心情消耗恢复与工休时间.md）因剩余工作时间面板口径待核验而暂留，偿还条件见 docs/archive/plan-facts-storage-and-raw-cleanup.md 实施纪要。
 
 ## 理由
 
@@ -33,7 +33,7 @@
 
 ## 关联
 
-- 规划文档：docs/plan-facts-storage-and-raw-cleanup.md。
-- 来源与映射：docs/plan-knowledge-correctness.md。
+- 规划文档：docs/archive/plan-facts-storage-and-raw-cleanup.md。
+- 来源与映射：docs/archive/plan-knowledge-correctness.md。
 - 前置决策：ADR-021、ADR-022。
 - 工作流：skills/corpus-addition/SKILL.md；写作审阅沿用 docs/spec/rag-prose-writing.md。

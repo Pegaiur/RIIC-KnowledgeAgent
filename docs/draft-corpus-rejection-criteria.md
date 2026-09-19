@@ -10,7 +10,7 @@
 
 ## 非目标
 
-- 不重开 docs/plan-corpus-candidate-batches.md 的已验收结论，不推翻已审定参考线、已采用正文与既有冲突处置；不因问答答错触发修复。
+- 不重开 docs/archive/plan-corpus-candidate-batches.md 的已验收结论，不推翻已审定参考线、已采用正文与既有冲突处置；不因问答答错触发修复。
 - 不整库重新导入，不为每个未采用段落建立逐条证明台账，不新增哈希或指纹字段。
 - 不改检索算法、查询指令、工具预算与评分，不启动付费运行。
 - 不预先认定审计条目「应当采纳」；本草案只提出判据与复核流程，采纳与否以来源原文复核为准。
@@ -18,7 +18,7 @@
 
 ## 背景与依据
 
-docs/plan-corpus-candidate-batches-notes.md 记录五批候选的采用与不采用项。收束复核发现四类问题：
+docs/archive/plan-corpus-candidate-batches.md 的「实施纪要」记录五批候选的采用与不采用项。收束复核发现四类问题：
 
 ### 1. 被并入「编辑性建议／重复／格式」的玩家使用判断
 
@@ -44,7 +44,7 @@ docs/plan-corpus-candidate-batches-notes.md 记录五批候选的采用与不采
 
 批次五验收记录已写明「实施阶段把本地尚无锚点作为排除数值的理由，未能支撑已保留的排序与比较」，并据计划重新核对补充来源；该判断未回扫前四批，故上列条目以原措辞留存。
 
-计划依据：docs/plan-corpus-candidate-batches.md 规定「布局比较、用人取舍与有条件的收益估算属于采用范围」，「逐篇评估后可不采用无增量、不适用或依据不足的具体段落，但不能把尚未评估的整个主题预先排除」，「所需参数尚未收录时回查来源、补必要增量或明确该项待核验」，五批以外对象「继续留在 docs/inbox.md，另定范围再实施」。
+计划依据：docs/archive/plan-corpus-candidate-batches.md 规定「布局比较、用人取舍与有条件的收益估算属于采用范围」，「逐篇评估后可不采用无增量、不适用或依据不足的具体段落，但不能把尚未评估的整个主题预先排除」，「所需参数尚未收录时回查来源、补必要增量或明确该项待核验」，五批以外对象「继续留在 docs/inbox.md，另定范围再实施」。
 
 依据边界：本轮未重读上游原文，只核对记录层与本地相关正文；来源工作副本已按 skills/corpus-addition/SKILL.md 清理。任何条目的成立与否须重新取得固定提交 53cf2f74d71c88fca4e13f1ad3f3fbe275186129 的对应篇目复核后才可判定，审计清单不是结论。
 
@@ -85,7 +85,7 @@ docs/plan-corpus-candidate-batches-notes.md 记录五批候选的采用与不采
 
 ## 待定事项
 
-- 判据落位处：docs/spec/rag-prose-writing.md 的采用章节，还是 skills/corpus-addition/SKILL.md 的「不采用」环节；是否需要同时更新 docs/plan-corpus-candidate-batches.md 的实施批次表述。
+- 判据落位处：docs/spec/rag-prose-writing.md 的采用章节，还是 skills/corpus-addition/SKILL.md 的「不采用」环节；是否需要同时更新 docs/archive/plan-corpus-candidate-batches.md 的实施批次表述。
 - 复核范围与授权：是全部 11 条（第 1 类 3 条、第 2 类 5 条、第 3 类 3 条；第 4 类为同类失效模式的记述，不作复核对象），还是先做第 1、2 类（含玩家判断与本地缺参数）与第 3 类归口缺失；是否重新取得固定提交并逐篇通读。
 - 复核后的处置归属：新增增量应落回既有正文还是另立后续 plan；已验收计划的 notes 是否回写，或只在新计划中记录。
 - 社区俗称是否并入 docs/inbox.md 既有「查询侧分类、去歧义与黑话词典」条目，还是维持术语层单独处理。
