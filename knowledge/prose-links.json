@@ -743,6 +743,7 @@
       "headingPath": ["换班操作", "定时换班：两班轮流、错班轮换与班制选择"],
       "scope": "section",
       "objects": [
+        { "kind": "skill", "operator": "菲亚梅塔", "room": "宿舍", "name": "自律" },
         { "kind": "skill", "operator": "菲亚梅塔", "room": "宿舍", "name": "患难之交" }
       ]
     },
@@ -755,6 +756,7 @@
         { "kind": "skill", "operator": "承曦格雷伊", "room": "发电站", "name": "晨曦" },
         { "kind": "skill", "operator": "阿罗玛", "room": "制造站", "name": "例行清扫" },
         { "kind": "skill", "operator": "伊内丝", "room": "会客室", "name": "聚影" },
+        { "kind": "skill", "operator": "菲亚梅塔", "room": "宿舍", "name": "自律" },
         { "kind": "skill", "operator": "菲亚梅塔", "room": "宿舍", "name": "患难之交" }
       ]
     }
