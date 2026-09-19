@@ -17,10 +17,10 @@ describe('20 题基准完整性', () => {
       goldCount: 20,
       specCount: 20,
       corpusFileCount: 22,
-      chunkCount: 175,
+      chunkCount: 180,
       // 定位目录 = manifest 22 份 + raw 机械真源 11 份
       anchorFileCount: 33,
-      anchorChunkCount: 796,
+      anchorChunkCount: 801,
     })
   })
 
