@@ -14,7 +14,7 @@ import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { effectiveAttachFacts, loadConfig, validateBenchConfig } from './config.js'
 import { corpusStats, loadCorpus, loadGoldAnchorChunks } from './corpus.js'
-import { RAW_MACHINE_SOURCE_DOC_IDS } from './facts/references.js'
+import { FACTS_SOURCE_DOC_IDS } from './facts/references.js'
 import { checkGold, loadGold, renderHitrate, runHitrate } from './hitrate.js'
 import { CATALOG_RELATIVE_PATH, catalogDifference, generateKeywordCatalogMarkdown } from './catalog.js'
 import { buildIndex } from './retriever.js'
@@ -51,7 +51,7 @@ function printUsage(): void {
       '  node dist/cli.js run --retriever bm25   # 纯 RAG 对照',
       '  node dist/cli.js report bench/results/<run-id>.json        # 从共享快照生成报告',
       '  node dist/cli.js compare bench/results/<glm>.json bench/results/<qwen>.json   # 跨模型对比',
-      '  node dist/cli.js hitrate --check-gold         # 仅校验 gold ↔ 定位目录（manifest 原文 + raw 机械真源）对应关系',
+      '  node dist/cli.js hitrate --check-gold         # 仅校验 gold ↔ 定位目录（manifest 原文 + facts 正式输入）对应关系',
       '  node dist/cli.js validate                     # 校验 questions / gold / spec / manifest / 定位目录 / anchors',
       '  node dist/cli.js catalog                      # 重算并写入 knowledge/关键词目录.md',
       '  node dist/cli.js catalog --check              # 重算并与入库关键词目录比对（不写文件）',
@@ -180,9 +180,9 @@ async function main(): Promise<void> {
     }
     const goldPath = args.gold ?? join(process.cwd(), 'bench', 'gold.json')
     const gold = loadGold(goldPath)
-    // gold 与 checkGold 一律在完整、未截断的定位目录解析（ADR-013 步骤 5 / ADR-021 步骤 6）：
-    // manifest 原文分块 + facts 声明的 raw 机械真源；分母不因检索范围收缩而删减。
-    const directoryChunks = loadGoldAnchorChunks(config.corpusDir, RAW_MACHINE_SOURCE_DOC_IDS)
+    // gold 与 checkGold 一律在完整、未截断的定位目录解析（ADR-021 步骤 6）：
+    // manifest 原文分块 + facts 声明的正式输入；recall 分母与 nDCG 理想集合只含可达键与块，precision 分母仍为实际填充槽位（ADR-025）。
+    const directoryChunks = loadGoldAnchorChunks(config.corpusDir, FACTS_SOURCE_DOC_IDS)
 
     if (args.checkGold) {
       const { missing } = checkGold(gold, directoryChunks)
@@ -216,8 +216,8 @@ async function main(): Promise<void> {
       topKs,
       { directoryChunks },
     )
-    // 落盘/输出携带运行参数上下文，保证 --out 文件可复现（分词器 + 实体加权 + 检索范围）
-    const contextLine = `分词器：${config.tokenizer}｜实体加权：${config.entityBoost === 0 ? '关' : `×${config.entityBoost}`}｜检索范围：base/guides（manifest 全部块）｜检索 chunks：${retrievalChunks.length}｜定位目录 chunks：${directoryChunks.length}（manifest + raw 机械真源 ${RAW_MACHINE_SOURCE_DOC_IDS.length} 份）｜问题：${questions.length}`
+    // 落盘/输出携带运行参数上下文，保证 --out 文件可复现（分词器 + 实体加权 + 检索范围 + 分母口径）
+    const contextLine = `分词器：${config.tokenizer}｜实体加权：${config.entityBoost === 0 ? '关' : `×${config.entityBoost}`}｜检索范围：base/guides（manifest 全部块）｜recall 分母：可达 golden 键｜precision 分母：实际填充槽位｜nDCG 理想集合：可达相关块（ADR-025）｜检索 chunks：${retrievalChunks.length}｜定位目录 chunks：${directoryChunks.length}（manifest + facts 正式输入 ${FACTS_SOURCE_DOC_IDS.length} 份）｜问题：${questions.length}`
     result.note = contextLine
     process.stdout.write(`${contextLine}\n`)
     const md = renderHitrate(result)

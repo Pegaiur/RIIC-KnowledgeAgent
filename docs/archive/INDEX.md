@@ -7,6 +7,12 @@
 
 | 完成日期 | 版本 | 文件 | 摘要 |
 |----------|------|------|------|
+| 2026-09-19 | 0.3.0 | [plan-corpus-candidate-batches.md](plan-corpus-candidate-batches.md) | 上游五批候选的逐篇评估与增量采用，并完成散文主题分类整理，26 篇正式正文 / 212 检索块 |
+| 2026-09-19 | 0.3.0 | [plan-corpus-cleaning-and-pilot.md](plan-corpus-cleaning-and-pilot.md) | 外部语料导入预检工具落地，加工站、训练室与共享建设升级三篇正文完成清洗与落位登记 |
+| 2026-09-19 | 0.3.0 | [plan-corpus-rebase-and-gaps.md](plan-corpus-rebase-and-gaps.md) | 按工作副本 53cf2f7 校准采用清单并补齐怪猎组合的设施分工、生效条件与缺人剩余效果 |
+| 2026-09-19 | 0.3.0 | [plan-facts-storage-and-raw-cleanup.md](plan-facts-storage-and-raw-cleanup.md) | 11 份正式 facts 输入迁至 knowledge/facts 并同步加载器、gold 与维护脚本，8 份来源材料删除 7 份、暂留 1 份 |
+| 2026-09-19 | 0.3.0 | [plan-hitrate-reachable-scope.md](plan-hitrate-reachable-scope.md) | 命中主口径的 recall 分母与 nDCG 理想集合改为检索范围内可达键与块，不可达键保留逐题与汇总可见（ADR-025） |
+| 2026-09-19 | 0.3.0 | [plan-knowledge-correctness.md](plan-knowledge-correctness.md) | facts 与唯一上游解包源的映射、差异及最小适配评估完成，贸易、制造、基础与辅助设施三批散文增量落位 |
 | 2026-09-18 | 0.2.0 | [plan-rag-delivery-format-slim.md](plan-rag-delivery-format-slim.md) | rag_search 默认送达改为文件目录树与命中 100 字预览，附文件级整篇入口，RAG 送达字符降至 24,409 |
 | 2026-09-18 | 0.2.0 | [plan-prose-title-optimization.md](plan-prose-title-optimization.md) | 17 篇人工散文的标题定位与结构优化：标题可脱离正文识别证据主题，同步 prose-links 与 gold/spec 定位并完成离线观测 |
 | 2026-09-18 | 0.2.0 | [plan-index-and-tags.md](plan-index-and-tags.md) | 关键词目录生成与交付、最小事实对象语义与 facts 标签反查入口，目录注入后改为默认关闭且收益证据待补 |

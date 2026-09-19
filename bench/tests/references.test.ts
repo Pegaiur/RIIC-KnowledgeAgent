@@ -1,15 +1,59 @@
-import { describe, expect, it } from 'vitest'
-import { readFileSync } from 'node:fs'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { loadReferenceFacts, REFERENCE_ROOMS } from '../src/facts/references.js'
 import { renderSkillLine } from '../src/facts/normalized.js'
 
 const ROOT = new URL('../..', import.meta.url).pathname.replace(/^\//, '').replace(/\//g, '\\')
 
+describe('references：正式输入与 raw 临时区隔离', () => {
+  let root: string
+
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), 'facts-input-boundary-'))
+    mkdirSync(join(root, 'knowledge', 'facts'), { recursive: true })
+    for (const file of ['名册.md', ...REFERENCE_ROOMS.map((room) => `技能-${room}.md`)]) {
+      copyFileSync(join(ROOT, 'knowledge', 'facts', file), join(root, 'knowledge', 'facts', file))
+    }
+  })
+
+  afterEach(() => {
+    // root 仅由本组 beforeEach 创建，清理范围限于该用例的临时根目录。
+    rmSync(root, { recursive: true, force: true })
+  })
+
+  it('只有 facts 时可加载，raw 中的同名文件和临时稿不影响结果', () => {
+    const rawDir = join(root, 'knowledge', 'raw')
+    expect(existsSync(rawDir)).toBe(false)
+    const facts = loadReferenceFacts(root)
+    expect(facts.operators).toHaveLength(425)
+    expect(facts.grants).toHaveLength(913)
+
+    mkdirSync(rawDir)
+    for (const file of ['名册.md', '技能-制造站.md', '临时稿.md']) {
+      writeFileSync(join(rawDir, file), '临时内容，不是合法 facts 输入', 'utf-8')
+    }
+    expect(loadReferenceFacts(root)).toEqual(facts)
+  })
+
+  it.each([
+    ['名册.md', '无法读取真源名册'],
+    ['技能-制造站.md', '无法读取真源技能分片'],
+  ])('正式输入 %s 缺失时，即使 raw 存在有效副本也直接失败', (file, message) => {
+    const rawDir = join(root, 'knowledge', 'raw')
+    mkdirSync(rawDir)
+    copyFileSync(join(root, 'knowledge', 'facts', file), join(rawDir, file))
+    rmSync(join(root, 'knowledge', 'facts', file))
+
+    expect(() => loadReferenceFacts(root)).toThrowError(`${message}：knowledge/facts/${file}`)
+  })
+})
+
 describe('references：九个设施事实批次', () => {
   it('九个技能分片共用当前练度投影，不残留旧的三星门槛', () => {
     for (const room of REFERENCE_ROOMS) {
-      const source = readFileSync(join(ROOT, 'knowledge', 'raw', `技能-${room}.md`), 'utf-8')
+      const source = readFileSync(join(ROOT, 'knowledge', 'facts', `技能-${room}.md`), 'utf-8')
       expect(source).toContain('一星、二星干员通常在达到 30 级')
       expect(source).toContain('三星、四星干员通常在精一阶段')
       expect(source).toContain('五星、六星干员通常在精二阶段')

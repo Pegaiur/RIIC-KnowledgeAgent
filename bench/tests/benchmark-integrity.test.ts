@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { validateBenchmarkIntegrity } from '../src/benchmark-integrity.js'
 import { loadCorpus, loadGoldAnchorChunks } from '../src/corpus.js'
-import { RAW_MACHINE_SOURCE_DOC_IDS } from '../src/facts/references.js'
+import { FACTS_SOURCE_DOC_IDS } from '../src/facts/references.js'
 import { checkGold, loadGold } from '../src/hitrate.js'
 import { createSnapshot, writeSnapshot } from '../src/snapshot.js'
 
@@ -16,27 +16,27 @@ describe('20 题基准完整性', () => {
       questionCount: 20,
       goldCount: 20,
       specCount: 20,
-      corpusFileCount: 19,
-      chunkCount: 128,
-      // 定位目录 = manifest 19 份 + raw 机械真源 11 份
-      anchorFileCount: 30,
-      anchorChunkCount: 749,
+      corpusFileCount: 26,
+      chunkCount: 212,
+      // 定位目录 = manifest 26 份 + facts 正式输入 11 份
+      anchorFileCount: 37,
+      anchorChunkCount: 833,
     })
   })
 
-  it('gold 的 raw 来源可在定位目录解析、但不进入检索范围', () => {
+  it('gold 的 facts 正式输入来源可在定位目录解析、但不进入检索范围', () => {
     const knowledgeRoot = join(ROOT, 'knowledge')
     const gold = loadGold(join(ROOT, 'bench', 'gold.json'))
     const keys = Object.values(gold).flatMap((entry) => entry.golden)
-    const rawKeys = keys.filter((key) => key.startsWith('raw/'))
+    const factsKeys = keys.filter((key) => key.startsWith('facts/'))
 
     expect(keys).toHaveLength(74)
-    expect(rawKeys).toHaveLength(24)
-    expect(checkGold(gold, loadGoldAnchorChunks(knowledgeRoot, RAW_MACHINE_SOURCE_DOC_IDS)).missing).toEqual([])
+    expect(factsKeys).toHaveLength(24)
+    expect(checkGold(gold, loadGoldAnchorChunks(knowledgeRoot, FACTS_SOURCE_DOC_IDS)).missing).toEqual([])
 
     const retrievalFiles = new Set(loadCorpus(knowledgeRoot).map((chunk) => chunk.file))
-    const reachableRawKeys = rawKeys.filter((key) => retrievalFiles.has(key.slice(0, key.indexOf('#'))))
-    expect(reachableRawKeys).toEqual([])
+    const reachableFactsKeys = factsKeys.filter((key) => retrievalFiles.has(key.slice(0, key.indexOf('#'))))
+    expect(reachableFactsKeys).toEqual([])
   })
 
   it('在隔离快照集合中统计新增和移除后的数量与字节，并拒绝无效 JSON', () => {

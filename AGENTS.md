@@ -2,16 +2,16 @@
 
 ## 项目概述
 
-**RIIC-KnowledgeAgent** 是明日方舟基建 RAG 知识库（`knowledge/`，数据层为唯一真源）及其基准测试工具集。当前基准目标：基于 GLM-5.3-Flash 与 Qwen3.7-Flash 的 RAG + facts 查询 Agent 工具链与查询输出成本测量——参考 Concliude 的 agent loop 骨架实现简化版查询 Agent；默认 provider 为 GLM-5.3-Flash（默认思考档 low；GLM 不支持 off），Qwen3.7-Flash 为第二默认模型，Hy3 已退出。
+**RIIC-KnowledgeAgent** 是明日方舟基建 RAG 知识库及其基准测试工具集。`knowledge/` 为本地数据层；facts 的唯一上游真源是 arkntools/arknights-toolbox-data 的解包数据，散文包括 lejciy/arknights-base-vault 的总结与本地实践理解，由人类与 Agent 联合审阅，具体分工见 docs/spec/rag-prose-writing.md。当前基准目标：基于 GLM-5.3-Flash 与 Qwen3.7-Flash 的 RAG + facts 查询 Agent 工具链与查询输出成本测量——参考 Concliude 的 agent loop 骨架实现简化版查询 Agent。
 
 - TypeScript / Node.js · pnpm 单包（ESM，NodeNext）· 仅本机运行
-- 默认 LLM：GLM-5.3-Flash（智谱 BigModel，OpenAI 兼容端点；默认思考档 low）与 Qwen3.7-Flash（阿里云百炼 DashScope）；单价见 bench/src/pricing.ts；Hy3（TokenHub）已退出，注册表保留以兼容历史运行
+- 默认 LLM：GLM-5.3-Flash（智谱 BigModel，OpenAI 兼容端点；默认思考档 low）与 Qwen3.7-Flash（阿里云百炼 DashScope）；单价见 bench/src/pricing.ts；Hy3 已退出，注册表保留以兼容历史运行
 
 ## 全局规则
 
 以下规则适用于所有子模块，AI 代理在任何地方修改代码时必须遵守。
 
-> 编码核心约束内联于下方（常驻上下文，全仓生效）；其余复杂规则定义在 `docs/rules/` 目录（软件中立权威目录，不依赖任何 IDE/Agent 专属目录），任务开始前按需读取（触发场景见下方规则索引表）。AGENTS.md 仅保留本段编码约束、规则索引和工作流路由。
+> 编码核心约束内联于下方（常驻上下文，全仓生效）；其余复杂规则定义在 `docs/rules/`、长期内容与核查规格定义在 `docs/spec/`（均为软件中立权威目录，不依赖任何 IDE/Agent 专属目录），任务开始前按需读取（触发场景见下方规则索引表与「AI 代理发现流程」）。AGENTS.md 仅保留本段编码约束、规则索引、工作流路由与结构导航。
 
 ### 编码核心约束（常驻上下文，全仓生效）
 
@@ -32,9 +32,10 @@
 | 2 | 分支工作流：禁止直接在主分支提交，走 `feature/<描述>` 分支；合并后删除分支 | — |
 | 3 | 合并门槛：合并前一律执行 `node scripts/verify.mjs merge -- --base main`（门禁唯一入口，命令清单见 `scripts/gates.mjs`） | `docs/rules/document-lifecycle.md` |
 | 4 | 文档模板：ADR 参照 `docs/templates/adr.md`，plan 参照 `docs/templates/plan.md`，草案参照 `docs/templates/draft.md`，实施笔记参照 `docs/templates/notes.md`，试验参照 `docs/templates/exp.md` | — |
-| 5 | RAG 散文清洗统一使用玩家侧规范词；guides/类别.md、guides/歧义.md 直出层保留原格式 | `docs/rules/rag-prose-terminology.md` |
+| 5 | 新增、导入、改写或审阅 knowledge/base、knowledge/guides 人工散文前，必须读取并遵循写作与术语两份 spec；类别.md、歧义.md 直出层保留原格式 | `docs/spec/rag-prose-writing.md` + `docs/spec/rag-prose-terminology.md` |
 | 6 | 文档引用仓库内其他文档一律写名称（路径/编号），不使用 Markdown 链接；例外为 ADR 索引与归档索引的机械契约表格 | `docs/rules/document-lifecycle.md` |
 | 7 | 新增或修改 bench/src、scripts 运行时行为，或新增/修改/删除相关测试时遵循测试约定 | `docs/rules/testing.md` |
+| 8 | 添加、导入语料或处理 raw 材料时，必须读取并执行 corpus-addition 技能；普通措辞修订或单独审稿按两份 spec 执行 | `skills/corpus-addition/SKILL.md` |
 
 ## 工作流路由
 
@@ -49,6 +50,7 @@
 | 技术债治理 | `skills/tech-debt-governance` |
 | 验证（合并前） | `node scripts/verify.mjs merge`（门禁唯一入口） |
 | 文档生命周期 | `docs/rules/document-lifecycle`（ADR/plan/draft/notes/exp 模板见 `docs/templates/`） |
+| 添加语料与临时材料清理 | `skills/corpus-addition/SKILL.md`（选材、来源、采用、审阅、验证、清理） |
 
 ## 仓库结构
 
@@ -57,12 +59,13 @@ RIIC-KnowledgeAgent/
 ├── AGENTS.md                       ← 本文件（规则索引 + 结构导航 + 工作流路由）
 ├── package.json                    ← 根包（bench 工具入口，pnpm）
 ├── tsconfig.json                   ← TypeScript 严格模式（NodeNext/ESM）
-├── knowledge/                      ← 明日方舟基建知识库（raw 为机械事实真源；base/guides 为人工维护语料）
+├── knowledge/                      ← 明日方舟基建知识库（正式 facts 与人工散文分开维护）
 │   ├── AGENTS.md                   ← 查询 Agent 唯一人工指令源（所有检索模式注入）
-│   ├── corpus-manifest.json        ← 检索白名单真源（显式登记可检索语料；raw 默认不进入）
+│   ├── corpus-manifest.json        ← 检索白名单真源（显式登记可检索语料；raw 与 facts 默认不进入）
 │   ├── base/                       ← 机制基线语料（机制-*.md / 基建物流链.md）
 │   ├── guides/                     ← 已审定的 RAG 玩家散文（组合 / 新手 / 散件 / 类别 / 歧义）
-│   └── raw/                        ← 机械事实真源（名册 / 技能分片×9 / 技能等价组）及待核验原始语料；不进检索白名单
+│   ├── facts/                      ← 正式 facts 输入（名册 / 技能分片 / 技能等价组；单一维护位置，见 ADR-024）
+│   └── raw/                        ← 语料添加临时落点，完成后清理；不存正式输入
 ├── bench/                          ← 查询输出成本基准（简化版 Agent）
 │   ├── src/                        ← provider / retriever / agent / runner / report / cli
 │   ├── tests/                      ← vitest 单元测试
@@ -73,7 +76,7 @@ RIIC-KnowledgeAgent/
 │   ├── inbox.md                    ← 需求唯一入口
 │   ├── plan-*.md / draft-*.md      ← 版本计划 / 未定稿工程提案
 │   ├── exp-*.md / exp/             ← 活动试验记录 / 已结束或已取消的试验记录
-│   ├── spec/                       ← 评测/核查规格（长期复用资产，如 RAG 20 题回答核查基线）
+│   ├── spec/                       ← 长期内容与核查规格（散文写作、RAG 回答核查等）
 │   ├── templates/                  ← ADR/plan/draft/notes/exp 机械模板
 │   ├── rules/                      ← 复杂规则权威目录
 │   ├── adr/                        ← 架构决策记录（INDEX.md 为状态索引）
@@ -84,10 +87,18 @@ RIIC-KnowledgeAgent/
 ## AI 代理发现流程
 
 1. **首先**：阅读本文件，了解全局规则和项目架构
-2. **按需读取复杂规则**：任务涉及文档/ADR/发版/合并 → 读 `docs/rules/document-lifecycle.md`；新增或修改 bench/src、scripts 运行时行为，或新增/修改/删除相关测试 → 先读 `docs/rules/testing.md`（不等到已经决定写测试才读）；其余场景按规则索引表从 `docs/rules/` 挑选匹配描述
+2. **按需读取规则、规格与技能**：任务涉及文档/ADR/发版/合并 → 读 `docs/rules/document-lifecycle.md`；涉及 bench/src、scripts 运行时行为或测试 → 读 `docs/rules/testing.md`；涉及知识库散文 → 读下一步的写作与术语两份 spec；添加/导入语料或处理 raw 材料 → 同时读 `skills/corpus-addition/SKILL.md`；其余按「全局规则」的规则索引表（第三列）挑选。这些入口均由仓库维护，宿主不自动注入时必须显式读取
 3. **新需求入口**：所有新需求/决策从 `docs/inbox.md` 起步，评估后路由到 `docs/plan-*.md`（工程定稿）、`docs/draft-*.md`（未定稿工程提案）、`docs/exp-*.md`（试验）或 `docs/adr/ADR-NNN.md`（架构决策）
 4. **确定任务范围**：判断当前任务涉及哪些模块（bench 工具 / 语料 / 过程管理文档）
-5. **阅读代码**：参考同模块内其他实现风格
+5. **长期规格**：涉及知识库散文写作/审阅或回答核查时，按下表读取对应 spec（完整正文见 `docs/spec/`；版本与状态由 spec 文内承载）
+
+| Spec | 触发场景 | 版本 | 配套规格与流程 |
+| --- | --- | --- | --- |
+| `docs/spec/rag-prose-writing.md` | 新增、导入、改写或审阅 knowledge/base、knowledge/guides 人工散文 | v3 | `docs/spec/rag-prose-terminology.md`；添加流程见 `skills/corpus-addition/SKILL.md` |
+| `docs/spec/rag-prose-terminology.md` | 同上，规范词、概念边界与练度表达 | v1 | `docs/spec/rag-prose-writing.md` |
+| `docs/spec/rag-answer-baseline.md` | 按 20 题核查基线记录与复核回答 | v6 | — |
+
+6. **阅读代码**：参考同模块内其他实现风格
 
 ## 版本管理
 
@@ -116,17 +127,15 @@ node scripts/doc-check.mjs          # 文档一致性校验
 node scripts/verify.mjs merge -- --base main   # 合并门禁
 ```
 
-> 验证命令以 `scripts/gates.mjs` 门禁清单为准。普通代码修改运行 typecheck + test；修改测试代码后必须运行全套 `pnpm run test`（定向命令不能替代最终全套验证）；修改文档/skills 先跑 `node scripts/doc-check.mjs`；合并前一律 `node scripts/verify.mjs merge -- --base main`。
+> 验证命令以 `scripts/gates.mjs` 门禁清单为准；按变更类型选择：普通代码 typecheck + test，改测试跑全套 `pnpm run test`（定向命令不能替代），改文档/skills 跑 `node scripts/doc-check.mjs`，合并前 `node scripts/verify.mjs merge -- --base main`。
 
 ## 文档导航
 
 | 文档 | 用途 |
 | ---- | ---- |
 | `docs/inbox.md` | 待办事项需求唯一入口 |
-| `docs/spec/rag-answer-baseline.md` | 评测/核查规格（版本与状态由 spec 自身承载，长期复用资产） |
-| `docs/exp/exp-answer-baseline-v4.md` | 试验记录（已结束）：按 spec v4 的两次既有运行回答核查（已完成全量复核，未经独立复核） |
-| `docs/exp/exp-harness-performance.md` | 试验记录（已结束）：性能测量与执行诊断 |
-| `docs/rules/` | 复杂规则权威目录 |
+| `docs/rules/` | 复杂规则权威目录（触发场景见「全局规则」规则索引表） |
+| `docs/spec/` | 长期内容与核查规格（索引见「AI 代理发现流程」；版本与状态由文内承载） |
 | `docs/templates/` | ADR/plan/draft/notes/exp 机械模板唯一权威目录 |
 | `docs/adr/INDEX.md` | ADR 状态索引 |
 | `docs/archive/INDEX.md` | 已完成计划归档索引 |

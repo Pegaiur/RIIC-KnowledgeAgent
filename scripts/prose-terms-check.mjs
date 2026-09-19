@@ -1,15 +1,18 @@
 /**
  * RAG 玩家侧散文术语检查。
  *
- * 只扫描人工清洗层 knowledge/base 与 knowledge/guides；knowledge/raw 为版本控制内的
- * 机械真源，保留字段格式与原始措辞，不整套进入本检查。
+ * 只扫描人工清洗层 knowledge/base 与 knowledge/guides；正式 facts 输入与 raw 临时稿
+ * 保留各自字段格式和原始措辞，不进入本检查。
  * knowledge/guides/类别.md 与 knowledge/guides/歧义.md 是保留原格式的参考资料，
- * 按下方精确路径整文件豁免（规则见 docs/rules/rag-prose-terminology.md）。
+ * 按下方精确路径整文件豁免（规格见 docs/spec/rag-prose-terminology.md）。
+ *
+ * 禁词表真源为 scripts/lib/prose-terms.mjs（与外部语料导入预检共用），本脚本只负责扫描范围与退出码。
  */
 
 import { existsSync, readFileSync, readdirSync } from 'fs'
 import { dirname, extname, relative, resolve } from 'path'
 import { fileURLToPath } from 'url'
+import { FORBIDDEN_PROSE_TERMS, matchTermsInLine } from './lib/prose-terms.mjs'
 
 const scriptDir = dirname(fileURLToPath(import.meta.url))
 const root = resolve(scriptDir, '..')
@@ -25,21 +28,7 @@ const preservedReferenceFiles = new Set([
   'knowledge/guides/歧义.md',
 ])
 
-const forbiddenTerms = [
-  { pattern: /星级/u, replacement: '稀有度' },
-  { pattern: /(?:[1-6]|[一二三四五六])★|☆[1-6一二三四五六]|[1-6]星/u, replacement: '一星～六星的中文写法' },
-  { pattern: /精英\s*[012零一二]|精[012]|[eE][012]/u, replacement: '精零、精一或精二' },
-  { pattern: /无(?:额外)?练度要求|没有额外练度要求|练度无要求|无练度门槛|不(?:需要|要求)额外培养/u, replacement: '精零即可；若表达推荐策略则用“不设独立培养目标”' },
-  { pattern: /订单效率|贸易效率/u, replacement: '订单获取效率' },
-  { pattern: /生产效率/u, replacement: '生产力' },
-  { pattern: /联络效率/u, replacement: '联络速度' },
-  { pattern: /仓库容量上限|仓库上限/u, replacement: '仓库容量' },
-  { pattern: /体力/u, replacement: '心情' },
-  { pattern: /经验书/u, replacement: '作战记录' },
-  { pattern: /角色|人物/u, replacement: '干员' },
-  { pattern: /线索收集/u, replacement: '线索搜集' },
-  { pattern: /技能档/u, replacement: '技能解锁档' },
-]
+const forbiddenTerms = FORBIDDEN_PROSE_TERMS
 
 function collectMarkdownFiles(dir) {
   if (!existsSync(dir)) return []
@@ -65,14 +54,12 @@ export function collectProseTermIssues(targetRoot) {
       if (preservedReferenceFiles.has(relativePath)) continue
       const lines = readFileSync(file, 'utf8').split(/\r?\n/u)
       for (let index = 0; index < lines.length; index += 1) {
-        for (const term of forbiddenTerms) {
-          const match = term.pattern.exec(lines[index])
-          if (!match) continue
+        for (const hit of matchTermsInLine(lines[index], forbiddenTerms, 'forbidden')) {
           issues.push({
             file: relativePath,
             line: index + 1,
-            term: match[0],
-            replacement: term.replacement,
+            term: hit.term,
+            replacement: hit.replacement,
           })
         }
       }

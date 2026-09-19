@@ -31,9 +31,9 @@ function combo(
   }
 }
 
-const trade = 'knowledge/guides/贸易站组合.md'
-const manufacturing = 'knowledge/guides/制造站组合.md'
-const crossFacility = 'knowledge/guides/跨设施组合.md'
+const trade = 'knowledge/guides/组合/贸易站组合.md'
+const manufacturing = 'knowledge/guides/组合/制造站组合.md'
+const crossFacility = 'knowledge/guides/组合/跨设施组合.md'
 const ambiguity = 'knowledge/guides/歧义.md'
 const substringSection = '一、子串包含对（31 组，自动生成）'
 
@@ -83,8 +83,8 @@ export const TERM_CURATIONS: TermCurations = {
       member('巫恋', 'core'), member('龙舌兰', 'core'),
       member('柏喙', 'optional'), member('折光', 'optional'), member('明椒', 'optional'), member('卡夫卡', 'optional'),
     ], [
-      '巫恋与龙舌兰均达到精二',
-      '再安排至少一名精二且具备裁缝 β 等价技能的成员，当前来源列明柏喙、折光、明椒或卡夫卡任选',
+      '巫恋达到精二；龙舌兰精零可以过渡，推荐精二提高报酬',
+      '完整配置第三席选精二裁缝 β 等价技能成员，当前柏喙、折光、明椒或卡夫卡任选；缺少时按普通填位、但书或跨站挂件的剩余作用安排',
       '三名成员共同进驻同一座三级贸易站；裁缝选择属于开放成员范围',
     ], 'open', source(trade, '龙舌兰组：效率归零、裁缝概率与订单报酬'), '除来源列明成员外，其他精二且具备裁缝 β 等价技能的成员按实际技能解锁档选择'),
     combo('能天使组', [
@@ -96,7 +96,7 @@ export const TERM_CURATIONS: TermCurations = {
     combo('叙拉古', [
       member('伺夜', 'core'), member('八幡海铃', 'core'), member('贝洛内', 'important'),
     ], [
-      '伺夜与八幡海铃均达到精二；贝洛内精二为重要成员',
+      '推荐伺夜、八幡海铃精二，贝洛内精二同站；缺海铃时伺夜与贝洛内仍保留自身加速',
       '八幡海铃进驻控制中枢，伺夜与贝洛内进驻同一座贸易站',
       '贝洛内的贸易效果需要基建内有伺夜配合；但书不是本组必要成员',
     ], 'listed', source(trade, '叙拉古：中枢与贸易站分工')),
@@ -111,17 +111,17 @@ export const TERM_CURATIONS: TermCurations = {
     combo('格拉斯哥帮组', [
       member('摩根', 'core'), member('戴菲恩', 'core'), member('推进之王', 'core'), member('维娜·维多利亚', 'secondary'),
     ], [
-      '摩根、戴菲恩达到精二，推进之王精零即可作为核心',
+      '摩根精二与推进之王精零同站即可协作，戴菲恩精二为中枢增强',
       '摩根与推进之王进驻同一座贸易站，戴菲恩进驻控制中枢',
-      '维娜·维多利亚精二可作为次级增强成员；效果按同站格拉斯哥帮成员数量判断',
+      '维娜·维多利亚精二可提供自身加速，但不增加格拉斯哥帮成员计数，也不替代推进之王的具名条件',
     ], 'listed', source(trade, '格拉斯哥帮组：同站成员计数与中枢协作')),
     combo('鸿雪杜林组', [
       member('鸿雪', 'core'), member('绮良', 'core'), member('图耶', 'core'),
       member('至简', 'support'), member('桃金娘', 'support'), member('褐果', 'support'), member('杜林', 'support'), member('特克诺', 'support'),
     ], [
-      '鸿雪、绮良、图耶均达到精二',
+      '完整配置推荐鸿雪、绮良、图耶均达到精二',
       '至简、桃金娘、褐果、杜林、特克诺五名挂件中放满四名，均精零即可；挂件不设独立培养目标',
-      '只有三名核心具备时才称为可启动的鸿雪杜林组，挂件集合按持有情况补足',
+      '缺成员或挂件不足时，按剩余真实与虚拟产线及当班读取者重算；虚拟产线不生产实物赤金',
     ], 'listed', source(trade, '鸿雪杜林组：贸易核心与杜林挂件')),
     combo('人间烟火组', [
       member('乌有', 'core'), member('重岳', 'core'), member('令', 'core'),
@@ -135,7 +135,7 @@ export const TERM_CURATIONS: TermCurations = {
     combo('企鹅物流', [
       member('德克萨斯', 'core'), member('拉普兰德', 'core'), member('能天使', 'important'),
     ], [
-      '德克萨斯与拉普兰德达到精二并同站进驻，构成本组成立基础',
+      '德克萨斯与拉普兰德精零同站即可启动；拉普兰德精二提高订单上限，德克萨斯精二另有与能天使的心情配合',
       '能天使精二为重要成员；本组可作为能天使组尚未成形时的过渡方案',
       '能天使组已完整时，能天使优先放入能天使组，不为展示两个身份重复生成目标',
     ], 'listed', source(trade, '企鹅物流：同站协作与能天使的取舍')),
@@ -151,7 +151,7 @@ export const TERM_CURATIONS: TermCurations = {
       member('承曦格雷伊', 'important'), member('森蚺', 'important'), member('冬时', 'important'),
       member('异客', 'secondary'), member('掠风', 'secondary'), member('Lancet-2', 'support'),
     ], [
-      '温蒂达到精二，清流达到精一，二人为统一核心',
+      '赤金完整配置推荐温蒂精二、清流精一；温蒂精零已有自动化，通用制造分支可配森蚺、冬时而不带清流',
       '承曦格雷伊、森蚺精二，冬时精一为重要成员；异客、掠风均达到精二，为次级成员，Lancet-2 精零且不设独立培养目标',
       '其他成员按当前布局补足发电站或中枢协作，不固定要求二电或三电路线',
     ], 'listed', source(manufacturing, '自动化组：第三人、发电站协作与归零范围')),
@@ -178,13 +178,13 @@ export const TERM_CURATIONS: TermCurations = {
       member('灰毫', 'important'), member('远牙', 'important'), member('野鬃', 'important'), member('砾', 'optional'),
     ], [
       '焰尾与薇薇安娜达到精二',
-      '灰毫、远牙、野鬃以精二作为目标，实际运行时至少安排其中两名进入经验制造，三名都具备时可全部纳入',
+      '灰毫、远牙、野鬃推荐精二并进入作战记录制造，按持有情况同站或分站；缺成员时比较实际受益人数',
       '砾为可选非硬核成员；焰尾与薇薇安娜留在控制中枢侧，远牙、灰毫、野鬃进入经验制造站',
     ], 'listed', source(manufacturing, '红松骑士团组：中枢与经验制造分工')),
     combo('深海猎人组', [
       member('歌蕾蒂娅', 'core'), member('乌尔比安', 'important'), member('斯卡蒂', 'important'), member('幽灵鲨', 'important'), member('安哲拉', 'important'),
     ], [
-      '歌蕾蒂娅达到精二',
+      '歌蕾蒂娅精零已有初始加成，推荐精二提升加成与单站上限',
       '乌尔比安、斯卡蒂、幽灵鲨、安哲拉均为重要成员，完整形态要求四人均持有且精零即可',
       '歌蕾蒂娅进驻控制中枢，深海猎人成员按持有情况进入制造侧设施；不把组合收益写成普通制造散件',
     ], 'listed', source(manufacturing, '深海猎人组：中枢协作、制造席位与心情代价')),
@@ -206,7 +206,7 @@ export const TERM_CURATIONS: TermCurations = {
     combo('莱茵科技', [
       member('多萝西', 'core'), member('淬羽赫默', 'important'), member('娜斯提', 'important'),
     ], [
-      '多萝西达到精二；淬羽赫默、娜斯提为精二重要成员',
+      '推荐多萝西与淬羽赫默精二；娜斯提精零已有莱茵科技，精二用于阵营计数的赤金增强',
       '其他具有莱茵科技类制造技能的成员按实际技能解锁档加入，不预设整套固定挂件名单',
       '莱茵生命阵营成员不等于莱茵科技技能成员；娜斯提的赤金效果还要按基建内莱茵生命成员数量判断',
     ], 'open', source(manufacturing, '莱茵科技：制造技能协作与阵营计数边界'), '其他具有莱茵科技类制造技能的成员按实际技能解锁档加入'),
@@ -214,8 +214,8 @@ export const TERM_CURATIONS: TermCurations = {
       member('迷迭香', 'core'), member('黑键', 'core'), member('絮雨', 'important'), member('琴柳', 'important'), member('夕', 'important'),
       member('爱丽丝', 'secondary'), member('车尔尼', 'secondary'), member('塑心', 'secondary'), member('令', 'secondary'),
     ], [
-      '迷迭香与黑键达到精二',
-      '絮雨、琴柳达到精二，夕精零为重要成员；爱丽丝、车尔尼、塑心、令达到精二为次级成员',
+      '完整配置推荐迷迭香与黑键精二，单终端也可运行，按实际资源重新计算收益',
+      '絮雨、爱丽丝、车尔尼、令精二参与资源供给，夕精零按心情档供给；塑心精零即可提供无声共鸣；琴柳精二只作办公室补速选择',
       '设施分工：迷迭香进制造站，黑键进贸易站；絮雨进办公室，琴柳进控制中枢或宿舍，夕进控制中枢；爱丽丝、车尔尼、塑心主要通过宿舍侧技能参与，令通过控制中枢技能参与',
       '本组不绑定单一产物，根据当前主要使用的设施理解组合价值',
     ], 'listed', source(crossFacility, '感知信息组：资源用途与跨设施分工')),

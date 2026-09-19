@@ -177,7 +177,7 @@ describe('renderHitrate', () => {
         misses: [{ key: 'docs#缺失片段', bestRank: null, excluded: false }],
         excludedKeys: 0,
       }],
-      scope: { directoryChunks: 3, retrievalChunks: 3, excludedChunks: 0, excludedGoldenKeys: 0 },
+      scope: { directoryChunks: 3, retrievalChunks: 3, excludedChunks: 0, excludedGoldenKeys: 0, questionsWithoutReachableKeys: 0 },
     })
 
     expect(markdown).toContain('@1（R/P/nDCG）')
@@ -185,7 +185,9 @@ describe('renderHitrate', () => {
     expect(markdown).toContain('R 1/2; P 0.0% (0/0); nDCG 0.000')
     expect(markdown).toContain('R 2/2; P 25.0% (1/4); nDCG 0.500')
     expect(markdown).toContain('docs#缺失片段（视野外）')
-    expect(markdown).toContain('定位目录 3 块｜检索范围 3 块｜排除 0 块｜被排除 gold 键 0 项')
+    expect(markdown).toContain('定位目录 3 块｜检索范围 3 块｜排除 0 块｜被排除 gold 键 0 项｜无可达键题 0 题')
+    expect(markdown).toContain('不可达键不计入 recall 分母或 nDCG 理想集合')
+    expect(markdown).toContain('precision 分母仍为实际填充槽位')
   })
 
   it('范围排除键逐题标注，不进入任何 topK', () => {
@@ -196,7 +198,7 @@ describe('renderHitrate', () => {
       ndcgMacro: [0],
       perQuestion: [{
         id: 'Q9',
-        total: 1,
+        total: 0,
         hits: [0],
         precHits: [0],
         precSlots: [1],
@@ -204,14 +206,15 @@ describe('renderHitrate', () => {
         misses: [{ key: 'base/技能-甲.md#技能', bestRank: null, excluded: true }],
         excludedKeys: 1,
       }],
-      scope: { directoryChunks: 5, retrievalChunks: 4, excludedChunks: 1, excludedGoldenKeys: 1 },
+      scope: { directoryChunks: 5, retrievalChunks: 4, excludedChunks: 1, excludedGoldenKeys: 1, questionsWithoutReachableKeys: 1 },
     })
 
     expect(markdown).toContain('base/技能-甲.md#技能（被检索范围排除）')
+    expect(markdown).toContain('无可达键题 1 题')
   })
 })
 
-describe('runHitrate 范围口径（ADR-013 步骤 5）', () => {
+describe('runHitrate 范围口径（ADR-025）', () => {
   const skillChunks: DocChunk[] = [
     ...chunks,
     {
@@ -224,7 +227,7 @@ describe('runHitrate 范围口径（ADR-013 步骤 5）', () => {
     },
   ]
 
-  it('被范围排除的真源键计未命中，但保留 recall 分母并计入范围计数', () => {
+  it('不可达键不占 recall 分母，但仍逐题标注并计入范围计数', () => {
     const retrieval = skillChunks.filter((chunk) => chunk.file !== 'base/技能-甲.md')
     const index = buildIndex(retrieval)
     // golden 指向被排除的分块；真源存在（directory 解析成功），检索范围内不可达。
@@ -233,17 +236,68 @@ describe('runHitrate 范围口径（ADR-013 步骤 5）', () => {
     const result = runHitrate(index, retrieval, [questions[0]], gold, [3], { directoryChunks: skillChunks })
     const q1 = result.perQuestion[0]!
 
-    expect(q1.total).toBe(2) // 分母保留，不因排除删减
-    expect(q1.hits[0]).toBe(1) // 仅可达键命中
+    expect(q1.total).toBe(1) // 分母只含可达键
+    expect(q1.hits[0]).toBe(1) // 唯一可达键命中
+    expect(result.recallMacro[0]).toBeCloseTo(1)
     expect(q1.excludedKeys).toBe(1)
-    // 逐题明细按键区分：被范围排除的键标 excluded，不混同为「视野外」
+    // 逐题明细仍按键区分：被范围排除的键标 excluded，不混同为「视野外」，不因移出分母而消失
     expect(q1.misses).toEqual([{ key: 'base/技能-甲.md#电力', bestRank: null, excluded: true }])
     expect(result.scope).toEqual({
       directoryChunks: 4,
       retrievalChunks: 3,
       excludedChunks: 1,
       excludedGoldenKeys: 1,
+      questionsWithoutReachableKeys: 0,
     })
+  })
+
+  it('不可达块不进入 nDCG 理想集合，precision 仍以实际返回槽位计量', () => {
+    const retrieval: DocChunk[] = [
+      { id: 'noise', file: 'base/噪声.md', heading: '电力附注', text: '电力 电力 电力 电力 电力 电力', startLine: 1, endLine: 1 },
+      { id: 'gold', file: 'base/机制.md', heading: '电力', text: '电力充能一次', startLine: 1, endLine: 1 },
+    ]
+    const directory = [...retrieval, skillChunks[3]!]
+    const result = runHitrate(buildIndex(retrieval), retrieval,
+      [{ id: 'Q1', category: 'fact', question: '电力' }],
+      { Q1: { golden: ['base/机制.md#电力', 'base/技能-甲.md#电力'] } }, [2],
+      { directoryChunks: directory })
+
+    // 两个实际槽位中只有第二块相关；理想集合只有一个可达块，IDCG=1。
+    expect(result.perQuestion[0]).toMatchObject({ total: 1, hits: [1], precHits: [1], precSlots: [2], excludedKeys: 1 })
+    expect(result.recallMacro[0]).toBeCloseTo(1)
+    expect(result.precisionMacro[0]).toBeCloseTo(0.5)
+    expect(result.ndcgMacro[0]).toBeCloseTo(1 / Math.log2(3))
+  })
+
+  it('整题 golden 键全不可达时不计入宏平均，并单独计数', () => {
+    const retrieval = skillChunks.filter((chunk) => chunk.file !== 'base/技能-甲.md')
+    const index = buildIndex(retrieval)
+    const gold = {
+      Q1: { golden: ['base/技能-甲.md#电力'] }, // 全不可达 → 不进宏平均
+      Q2: { golden: ['b.md#宿舍'] }, // 可达且命中
+    }
+    const result = runHitrate(index, retrieval, questions, gold, [1], { directoryChunks: skillChunks })
+
+    expect(result.perQuestion.map((qh) => qh.total)).toEqual([0, 1])
+    expect(result.perQuestion[0]!.excludedKeys).toBe(1)
+    // 宏平均只取可达题，不把无分母的题按 0 计入
+    expect(result.recallMacro[0]).toBeCloseTo(1)
+    expect(result.precisionMacro[0]).toBeCloseTo(1)
+    expect(result.ndcgMacro[0]).toBeCloseTo(1)
+    expect(result.scope.questionsWithoutReachableKeys).toBe(1)
+  })
+
+  it('全部题目都不可达时返回有限的零值，并保留全部排除计数', () => {
+    const retrieval = skillChunks.filter((chunk) => chunk.file !== 'base/技能-甲.md')
+    const result = runHitrate(buildIndex(retrieval), retrieval, questions,
+      { Q1: { golden: ['base/技能-甲.md#电力'] }, Q2: { golden: ['base/技能-甲.md#电力'] } }, [1, 3],
+      { directoryChunks: skillChunks })
+
+    expect(result.recallMacro).toEqual([0, 0])
+    expect(result.precisionMacro).toEqual([0, 0])
+    expect(result.ndcgMacro).toEqual([0, 0])
+    expect(result.perQuestion.map((qh) => qh.total)).toEqual([0, 0])
+    expect(result.scope).toMatchObject({ questionsWithoutReachableKeys: 2, excludedGoldenKeys: 2 })
   })
 
   it('真源不存在的键仍抛错，不被范围排除掩盖', () => {
@@ -253,12 +307,18 @@ describe('runHitrate 范围口径（ADR-013 步骤 5）', () => {
       .toThrow(/幽灵节/)
   })
 
-  it('缺省 directoryChunks 时退化为单范围历史口径（排除数为 0）', () => {
+  it('缺省 directoryChunks 时退化为单范围口径（排除数为 0）', () => {
     const index = buildIndex(chunks)
     const gold = { Q1: { golden: ['a.md#电力', 'a.md#贸易'] }, Q2: { golden: ['b.md#宿舍'] } }
     const result = runHitrate(index, chunks, questions, gold, [1])
 
-    expect(result.scope).toEqual({ directoryChunks: 3, retrievalChunks: 3, excludedChunks: 0, excludedGoldenKeys: 0 })
+    expect(result.scope).toEqual({
+      directoryChunks: 3,
+      retrievalChunks: 3,
+      excludedChunks: 0,
+      excludedGoldenKeys: 0,
+      questionsWithoutReachableKeys: 0,
+    })
     expect(result.perQuestion.every((q) => q.excludedKeys === 0)).toBe(true)
   })
 })

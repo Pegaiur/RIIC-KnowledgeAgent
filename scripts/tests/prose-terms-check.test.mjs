@@ -90,9 +90,13 @@ describe('prose-terms-check：保留原格式参考资料的精确路径例外',
   it('CLI 直调行为不变：命中禁词退出码 1 并逐条报出，通过时退出码 0 并打印通过', () => {
     withRoot((root) => {
       // 复制脚本到临时根的 scripts/ 下，使其自身定位的仓库根即该临时根。
+      // 禁词表已下沉 scripts/lib，子进程按脚本自身位置解析导入，需一并复制。
       const scriptTarget = join(root, 'scripts', 'prose-terms-check.mjs')
       mkdirSync(dirname(scriptTarget), { recursive: true })
       copyFileSync(fileURLToPath(new URL('../prose-terms-check.mjs', import.meta.url)), scriptTarget)
+      const libTarget = join(root, 'scripts', 'lib', 'prose-terms.mjs')
+      mkdirSync(dirname(libTarget), { recursive: true })
+      copyFileSync(fileURLToPath(new URL('../lib/prose-terms.mjs', import.meta.url)), libTarget)
       writeCorpusFile(root, 'knowledge/base/机制-制造站.md', '# 机制\n\n生产效率\n')
 
       const failed = spawnSync(process.execPath, [scriptTarget], { encoding: 'utf-8', windowsHide: true })

@@ -2,17 +2,18 @@
   "version": 2,
   "links": [
     {
-      "file": "base/机制-后勤技能结算.md",
+      "file": "base/通则/机制-后勤技能结算.md",
       "headingPath": ["后勤技能结算机制", "订单上限、订单差值与他人效率的转化"],
       "scope": "section",
       "objects": [
         { "kind": "skill", "operator": "琳琅诗怀雅", "room": "贸易站", "name": "招商引资" },
         { "kind": "skill", "operator": "孑", "room": "贸易站", "name": "摊贩经济" },
+        { "kind": "skill", "operator": "孑", "room": "贸易站", "name": "市井之道" },
         { "kind": "skill", "operator": "槐琥", "room": "制造站", "name": "配合意识" }
       ]
     },
     {
-      "file": "base/机制-后勤技能结算.md",
+      "file": "base/通则/机制-后勤技能结算.md",
       "headingPath": ["后勤技能结算机制", "效率归零与自身心情清除的作用范围"],
       "scope": "section",
       "objects": [
@@ -22,7 +23,7 @@
       ]
     },
     {
-      "file": "guides/高效率散件.md",
+      "file": "guides/用人/高效率散件.md",
       "headingPath": ["高效率散件", "贸易站散件", "贸易散件的工作人数、会客室与宿舍条件"],
       "scope": "section",
       "objects": [
@@ -32,7 +33,7 @@
       ]
     },
     {
-      "file": "guides/高效率散件.md",
+      "file": "guides/用人/高效率散件.md",
       "headingPath": ["高效率散件", "办公室联络散件"],
       "scope": "section",
       "objects": [
@@ -43,7 +44,7 @@
       ]
     },
     {
-      "file": "guides/高效率散件.md",
+      "file": "guides/用人/高效率散件.md",
       "headingPath": ["高效率散件", "办公室联络散件", "联络速度与额外心情消耗的取舍"],
       "scope": "section",
       "objects": [
@@ -53,7 +54,7 @@
       ]
     },
     {
-      "file": "guides/高效率散件.md",
+      "file": "guides/用人/高效率散件.md",
       "headingPath": ["高效率散件", "办公室联络散件", "精英干员设施计数与联络加成"],
       "scope": "section",
       "objects": [
@@ -61,7 +62,7 @@
       ]
     },
     {
-      "file": "guides/高效率散件.md",
+      "file": "guides/用人/高效率散件.md",
       "headingPath": ["高效率散件", "办公室联络散件", "絮雨的记忆碎片与感知信息转换"],
       "scope": "section",
       "objects": [
@@ -70,7 +71,7 @@
       ]
     },
     {
-      "file": "guides/高效率散件.md",
+      "file": "guides/用人/高效率散件.md",
       "headingPath": ["高效率散件", "办公室联络散件", "焰狐龙梓兰的中枢岗位与办公室加成"],
       "scope": "section",
       "objects": [
@@ -78,7 +79,7 @@
       ]
     },
     {
-      "file": "guides/高效率散件.md",
+      "file": "guides/用人/高效率散件.md",
       "headingPath": ["高效率散件", "赤金散件的暖机、技能成员与贸易站数量条件"],
       "scope": "section",
       "objects": [
@@ -90,7 +91,7 @@
       ]
     },
     {
-      "file": "guides/高效率散件.md",
+      "file": "guides/用人/高效率散件.md",
       "headingPath": ["高效率散件", "通用制造散件的他人生产力与工程机器人条件"],
       "scope": "section",
       "objects": [
@@ -100,7 +101,7 @@
       ]
     },
     {
-      "file": "guides/高效率散件.md",
+      "file": "guides/用人/高效率散件.md",
       "headingPath": ["高效率散件", "经验散件的生产力、心情代价与队友条件"],
       "scope": "section",
       "objects": [
@@ -112,7 +113,7 @@
       ]
     },
     {
-      "file": "guides/高效率散件.md",
+      "file": "guides/用人/高效率散件.md",
       "headingPath": ["高效率散件", "源石碎片制造（搓玉）的名单、练度与布局前提"],
       "scope": "section",
       "objects": [
@@ -126,7 +127,7 @@
       ]
     },
     {
-      "file": "guides/贸易站组合.md",
+      "file": "guides/组合/贸易站组合.md",
       "headingPath": ["贸易站组合", "高效率贸易组合", "龙舌兰组：效率归零、裁缝概率与订单报酬"],
       "scope": "section",
       "objects": [
@@ -135,31 +136,37 @@
         { "kind": "skill", "operator": "柏喙", "room": "贸易站", "name": "裁缝·β" },
         { "kind": "skill", "operator": "折光", "room": "贸易站", "name": "鉴定师的手段" },
         { "kind": "skill", "operator": "明椒", "room": "贸易站", "name": "裁缝·β" },
-        { "kind": "skill", "operator": "卡夫卡", "room": "贸易站", "name": "手工艺品·β" }
+        { "kind": "skill", "operator": "卡夫卡", "room": "贸易站", "name": "手工艺品·β" },
+        { "kind": "skill", "operator": "巫恋", "room": "贸易站", "name": "裁缝·α" }
       ]
     },
     {
-      "file": "guides/贸易站组合.md",
+      "file": "guides/组合/贸易站组合.md",
       "headingPath": ["贸易站组合", "高效率贸易组合", "能天使组：双核心同站与成员边界"],
       "scope": "section",
       "objects": [
         { "kind": "skill", "operator": "能天使", "room": "贸易站", "name": "物流专家" },
-        { "kind": "skill", "operator": "蕾缪安", "room": "贸易站", "name": "相伴" }
+        { "kind": "skill", "operator": "蕾缪安", "room": "贸易站", "name": "相伴" },
+        { "kind": "skill", "operator": "新约能天使", "room": "贸易站", "name": "同城加急单" },
+        { "kind": "skill", "operator": "空弦", "room": "贸易站", "name": "虔诚筹款·β" },
+        { "kind": "skill", "operator": "吉星", "room": "贸易站", "name": "勤俭经营·β" },
+        { "kind": "skill", "operator": "雷狼龙S空爆", "room": "贸易站", "name": "气氛组" }
       ]
     },
     {
-      "file": "guides/贸易站组合.md",
+      "file": "guides/组合/贸易站组合.md",
       "headingPath": ["贸易站组合", "高效率贸易组合", "叙拉古：中枢与贸易站分工"],
       "scope": "section",
       "objects": [
         { "kind": "skill", "operator": "伺夜", "room": "贸易站", "name": "新城贸易" },
         { "kind": "skill", "operator": "贝洛内", "room": "贸易站", "name": "家族经营·β" },
         { "kind": "skill", "operator": "八幡海铃", "room": "控制中枢", "name": "家族认可" },
-        { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "干员组（28 条）"], "term": "叙拉古" }
+        { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "干员组（28 条）"], "term": "叙拉古" },
+        { "kind": "skill", "operator": "贝洛内", "room": "贸易站", "name": "未偿还的债务" }
       ]
     },
     {
-      "file": "guides/贸易站组合.md",
+      "file": "guides/组合/贸易站组合.md",
       "headingPath": ["贸易站组合", "高效率贸易组合", "喀兰贸易组：跨设施协作与订单上限适配"],
       "scope": "section",
       "objects": [
@@ -167,11 +174,15 @@
         { "kind": "skill", "operator": "银灰", "room": "贸易站", "name": "喀兰之主" },
         { "kind": "skill", "operator": "孑", "room": "贸易站", "name": "摊贩经济" },
         { "kind": "skill", "operator": "孑", "room": "贸易站", "name": "市井之道" },
-        { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "干员组（28 条）"], "term": "谢拉格" }
+        { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "干员组（28 条）"], "term": "谢拉格" },
+        { "kind": "skill", "operator": "崖心", "room": "贸易站", "name": "喀兰贸易·β" },
+        { "kind": "skill", "operator": "琳琅诗怀雅", "room": "贸易站", "name": "招商引资" },
+        { "kind": "skill", "operator": "讯使", "room": "贸易站", "name": "喀兰贸易·α" },
+        { "kind": "skill", "operator": "角峰", "room": "贸易站", "name": "喀兰贸易·α" }
       ]
     },
     {
-      "file": "guides/贸易站组合.md",
+      "file": "guides/组合/贸易站组合.md",
       "headingPath": ["贸易站组合", "高效率贸易组合", "格拉斯哥帮组：同站成员计数与中枢协作"],
       "scope": "section",
       "objects": [
@@ -182,7 +193,7 @@
       ]
     },
     {
-      "file": "guides/贸易站组合.md",
+      "file": "guides/组合/贸易站组合.md",
       "headingPath": ["贸易站组合", "高效率贸易组合", "鸿雪杜林组：贸易核心与杜林挂件"],
       "scope": "section",
       "objects": [
@@ -194,30 +205,37 @@
       ]
     },
     {
-      "file": "guides/贸易站组合.md",
+      "file": "guides/组合/贸易站组合.md",
       "headingPath": ["贸易站组合", "高效率贸易组合", "人间烟火组：跨设施资源链与贸易用途"],
       "scope": "section",
       "objects": [
         { "kind": "skill", "operator": "乌有", "room": "贸易站", "name": "“愿者上钩”" },
         { "kind": "skill", "operator": "重岳", "room": "控制中枢", "name": "知我为我" },
+        { "kind": "skill", "operator": "重岳", "room": "控制中枢", "name": "孤光共照" },
         { "kind": "skill", "operator": "令", "room": "控制中枢", "name": "“山河远阔”" },
         { "kind": "skill", "operator": "夕", "room": "控制中枢", "name": "\"不以物喜\"" },
         { "kind": "skill", "operator": "桑葚", "room": "办公室", "name": "救援队·灾后普查" },
+        { "kind": "skill", "operator": "琴柳", "room": "控制中枢", "name": "感染力" },
+        { "kind": "skill", "operator": "截云", "room": "制造站", "name": "问枯荣" },
+        { "kind": "skill", "operator": "黍", "room": "制造站", "name": "稻禾厚，顺秋收" },
+        { "kind": "skill", "operator": "余", "room": "训练室", "name": "与人乐" },
+        { "kind": "skill", "operator": "赤刃明霄陈", "room": "会客室", "name": "扶危行侠" },
         { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "规则说明（25 条）"], "term": "人间烟火" }
       ]
     },
     {
-      "file": "guides/贸易站组合.md",
+      "file": "guides/组合/贸易站组合.md",
       "headingPath": ["贸易站组合", "低效率或过渡贸易组合", "企鹅物流：同站协作与能天使的取舍"],
       "scope": "section",
       "objects": [
         { "kind": "skill", "operator": "德克萨斯", "room": "贸易站", "name": "恩怨" },
         { "kind": "skill", "operator": "拉普兰德", "room": "贸易站", "name": "醉翁之意·β" },
-        { "kind": "skill", "operator": "能天使", "room": "贸易站", "name": "物流专家" }
+        { "kind": "skill", "operator": "能天使", "room": "贸易站", "name": "物流专家" },
+        { "kind": "skill", "operator": "德克萨斯", "room": "贸易站", "name": "默契" }
       ]
     },
     {
-      "file": "guides/贸易站组合.md",
+      "file": "guides/组合/贸易站组合.md",
       "headingPath": ["贸易站组合", "低效率或过渡贸易组合", "深巡＋乌尔比安：贸易站与基建挂件分工"],
       "scope": "section",
       "objects": [
@@ -225,7 +243,7 @@
       ]
     },
     {
-      "file": "guides/制造站组合.md",
+      "file": "guides/组合/制造站组合.md",
       "headingPath": ["制造站组合", "赤金制造组合", "自动化组：第三人、发电站协作与归零范围"],
       "scope": "section",
       "objects": [
@@ -234,11 +252,14 @@
         { "kind": "skill", "operator": "承曦格雷伊", "room": "发电站", "name": "晨曦" },
         { "kind": "skill", "operator": "森蚺", "room": "制造站", "name": "自动化·β" },
         { "kind": "skill", "operator": "森蚺", "room": "控制中枢", "name": "我寻思能行" },
-        { "kind": "skill", "operator": "冬时", "room": "制造站", "name": "流程优化" }
+        { "kind": "skill", "operator": "冬时", "room": "制造站", "name": "流程优化" },
+        { "kind": "skill", "operator": "温蒂", "room": "制造站", "name": "自动化·β" },
+        { "kind": "skill", "operator": "异客", "room": "制造站", "name": "自动化·α" },
+        { "kind": "skill", "operator": "掠风", "room": "制造站", "name": "自动化·α" }
       ]
     },
     {
-      "file": "guides/制造站组合.md",
+      "file": "guides/组合/制造站组合.md",
       "headingPath": ["制造站组合", "赤金制造组合", "赤金工艺组：同站技能成员与贵金属配方"],
       "scope": "section",
       "objects": [
@@ -253,7 +274,7 @@
       ]
     },
     {
-      "file": "guides/制造站组合.md",
+      "file": "guides/组合/制造站组合.md",
       "headingPath": ["制造站组合", "作战记录制造组合", "红云组：仓库容量转化与成员分支"],
       "scope": "section",
       "objects": [
@@ -267,11 +288,12 @@
         { "kind": "skill", "operator": "帕拉斯", "room": "制造站", "name": "智慧之境" },
         { "kind": "skill", "operator": "帕拉斯", "room": "制造站", "name": "胜利之计" },
         { "kind": "skill", "operator": "刻俄柏", "room": "制造站", "name": "“都想要”" },
-        { "kind": "skill", "operator": "刻俄柏", "room": "制造站", "name": "“等不及”" }
+        { "kind": "skill", "operator": "刻俄柏", "room": "制造站", "name": "“等不及”" },
+        { "kind": "skill", "operator": "娜仁图亚", "room": "制造站", "name": "齐心沙盗" }
       ]
     },
     {
-      "file": "guides/制造站组合.md",
+      "file": "guides/组合/制造站组合.md",
       "headingPath": ["制造站组合", "作战记录制造组合", "红松骑士团组：中枢与经验制造分工"],
       "scope": "section",
       "objects": [
@@ -280,36 +302,50 @@
         { "kind": "skill", "operator": "灰毫", "room": "制造站", "name": "红松骑士团·β" },
         { "kind": "skill", "operator": "远牙", "room": "制造站", "name": "红松骑士团·β" },
         { "kind": "skill", "operator": "野鬃", "room": "制造站", "name": "红松骑士团·β" },
-        { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "干员组（28 条）"], "term": "红松骑士团" }
+        { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "干员组（28 条）"], "term": "红松骑士团" },
+        { "kind": "skill", "operator": "砾", "room": "制造站", "name": "金属工艺·β" },
+        { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "干员组（28 条）"], "term": "骑士" }
       ]
     },
     {
-      "file": "guides/制造站组合.md",
+      "file": "guides/组合/制造站组合.md",
+      "headingPath": ["制造站组合", "作战记录制造组合", "怒潮凛冬：经验散件与指定队友条件"],
+      "scope": "section",
+      "objects": [
+        { "kind": "skill", "operator": "怒潮凛冬", "room": "制造站", "name": "情同手足" },
+        { "kind": "skill", "operator": "烈夏", "room": "制造站", "name": "患难拍档" },
+        { "kind": "skill", "operator": "古米", "room": "贸易站", "name": "交际" },
+        { "kind": "skill", "operator": "怒潮凛冬", "room": "控制中枢", "name": "“是，团长！”" }
+      ]
+    },
+    {
+      "file": "guides/组合/制造站组合.md",
       "headingPath": ["制造站组合", "通用制造组合", "深海猎人组：中枢协作、制造席位与心情代价"],
       "scope": "section",
       "objects": [
         { "kind": "skill", "operator": "歌蕾蒂娅", "room": "控制中枢", "name": "集群狩猎·β" },
         { "kind": "skill", "operator": "歌蕾蒂娅", "room": "控制中枢", "name": "潮汐守望" },
-        { "kind": "concept", "file": "base/机制-制造站.md", "headingPath": ["制造站机制", "制造站等级对应的工位、仓库容量与耗电"] },
+        { "kind": "concept", "file": "base/设施/机制-制造站.md", "headingPath": ["制造站机制", "制造站等级对应的工位、仓库容量与耗电"] },
         { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "干员组（28 条）"], "term": "深海猎人" },
         { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "规则说明（25 条）"], "term": "特殊加成", "termOccurrence": 1 },
         { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "规则说明（25 条）"], "term": "特殊加成", "termOccurrence": 2 },
         { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "规则说明（25 条）"], "term": "特殊叠加规则", "termOccurrence": 1 },
-        { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "规则说明（25 条）"], "term": "特殊叠加规则", "termOccurrence": 2 }
+        { "kind": "skill", "operator": "歌蕾蒂娅", "room": "控制中枢", "name": "集群狩猎·α" }
       ]
     },
     {
-      "file": "guides/制造站组合.md",
+      "file": "guides/组合/制造站组合.md",
       "headingPath": ["制造站组合", "通用制造组合", "泡泡组：同站核心与仓库容量转化"],
       "scope": "section",
       "objects": [
         { "kind": "skill", "operator": "泡泡", "room": "制造站", "name": "囤积者" },
         { "kind": "skill", "operator": "泡泡", "room": "制造站", "name": "大就是好！" },
-        { "kind": "skill", "operator": "火神", "room": "制造站", "name": "工匠精神·β" }
+        { "kind": "skill", "operator": "火神", "room": "制造站", "name": "工匠精神·β" },
+        { "kind": "skill", "operator": "贝娜", "room": "制造站", "name": "“可靠”助手" }
       ]
     },
     {
-      "file": "guides/制造站组合.md",
+      "file": "guides/组合/制造站组合.md",
       "headingPath": ["制造站组合", "通用制造组合", "水月标准化组：技能成员条件与中枢分工"],
       "scope": "section",
       "objects": [
@@ -319,14 +355,19 @@
         { "kind": "skill", "operator": "杰西卡", "room": "制造站", "name": "标准化·β" },
         { "kind": "skill", "operator": "史都华德", "room": "制造站", "name": "标准化·β" },
         { "kind": "skill", "operator": "海沫", "room": "制造站", "name": "标准化·β" },
+        { "kind": "skill", "operator": "海沫", "room": "制造站", "name": "意识兼容" },
         { "kind": "skill", "operator": "罗比菈塔", "room": "制造站", "name": "标准化·β" },
         { "kind": "skill", "operator": "调香师", "room": "制造站", "name": "标准化·β" },
         { "kind": "skill", "operator": "涤火杰西卡", "room": "控制中枢", "name": "老友相聚" },
+        { "kind": "skill", "operator": "杏仁", "room": "制造站", "name": "小奇思" },
+        { "kind": "skill", "operator": "杏仁", "room": "制造站", "name": "挑大梁" },
+        { "kind": "skill", "operator": "焰尾", "room": "控制中枢", "name": "红松的骑士" },
+        { "kind": "skill", "operator": "薇薇安娜", "room": "控制中枢", "name": "烛骑士微光" },
         { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "技能组（5 条）"], "term": "标准化类技能" }
       ]
     },
     {
-      "file": "guides/制造站组合.md",
+      "file": "guides/组合/制造站组合.md",
       "headingPath": ["制造站组合", "通用制造组合", "莱茵科技：制造技能协作与阵营计数边界"],
       "scope": "section",
       "objects": [
@@ -335,11 +376,12 @@
         { "kind": "skill", "operator": "淬羽赫默", "room": "制造站", "name": "莱茵科技·γ" },
         { "kind": "skill", "operator": "娜斯提", "room": "制造站", "name": "莱茵科技·β" },
         { "kind": "skill", "operator": "娜斯提", "room": "制造站", "name": "造价高昂" },
-        { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "技能组（5 条）"], "term": "莱茵科技类技能" }
+        { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "技能组（5 条）"], "term": "莱茵科技类技能" },
+        { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "干员组（28 条）"], "term": "莱茵生命" }
       ]
     },
     {
-      "file": "guides/跨设施组合.md",
+      "file": "guides/组合/跨设施组合.md",
       "headingPath": ["跨设施组合", "感知信息组：资源用途与跨设施分工"],
       "scope": "section",
       "objects": [
@@ -359,11 +401,13 @@
         { "kind": "skill", "operator": "塑心", "room": "宿舍", "name": "无词颂歌" },
         { "kind": "skill", "operator": "琴柳", "room": "控制中枢", "name": "感染力" },
         { "kind": "skill", "operator": "琴柳", "room": "宿舍", "name": "维多利亚文学" },
-        { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "规则说明（25 条）"], "term": "感知信息" }
+        { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "规则说明（25 条）"], "term": "感知信息" },
+        { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "规则说明（25 条）"], "term": "思维链环" },
+        { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "规则说明（25 条）"], "term": "无声共鸣" }
       ]
     },
     {
-      "file": "guides/跨设施组合.md",
+      "file": "guides/组合/跨设施组合.md",
       "headingPath": ["跨设施组合", "龙门中枢组：中枢成员协作与制造站加成"],
       "scope": "section",
       "objects": [
@@ -373,12 +417,384 @@
       ]
     },
     {
-      "file": "guides/跨设施组合.md",
+      "file": "guides/组合/跨设施组合.md",
       "headingPath": ["跨设施组合", "凯尔希·思衡托与精英干员挂件：办公室联络与设施计数"],
       "scope": "section",
       "objects": [
         { "kind": "skill", "operator": "凯尔希·思衡托", "room": "办公室", "name": "“泰拉的方舟”" },
+        { "kind": "skill", "operator": "真言", "room": "贸易站", "name": "精英小队" },
+        { "kind": "skill", "operator": "电弧", "room": "控制中枢", "name": "无言的慈爱" },
         { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "干员组（28 条）"], "term": "精英干员" }
+      ]
+    },
+    {
+      "file": "guides/组合/跨设施组合.md",
+      "headingPath": ["跨设施组合", "怪猎中枢：木天蓼分工、练度与缺人后的剩余效果"],
+      "scope": "section",
+      "objects": [
+        { "kind": "skill", "operator": "火龙S黑角", "room": "控制中枢", "name": "团队合作" },
+        { "kind": "skill", "operator": "火龙S黑角", "room": "控制中枢", "name": "秘传交涉术" },
+        { "kind": "skill", "operator": "麒麟R夜刀", "room": "控制中枢", "name": "耐力回复" },
+        { "kind": "skill", "operator": "麒麟R夜刀", "room": "控制中枢", "name": "以身作则" },
+        { "kind": "skill", "operator": "泰拉大陆调查团", "room": "贸易站", "name": "可爱的艾露猫" },
+        { "kind": "skill", "operator": "泰拉大陆调查团", "room": "制造站", "name": "可靠的随从们" },
+        { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "干员组（28 条）"], "term": "怪物猎人小队" },
+        { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "规则说明（25 条）"], "term": "木天蓼" }
+      ]
+    },
+    {
+      "file": "guides/组合/跨设施组合.md",
+      "headingPath": ["跨设施组合", "彩虹小队：中枢心情恢复与成员计数"],
+      "scope": "section",
+      "objects": [
+        { "kind": "skill", "operator": "灰烬", "room": "控制中枢", "name": "彩虹小队" },
+        { "kind": "skill", "operator": "战车", "room": "控制中枢", "name": "彩虹小队" },
+        { "kind": "skill", "operator": "闪击", "room": "控制中枢", "name": "彩虹小队" },
+        { "kind": "skill", "operator": "霜华", "room": "控制中枢", "name": "彩虹小队" },
+        { "kind": "skill", "operator": "艾拉", "room": "控制中枢", "name": "反抗者" },
+        { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "干员组（28 条）"], "term": "彩虹小队" }
+      ]
+    },
+    {
+      "file": "guides/组合/跨设施组合.md",
+      "headingPath": ["跨设施组合", "Mujica 中枢组：热情值、贸易与赤金加成"],
+      "scope": "section",
+      "objects": [
+        { "kind": "skill", "operator": "丰川祥子", "room": "控制中枢", "name": "丰富工作经验", "unlock": "初始解锁" },
+        { "kind": "skill", "operator": "丰川祥子", "room": "控制中枢", "name": "丰富工作经验", "unlock": "精英 2 提升，替换「丰富工作经验」" },
+        { "kind": "skill", "operator": "丰川祥子", "room": "控制中枢", "name": "生活的重压" },
+        { "kind": "skill", "operator": "若叶睦", "room": "控制中枢", "name": "演技的怪物" },
+        { "kind": "skill", "operator": "若叶睦", "room": "控制中枢", "name": "互为半身" },
+        { "kind": "skill", "operator": "三角初华", "room": "控制中枢", "name": "偶像光环" },
+        { "kind": "skill", "operator": "三角初华", "room": "控制中枢", "name": "羁绊相生" },
+        { "kind": "skill", "operator": "八幡海铃", "room": "控制中枢", "name": "可靠伙伴" },
+        { "kind": "skill", "operator": "八幡海铃", "room": "控制中枢", "name": "家族认可" },
+        { "kind": "skill", "operator": "祐天寺若麦", "room": "控制中枢", "name": "勤学苦练" },
+        { "kind": "skill", "operator": "祐天寺若麦", "room": "控制中枢", "name": "成效优先" },
+        { "kind": "skill", "operator": "琴柳", "room": "控制中枢", "name": "感染力" },
+        { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "规则说明（25 条）"], "term": "热情值" },
+        { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "干员组（28 条）"], "term": "叙拉古" }
+      ]
+    },
+    {
+      "file": "guides/组合/跨设施组合.md",
+      "headingPath": ["跨设施组合", "维什戴尔组：巴别塔系心情恢复与订单上限"],
+      "scope": "section",
+      "objects": [
+        { "kind": "skill", "operator": "维什戴尔", "room": "控制中枢", "name": "同谋·β" },
+        { "kind": "skill", "operator": "维什戴尔", "room": "控制中枢", "name": "巴别塔之帜" },
+        { "kind": "skill", "operator": "魔王", "room": "控制中枢", "name": "“未完的故事”" },
+        { "kind": "skill", "operator": "魔王", "room": "控制中枢", "name": "期冀之汇" },
+        { "kind": "skill", "operator": "阿米娅", "room": "控制中枢", "name": "合作协议" },
+        { "kind": "skill", "operator": "赫德雷", "room": "贸易站", "name": "白手起家·β" },
+        { "kind": "skill", "operator": "伊内丝", "room": "会客室", "name": "聚影" },
+        { "kind": "skill", "operator": "玛恩纳", "room": "控制中枢", "name": "公事公办" },
+        { "kind": "skill", "operator": "重岳", "room": "控制中枢", "name": "孤光共照" },
+        { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "规则说明（25 条）"], "term": "特殊比较规则" },
+        { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "设施组（3 条）"], "term": "工作场所" }
+      ]
+    },
+    {
+      "file": "guides/组合/跨设施组合.md",
+      "headingPath": ["跨设施组合", "魔物料理体系：宿舍等级资源链与三个消费端"],
+      "scope": "section",
+      "objects": [
+        { "kind": "skill", "operator": "森西", "room": "宿舍", "name": "森西大食堂" },
+        { "kind": "skill", "operator": "森西", "room": "宿舍", "name": "资深料理人" },
+        { "kind": "skill", "operator": "玛露西尔", "room": "制造站", "name": "差遣使魔·β" },
+        { "kind": "skill", "operator": "玛露西尔", "room": "制造站", "name": "意想不到的美味" },
+        { "kind": "skill", "operator": "莱欧斯", "room": "会客室", "name": "好奇心" },
+        { "kind": "skill", "operator": "莱欧斯", "room": "会客室", "name": "饱餐的干劲" },
+        { "kind": "skill", "operator": "齐尔查克", "room": "贸易站", "name": "半身人公会代表" },
+        { "kind": "skill", "operator": "齐尔查克", "room": "贸易站", "name": "熟悉的味道" },
+        { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "全局资源（6 条）"], "term": "魔物料理" },
+        { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "干员组（28 条）"], "term": "莱欧斯小队" }
+      ]
+    },
+    {
+      "file": "guides/组合/跨设施组合.md",
+      "headingPath": ["跨设施组合", "莱茵生命阵营：制造与发电双终端与阵营计数"],
+      "scope": "section",
+      "objects": [
+        { "kind": "skill", "operator": "娜斯提", "room": "制造站", "name": "造价高昂" },
+        { "kind": "skill", "operator": "娜斯提", "room": "制造站", "name": "莱茵科技·β" },
+        { "kind": "skill", "operator": "缪尔赛思", "room": "发电站", "name": "生态科主任" },
+        { "kind": "skill", "operator": "塞雷娅", "room": "会客室", "name": "守望者" },
+        { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "干员组（28 条）"], "term": "莱茵生命" }
+      ]
+    },
+    {
+      "file": "guides/组合/贸易站组合.md",
+      "headingPath": ["贸易站组合", "高效率贸易组合", "新约能天使组：拉特兰计数与第三席"],
+      "scope": "section",
+      "objects": [
+        { "kind": "skill", "operator": "新约能天使", "room": "贸易站", "name": "同城加急单" },
+        { "kind": "skill", "operator": "蕾缪安", "room": "贸易站", "name": "相伴" },
+        { "kind": "skill", "operator": "空弦", "room": "贸易站", "name": "虔诚筹款·β" },
+        { "kind": "skill", "operator": "安比尔", "room": "贸易站", "name": "订单分发·β" },
+        { "kind": "skill", "operator": "能天使", "room": "贸易站", "name": "物流专家" },
+        { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "干员组（28 条）"], "term": "拉特兰" },
+        { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "干员组（28 条）"], "term": "能天使" }
+      ]
+    },
+    {
+      "file": "guides/组合/贸易站组合.md",
+      "headingPath": ["贸易站组合", "高效率贸易组合", "泡影国狩猎小队：双核心效率与订单上限"],
+      "scope": "section",
+      "objects": [
+        { "kind": "skill", "operator": "焰狐龙梓兰", "room": "贸易站", "name": "队长的自觉" },
+        { "kind": "skill", "operator": "雷狼龙S空爆", "room": "贸易站", "name": "气氛组" },
+        { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "干员组（28 条）"], "term": "泡影国狩猎小队" }
+      ]
+    },
+    {
+      "file": "base/设施/机制-加工站.md",
+      "headingPath": ["加工站机制", "技能的作用面"],
+      "scope": "section",
+      "objects": [
+        { "kind": "skill", "operator": "罗小黑", "room": "加工站", "name": "化猫" }
+      ]
+    },
+    {
+      "file": "base/设施/机制-加工站.md",
+      "headingPath": ["加工站机制", "保底与副产物定向"],
+      "scope": "section",
+      "objects": [
+        { "kind": "skill", "operator": "九色鹿", "room": "加工站", "name": "因果" },
+        { "kind": "skill", "operator": "九色鹿", "room": "加工站", "name": "业报" },
+        { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "规则说明（25 条）"], "term": "因果" },
+        { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "规则说明（25 条）"], "term": "业报" }
+      ]
+    },
+    {
+      "file": "base/设施/机制-训练室.md",
+      "headingPath": ["训练室机制", "训练速度公式"],
+      "scope": "section",
+      "objects": [
+        { "kind": "skill", "operator": "W", "room": "训练室", "name": "伺机而动" },
+        { "kind": "skill", "operator": "艾丽妮", "room": "训练室", "name": "剑与手炮" }
+      ]
+    },
+    {
+      "file": "base/设施/机制-训练室.md",
+      "headingPath": ["训练室机制", "减半机制（精神锻炼／言语之义）"],
+      "scope": "section",
+      "objects": [
+        { "kind": "skill", "operator": "艾丽妮", "room": "训练室", "name": "精神锻炼" },
+        { "kind": "skill", "operator": "逻各斯", "room": "训练室", "name": "言语之义" }
+      ]
+    },
+    {
+      "file": "base/设施/机制-训练室.md",
+      "headingPath": ["训练室机制", "武道机制（思而后行）"],
+      "scope": "section",
+      "objects": [
+        { "kind": "skill", "operator": "左乐", "room": "训练室", "name": "思而后行" },
+        { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "规则说明（25 条）"], "term": "武道" }
+      ]
+    },
+    {
+      "file": "guides/组合/贸易站组合.md",
+      "headingPath": ["贸易站组合", "但书、可露希尔的核心散件定位", "但书：违约订单与同站加速"],
+      "scope": "section",
+      "objects": [
+        { "kind": "skill", "operator": "但书", "room": "贸易站", "name": "合同法" },
+        { "kind": "skill", "operator": "但书", "room": "贸易站", "name": "违约索赔·β" },
+        { "kind": "skill", "operator": "龙舌兰", "room": "贸易站", "name": "投资·β" }
+      ]
+    },
+    {
+      "file": "guides/组合/贸易站组合.md",
+      "headingPath": ["贸易站组合", "但书、可露希尔的核心散件定位", "可露希尔：固定特别订单与队友选择"],
+      "scope": "section",
+      "objects": [
+        { "kind": "skill", "operator": "可露希尔", "room": "贸易站", "name": "特别订单" }
+      ]
+    },
+    {
+      "file": "base/设施/机制-贸易站.md",
+      "headingPath": ["贸易站机制", "特殊订单的耗时、报酬与属性继承"],
+      "scope": "section",
+      "objects": [
+        { "kind": "skill", "operator": "佩佩", "room": "贸易站", "name": "慧眼独到" },
+        { "kind": "skill", "operator": "可露希尔", "room": "贸易站", "name": "特别订单" },
+        { "kind": "skill", "operator": "U-Official", "room": "贸易站", "name": "天真的谈判者" },
+        { "kind": "skill", "operator": "但书", "room": "贸易站", "name": "合同法" },
+        { "kind": "skill", "operator": "但书", "room": "贸易站", "name": "违约索赔·β" },
+        { "kind": "skill", "operator": "龙舌兰", "room": "贸易站", "name": "投资·β" }
+      ]
+    },
+    {
+      "file": "base/设施/机制-贸易站.md",
+      "headingPath": ["贸易站机制", "赤金订单概率与高品质订单条件"],
+      "scope": "section",
+      "objects": [
+        { "kind": "skill", "operator": "巫恋", "room": "贸易站", "name": "裁缝·α" },
+        { "kind": "skill", "operator": "巫恋", "room": "贸易站", "name": "低语" },
+        { "kind": "skill", "operator": "柏喙", "room": "贸易站", "name": "裁缝·β" }
+      ]
+    },
+    {
+      "file": "base/设施/机制-制造站.md",
+      "headingPath": ["制造站机制", "自动化与流程优化的归零范围"],
+      "scope": "section",
+      "objects": [
+        { "kind": "skill", "operator": "温蒂", "room": "制造站", "name": "仿生海龙" },
+        { "kind": "skill", "operator": "清流", "room": "制造站", "name": "再生能源" },
+        { "kind": "skill", "operator": "冬时", "room": "制造站", "name": "科学改造" },
+        { "kind": "skill", "operator": "冬时", "room": "制造站", "name": "流程优化" },
+        { "kind": "skill", "operator": "望", "room": "控制中枢", "name": "权变" },
+        { "kind": "skill", "operator": "丰川祥子", "room": "控制中枢", "name": "丰富工作经验", "unlock": "精英 2 提升，替换「丰富工作经验」" },
+        { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "规则说明（25 条）"], "term": "特殊叠加规则", "termOccurrence": 1 }
+      ]
+    },
+    {
+      "file": "base/设施/机制-制造站.md",
+      "headingPath": ["制造站机制", "配合意识的读取范围与上限"],
+      "scope": "section",
+      "objects": [
+        { "kind": "skill", "operator": "槐琥", "room": "制造站", "name": "配合意识" },
+        { "kind": "skill", "operator": "清流", "room": "制造站", "name": "再生能源" },
+        { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "规则说明（25 条）"], "term": "特殊叠加规则", "termOccurrence": 1 }
+      ]
+    },
+    {
+      "file": "base/设施/机制-控制中枢.md",
+      "headingPath": ["控制中枢机制", "权变的设施计数与分支切换"],
+      "scope": "section",
+      "objects": [
+        { "kind": "skill", "operator": "望", "room": "控制中枢", "name": "权变" },
+        { "kind": "skill", "operator": "承曦格雷伊", "room": "发电站", "name": "晨曦" },
+        { "kind": "skill", "operator": "森蚺", "room": "控制中枢", "name": "我寻思能行" },
+        { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "全局资源（6 条）"], "term": "外势" },
+        { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "全局资源（6 条）"], "term": "实地" }
+      ]
+    },
+    {
+      "file": "base/设施/机制-控制中枢.md",
+      "headingPath": ["控制中枢机制", "热情值与贵金属配方加成"],
+      "scope": "section",
+      "objects": [
+        { "kind": "skill", "operator": "丰川祥子", "room": "控制中枢", "name": "丰富工作经验", "unlock": "初始解锁" },
+        { "kind": "skill", "operator": "丰川祥子", "room": "控制中枢", "name": "丰富工作经验", "unlock": "精英 2 提升，替换「丰富工作经验」" },
+        { "kind": "skill", "operator": "丰川祥子", "room": "控制中枢", "name": "生活的重压" },
+        { "kind": "skill", "operator": "八幡海铃", "room": "控制中枢", "name": "可靠伙伴" },
+        { "kind": "skill", "operator": "三角初华", "room": "控制中枢", "name": "偶像光环" },
+        { "kind": "skill", "operator": "祐天寺若麦", "room": "控制中枢", "name": "勤学苦练" },
+        { "kind": "skill", "operator": "若叶睦", "room": "控制中枢", "name": "演技的怪物" },
+        { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "规则说明（25 条）"], "term": "热情值" }
+      ]
+    },
+    {
+      "file": "base/设施/机制-办公室.md",
+      "headingPath": ["办公室机制", "感染力的联络阈值与中枢加成"],
+      "scope": "section",
+      "objects": [
+        { "kind": "skill", "operator": "琴柳", "room": "控制中枢", "name": "感染力" },
+        { "kind": "skill", "operator": "八幡海铃", "room": "控制中枢", "name": "可靠伙伴" },
+        { "kind": "skill", "operator": "焰狐龙梓兰", "room": "控制中枢", "name": "办公室年度人物" },
+        { "kind": "skill", "operator": "絮雨", "room": "办公室", "name": "巡游" }
+      ]
+    },
+    {
+      "file": "base/设施/机制-宿舍.md",
+      "headingPath": ["宿舍机制", "菲亚梅塔的固定恢复与心情互换"],
+      "scope": "section",
+      "objects": [
+        { "kind": "skill", "operator": "菲亚梅塔", "room": "宿舍", "name": "自律" },
+        { "kind": "skill", "operator": "菲亚梅塔", "room": "宿舍", "name": "患难之交" }
+      ]
+    },
+    {
+      "file": "guides/用人/高效率散件.md",
+      "headingPath": ["高效率散件", "会客室的速度、心情与搭档取舍"],
+      "scope": "section",
+      "objects": [
+        { "kind": "skill", "operator": "伊内丝", "room": "会客室", "name": "聚影" },
+        { "kind": "skill", "operator": "跃跃", "room": "会客室", "name": "线索搜集·α" },
+        { "kind": "skill", "operator": "跃跃", "room": "会客室", "name": "无辜笑脸" },
+        { "kind": "skill", "operator": "信仰搅拌机", "room": "会客室", "name": "社交达人" },
+        { "kind": "skill", "operator": "信仰搅拌机", "room": "会客室", "name": "不泯童心" },
+        { "kind": "skill", "operator": "见行者", "room": "会客室", "name": "逻辑推理" }
+      ]
+    },
+    {
+      "file": "guides/用人/高效率散件.md",
+      "headingPath": ["高效率散件", "中枢席位的全局加成与组合取舍"],
+      "scope": "section",
+      "objects": [
+        { "kind": "skill", "operator": "阿米娅", "room": "控制中枢", "name": "合作协议" },
+        { "kind": "skill", "operator": "凯尔希", "room": "控制中枢", "name": "最高权限" },
+        { "kind": "skill", "operator": "八幡海铃", "room": "控制中枢", "name": "可靠伙伴" },
+        { "kind": "skill", "operator": "八幡海铃", "room": "控制中枢", "name": "家族认可" },
+        { "kind": "skill", "operator": "琴柳", "room": "控制中枢", "name": "感染力" }
+      ]
+    },
+    {
+      "file": "guides/操作/换班操作.md",
+      "headingPath": ["换班操作", "队列轮换：手动编辑、批量切换与干员休整"],
+      "scope": "section",
+      "objects": [
+        { "kind": "skill", "operator": "菲亚梅塔", "room": "宿舍", "name": "患难之交" }
+      ]
+    },
+    {
+      "file": "guides/操作/换班操作.md",
+      "headingPath": ["换班操作", "定时换班：两班轮流、错班轮换与班制选择"],
+      "scope": "section",
+      "objects": [
+        { "kind": "skill", "operator": "菲亚梅塔", "room": "宿舍", "name": "自律" },
+        { "kind": "skill", "operator": "菲亚梅塔", "room": "宿舍", "name": "患难之交" }
+      ]
+    },
+    {
+      "file": "guides/操作/换班操作.md",
+      "headingPath": ["换班操作", "动态换班：心情阈值与按组换人"],
+      "scope": "section",
+      "objects": [
+        { "kind": "skill", "operator": "森蚺", "room": "控制中枢", "name": "我寻思能行" },
+        { "kind": "skill", "operator": "承曦格雷伊", "room": "发电站", "name": "晨曦" },
+        { "kind": "skill", "operator": "阿罗玛", "room": "制造站", "name": "例行清扫" },
+        { "kind": "skill", "operator": "伊内丝", "room": "会客室", "name": "聚影" },
+        { "kind": "skill", "operator": "菲亚梅塔", "room": "宿舍", "name": "自律" },
+        { "kind": "skill", "operator": "菲亚梅塔", "room": "宿舍", "name": "患难之交" }
+      ]
+    },
+    {
+      "file": "guides/布局/布局选择.md",
+      "headingPath": ["布局选择", "按需求推荐", "搓玉期：342 或 333"],
+      "scope": "section",
+      "objects": [
+        { "kind": "skill", "operator": "但书", "room": "贸易站", "name": "合同法" },
+        { "kind": "skill", "operator": "龙舌兰", "room": "贸易站", "name": "投资·β" },
+        { "kind": "skill", "operator": "清流", "room": "制造站", "name": "再生能源" },
+        { "kind": "skill", "operator": "但书", "room": "贸易站", "name": "违约索赔·β" },
+        { "kind": "skill", "operator": "温蒂", "room": "制造站", "name": "仿生海龙" }
+      ]
+    },
+    {
+      "file": "guides/操作/无人机使用.md",
+      "headingPath": ["无人机使用", "加速贸易站的优先级"],
+      "scope": "section",
+      "objects": [
+        { "kind": "skill", "operator": "但书", "room": "贸易站", "name": "合同法" },
+        { "kind": "skill", "operator": "龙舌兰", "room": "贸易站", "name": "投资·β" },
+        { "kind": "skill", "operator": "可露希尔", "room": "贸易站", "name": "特别订单" },
+        { "kind": "skill", "operator": "但书", "room": "贸易站", "name": "违约索赔·β" },
+        { "kind": "skill", "operator": "柏喙", "room": "贸易站", "name": "裁缝·β" },
+        { "kind": "skill", "operator": "明椒", "room": "贸易站", "name": "裁缝·β" },
+        { "kind": "skill", "operator": "折光", "room": "贸易站", "name": "鉴定师的手段" },
+        { "kind": "skill", "operator": "卡夫卡", "room": "贸易站", "name": "手工艺品·β" },
+        { "kind": "skill", "operator": "巫恋", "room": "贸易站", "name": "裁缝·α" }
+      ]
+    },
+    {
+      "file": "guides/布局/布局选择.md",
+      "headingPath": ["布局选择", "二发电与三发电的取舍"],
+      "scope": "section",
+      "objects": [
+        { "kind": "skill", "operator": "但书", "room": "贸易站", "name": "合同法" },
+        { "kind": "skill", "operator": "但书", "room": "贸易站", "name": "违约索赔·β" }
       ]
     }
   ]

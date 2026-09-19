@@ -105,11 +105,16 @@ describe('corpus：语料收集与分块', () => {
     expect(() => collectMarkdownFiles(docsDir)).toThrowError('语料白名单禁止登记 SKILL.md：skill.md')
   })
 
-  it('白名单只接受 base/ 与 guides/ 前缀，显式登记 raw/ 条目被拒绝', () => {
+  it('白名单只接受 base/ 与 guides/ 前缀，显式登记 raw/ 或 facts/ 条目被拒绝', () => {
     writeDoc('raw/名册.md', '# 名册\n机械真源\n')
     writeManifest(['raw/名册.md'])
     expect(() => collectMarkdownFiles(docsDir)).toThrowError('语料白名单只允许登记 base/ 与 guides/ 下的文件：raw/名册.md')
     expect(() => loadCorpusManifest(docsDir)).toThrowError('语料白名单只允许登记 base/ 与 guides/ 下的文件：raw/名册.md')
+
+    writeDoc('facts/名册.md', '# 名册\n正式输入\n')
+    writeManifest(['facts/名册.md'])
+    expect(() => collectMarkdownFiles(docsDir)).toThrowError('语料白名单只允许登记 base/ 与 guides/ 下的文件：facts/名册.md')
+    expect(() => loadCorpusManifest(docsDir)).toThrowError('语料白名单只允许登记 base/ 与 guides/ 下的文件：facts/名册.md')
   })
 
   it('白名单显式登记 references/ 或目录外开发文档条目被拒绝', () => {
