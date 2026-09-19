@@ -21,9 +21,9 @@ describe('真实 knowledge 语料白名单', () => {
 
     expect(actual).toEqual(approved)
     expect(loadedChunks).toEqual(approved)
-    expect(actual.size).toBe(24)
+    expect(actual.size).toBe(26)
     expect([...actual].filter((file) => file.startsWith('base/'))).toHaveLength(16)
-    expect([...actual].filter((file) => file.startsWith('guides/'))).toHaveLength(8)
+    expect([...actual].filter((file) => file.startsWith('guides/'))).toHaveLength(10)
     expect([...actual].filter((file) => file.startsWith('raw/'))).toHaveLength(0)
     expect(actual.has('AGENTS.md')).toBe(false)
     expect(actual.has('base/机制-基建总览.md')).toBe(true)
@@ -31,6 +31,8 @@ describe('真实 knowledge 语料白名单', () => {
     expect(actual.has('guides/歧义.md')).toBe(true)
     expect(actual.has('guides/组合/贸易站组合.md')).toBe(true)
     expect(actual.has('guides/用人/新手培养.md')).toBe(true)
+    expect(actual.has('guides/布局/布局选择.md')).toBe(true)
+    expect(actual.has('guides/操作/无人机使用.md')).toBe(true)
 
     const baseChunks = loadCorpus(KNOWLEDGE_ROOT).filter((chunk) => chunk.file.startsWith('base/'))
     expect(baseChunks.every((chunk) => chunk.anchor && chunk.anchor.length > 0)).toBe(true)

@@ -623,6 +623,9 @@ describe('prose-links：真实语料核对', () => {
     ['队列轮换：手动编辑、批量切换与干员休整', ['菲亚梅塔｜患难之交']],
     ['定时换班：两班轮流、错班轮换与班制选择', ['菲亚梅塔｜自律', '菲亚梅塔｜患难之交']],
     ['动态换班：心情阈值与按组换人', ['森蚺｜我寻思能行', '承曦格雷伊｜晨曦', '阿罗玛｜例行清扫', '伊内丝｜聚影', '菲亚梅塔｜自律', '菲亚梅塔｜患难之交']],
+    ['二发电与三发电的取舍', ['但书｜合同法', '但书｜违约索赔·β']],
+    ['搓玉期：342 或 333', ['但书｜合同法', '但书｜违约索赔·β', '龙舌兰｜投资·β', '清流｜再生能源', '温蒂｜仿生海龙']],
+    ['加速贸易站的优先级', ['但书｜合同法', '但书｜违约索赔·β', '龙舌兰｜投资·β', '可露希尔｜特别订单', '柏喙｜裁缝·β', '明椒｜裁缝·β', '折光｜鉴定师的手段', '卡夫卡｜手工艺品·β', '巫恋｜裁缝·α']],
   ])('%s 的关联投影保留正文实际依赖的技能', (heading, requiredSkills) => {
     const directory = buildSectionDirectory(join(process.cwd(), 'knowledge'))
     const index = buildProseLinkIndex({ root: process.cwd() })
@@ -665,6 +668,8 @@ describe('prose-links：真实语料核对', () => {
     expect(headings).toContain('guides/用人/高效率散件.md#高效率散件 > 办公室联络散件')
     expect(headings).toContain('guides/用人/高效率散件.md#高效率散件 > 办公室联络散件 > 联络速度与额外心情消耗的取舍')
     expect(headings).toContain('guides/用人/高效率散件.md#高效率散件 > 源石碎片制造（搓玉）的名单、练度与布局前提')
+    expect(headings).toContain('guides/布局/布局选择.md#布局选择 > 按需求推荐 > 搓玉期：342 或 333')
+    expect(headings).toContain('guides/操作/无人机使用.md#无人机使用 > 加速贸易站的优先级')
     for (const link of index.links) {
       expect(link.objects.length, `${link.sectionId} 的关联对象为空`).toBeGreaterThan(0)
       for (const object of link.objects) {

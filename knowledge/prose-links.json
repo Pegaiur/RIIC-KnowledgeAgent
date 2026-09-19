@@ -759,6 +759,43 @@
         { "kind": "skill", "operator": "菲亚梅塔", "room": "宿舍", "name": "自律" },
         { "kind": "skill", "operator": "菲亚梅塔", "room": "宿舍", "name": "患难之交" }
       ]
+    },
+    {
+      "file": "guides/布局/布局选择.md",
+      "headingPath": ["布局选择", "按需求推荐", "搓玉期：342 或 333"],
+      "scope": "section",
+      "objects": [
+        { "kind": "skill", "operator": "但书", "room": "贸易站", "name": "合同法" },
+        { "kind": "skill", "operator": "龙舌兰", "room": "贸易站", "name": "投资·β" },
+        { "kind": "skill", "operator": "清流", "room": "制造站", "name": "再生能源" },
+        { "kind": "skill", "operator": "但书", "room": "贸易站", "name": "违约索赔·β" },
+        { "kind": "skill", "operator": "温蒂", "room": "制造站", "name": "仿生海龙" }
+      ]
+    },
+    {
+      "file": "guides/操作/无人机使用.md",
+      "headingPath": ["无人机使用", "加速贸易站的优先级"],
+      "scope": "section",
+      "objects": [
+        { "kind": "skill", "operator": "但书", "room": "贸易站", "name": "合同法" },
+        { "kind": "skill", "operator": "龙舌兰", "room": "贸易站", "name": "投资·β" },
+        { "kind": "skill", "operator": "可露希尔", "room": "贸易站", "name": "特别订单" },
+        { "kind": "skill", "operator": "但书", "room": "贸易站", "name": "违约索赔·β" },
+        { "kind": "skill", "operator": "柏喙", "room": "贸易站", "name": "裁缝·β" },
+        { "kind": "skill", "operator": "明椒", "room": "贸易站", "name": "裁缝·β" },
+        { "kind": "skill", "operator": "折光", "room": "贸易站", "name": "鉴定师的手段" },
+        { "kind": "skill", "operator": "卡夫卡", "room": "贸易站", "name": "手工艺品·β" },
+        { "kind": "skill", "operator": "巫恋", "room": "贸易站", "name": "裁缝·α" }
+      ]
+    },
+    {
+      "file": "guides/布局/布局选择.md",
+      "headingPath": ["布局选择", "二发电与三发电的取舍"],
+      "scope": "section",
+      "objects": [
+        { "kind": "skill", "operator": "但书", "room": "贸易站", "name": "合同法" },
+        { "kind": "skill", "operator": "但书", "room": "贸易站", "name": "违约索赔·β" }
+      ]
     }
   ]
 }
