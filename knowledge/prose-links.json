@@ -412,6 +412,99 @@
       ]
     },
     {
+      "file": "guides/跨设施组合.md",
+      "headingPath": ["跨设施组合", "彩虹小队：中枢心情恢复与成员计数"],
+      "scope": "section",
+      "objects": [
+        { "kind": "skill", "operator": "灰烬", "room": "控制中枢", "name": "彩虹小队" },
+        { "kind": "skill", "operator": "战车", "room": "控制中枢", "name": "彩虹小队" },
+        { "kind": "skill", "operator": "闪击", "room": "控制中枢", "name": "彩虹小队" },
+        { "kind": "skill", "operator": "霜华", "room": "控制中枢", "name": "彩虹小队" },
+        { "kind": "skill", "operator": "艾拉", "room": "控制中枢", "name": "反抗者" },
+        { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "干员组（28 条）"], "term": "彩虹小队" }
+      ]
+    },
+    {
+      "file": "guides/跨设施组合.md",
+      "headingPath": ["跨设施组合", "Mujica 中枢组：热情值、贸易与赤金加成"],
+      "scope": "section",
+      "objects": [
+        { "kind": "skill", "operator": "丰川祥子", "room": "控制中枢", "name": "丰富工作经验", "unlock": "初始解锁" },
+        { "kind": "skill", "operator": "丰川祥子", "room": "控制中枢", "name": "丰富工作经验", "unlock": "精英 2 提升，替换「丰富工作经验」" },
+        { "kind": "skill", "operator": "丰川祥子", "room": "控制中枢", "name": "生活的重压" },
+        { "kind": "skill", "operator": "若叶睦", "room": "控制中枢", "name": "演技的怪物" },
+        { "kind": "skill", "operator": "若叶睦", "room": "控制中枢", "name": "互为半身" },
+        { "kind": "skill", "operator": "三角初华", "room": "控制中枢", "name": "偶像光环" },
+        { "kind": "skill", "operator": "三角初华", "room": "控制中枢", "name": "羁绊相生" },
+        { "kind": "skill", "operator": "八幡海铃", "room": "控制中枢", "name": "可靠伙伴" },
+        { "kind": "skill", "operator": "八幡海铃", "room": "控制中枢", "name": "家族认可" },
+        { "kind": "skill", "operator": "祐天寺若麦", "room": "控制中枢", "name": "勤学苦练" },
+        { "kind": "skill", "operator": "祐天寺若麦", "room": "控制中枢", "name": "成效优先" },
+        { "kind": "skill", "operator": "琴柳", "room": "控制中枢", "name": "感染力" },
+        { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "规则说明（25 条）"], "term": "热情值" },
+        { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "干员组（28 条）"], "term": "叙拉古" }
+      ]
+    },
+    {
+      "file": "guides/跨设施组合.md",
+      "headingPath": ["跨设施组合", "维什戴尔组：巴别塔系心情恢复与订单上限"],
+      "scope": "section",
+      "objects": [
+        { "kind": "skill", "operator": "维什戴尔", "room": "控制中枢", "name": "同谋·β" },
+        { "kind": "skill", "operator": "维什戴尔", "room": "控制中枢", "name": "巴别塔之帜" },
+        { "kind": "skill", "operator": "魔王", "room": "控制中枢", "name": "“未完的故事”" },
+        { "kind": "skill", "operator": "魔王", "room": "控制中枢", "name": "期冀之汇" },
+        { "kind": "skill", "operator": "阿米娅", "room": "控制中枢", "name": "合作协议" },
+        { "kind": "skill", "operator": "赫德雷", "room": "贸易站", "name": "白手起家·β" },
+        { "kind": "skill", "operator": "伊内丝", "room": "会客室", "name": "聚影" },
+        { "kind": "skill", "operator": "玛恩纳", "room": "控制中枢", "name": "公事公办" },
+        { "kind": "skill", "operator": "重岳", "room": "控制中枢", "name": "孤光共照" },
+        { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "规则说明（25 条）"], "term": "特殊比较规则" },
+        { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "设施组（3 条）"], "term": "工作场所" }
+      ]
+    },
+    {
+      "file": "guides/跨设施组合.md",
+      "headingPath": ["跨设施组合", "魔物料理体系：宿舍等级资源链与三个消费端"],
+      "scope": "section",
+      "objects": [
+        { "kind": "skill", "operator": "森西", "room": "宿舍", "name": "森西大食堂" },
+        { "kind": "skill", "operator": "森西", "room": "宿舍", "name": "资深料理人" },
+        { "kind": "skill", "operator": "玛露西尔", "room": "制造站", "name": "差遣使魔·β" },
+        { "kind": "skill", "operator": "玛露西尔", "room": "制造站", "name": "意想不到的美味" },
+        { "kind": "skill", "operator": "莱欧斯", "room": "会客室", "name": "好奇心" },
+        { "kind": "skill", "operator": "莱欧斯", "room": "会客室", "name": "饱餐的干劲" },
+        { "kind": "skill", "operator": "齐尔查克", "room": "贸易站", "name": "半身人公会代表" },
+        { "kind": "skill", "operator": "齐尔查克", "room": "贸易站", "name": "熟悉的味道" },
+        { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "全局资源（6 条）"], "term": "魔物料理" },
+        { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "干员组（28 条）"], "term": "莱欧斯小队" }
+      ]
+    },
+    {
+      "file": "guides/贸易站组合.md",
+      "headingPath": ["贸易站组合", "高效率贸易组合", "新约能天使组：拉特兰计数与第三席"],
+      "scope": "section",
+      "objects": [
+        { "kind": "skill", "operator": "新约能天使", "room": "贸易站", "name": "同城加急单" },
+        { "kind": "skill", "operator": "蕾缪安", "room": "贸易站", "name": "相伴" },
+        { "kind": "skill", "operator": "空弦", "room": "贸易站", "name": "虔诚筹款·β" },
+        { "kind": "skill", "operator": "安比尔", "room": "贸易站", "name": "订单分发·β" },
+        { "kind": "skill", "operator": "能天使", "room": "贸易站", "name": "物流专家" },
+        { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "干员组（28 条）"], "term": "拉特兰" },
+        { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "干员组（28 条）"], "term": "能天使" }
+      ]
+    },
+    {
+      "file": "guides/贸易站组合.md",
+      "headingPath": ["贸易站组合", "高效率贸易组合", "泡影国狩猎小队：双核心效率与订单上限"],
+      "scope": "section",
+      "objects": [
+        { "kind": "skill", "operator": "焰狐龙梓兰", "room": "贸易站", "name": "队长的自觉" },
+        { "kind": "skill", "operator": "雷狼龙S空爆", "room": "贸易站", "name": "气氛组" },
+        { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "干员组（28 条）"], "term": "泡影国狩猎小队" }
+      ]
+    },
+    {
       "file": "base/设施/机制-加工站.md",
       "headingPath": ["加工站机制", "技能的作用面"],
       "scope": "section",
