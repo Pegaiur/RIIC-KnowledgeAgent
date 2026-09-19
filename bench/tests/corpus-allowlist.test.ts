@@ -21,9 +21,9 @@ describe('真实 knowledge 语料白名单', () => {
 
     expect(actual).toEqual(approved)
     expect(loadedChunks).toEqual(approved)
-    expect(actual.size).toBe(22)
-    expect([...actual].filter((file) => file.startsWith('base/'))).toHaveLength(15)
-    expect([...actual].filter((file) => file.startsWith('guides/'))).toHaveLength(7)
+    expect(actual.size).toBe(24)
+    expect([...actual].filter((file) => file.startsWith('base/'))).toHaveLength(16)
+    expect([...actual].filter((file) => file.startsWith('guides/'))).toHaveLength(8)
     expect([...actual].filter((file) => file.startsWith('raw/'))).toHaveLength(0)
     expect(actual.has('AGENTS.md')).toBe(false)
     expect(actual.has('base/机制-基建总览.md')).toBe(true)

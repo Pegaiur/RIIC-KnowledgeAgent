@@ -729,6 +729,34 @@
         { "kind": "skill", "operator": "八幡海铃", "room": "控制中枢", "name": "家族认可" },
         { "kind": "skill", "operator": "琴柳", "room": "控制中枢", "name": "感染力" }
       ]
+    },
+    {
+      "file": "guides/换班操作.md",
+      "headingPath": ["换班操作", "队列轮换：手动编辑、批量切换与干员休整"],
+      "scope": "section",
+      "objects": [
+        { "kind": "skill", "operator": "菲亚梅塔", "room": "宿舍", "name": "患难之交" }
+      ]
+    },
+    {
+      "file": "guides/换班操作.md",
+      "headingPath": ["换班操作", "定时换班：两班轮流、错班轮换与班制选择"],
+      "scope": "section",
+      "objects": [
+        { "kind": "skill", "operator": "菲亚梅塔", "room": "宿舍", "name": "患难之交" }
+      ]
+    },
+    {
+      "file": "guides/换班操作.md",
+      "headingPath": ["换班操作", "动态换班：心情阈值与按组换人"],
+      "scope": "section",
+      "objects": [
+        { "kind": "skill", "operator": "森蚺", "room": "控制中枢", "name": "我寻思能行" },
+        { "kind": "skill", "operator": "承曦格雷伊", "room": "发电站", "name": "晨曦" },
+        { "kind": "skill", "operator": "阿罗玛", "room": "制造站", "name": "例行清扫" },
+        { "kind": "skill", "operator": "伊内丝", "room": "会客室", "name": "聚影" },
+        { "kind": "skill", "operator": "菲亚梅塔", "room": "宿舍", "name": "患难之交" }
+      ]
     }
   ]
 }
