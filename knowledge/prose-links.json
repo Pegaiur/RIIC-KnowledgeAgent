@@ -8,6 +8,7 @@
       "objects": [
         { "kind": "skill", "operator": "琳琅诗怀雅", "room": "贸易站", "name": "招商引资" },
         { "kind": "skill", "operator": "孑", "room": "贸易站", "name": "摊贩经济" },
+        { "kind": "skill", "operator": "孑", "room": "贸易站", "name": "市井之道" },
         { "kind": "skill", "operator": "槐琥", "room": "制造站", "name": "配合意识" }
       ]
     },
@@ -145,7 +146,11 @@
       "scope": "section",
       "objects": [
         { "kind": "skill", "operator": "能天使", "room": "贸易站", "name": "物流专家" },
-        { "kind": "skill", "operator": "蕾缪安", "room": "贸易站", "name": "相伴" }
+        { "kind": "skill", "operator": "蕾缪安", "room": "贸易站", "name": "相伴" },
+        { "kind": "skill", "operator": "新约能天使", "room": "贸易站", "name": "同城加急单" },
+        { "kind": "skill", "operator": "空弦", "room": "贸易站", "name": "虔诚筹款·β" },
+        { "kind": "skill", "operator": "吉星", "room": "贸易站", "name": "勤俭经营·β" },
+        { "kind": "skill", "operator": "雷狼龙S空爆", "room": "贸易站", "name": "气氛组" }
       ]
     },
     {
@@ -206,9 +211,15 @@
       "objects": [
         { "kind": "skill", "operator": "乌有", "room": "贸易站", "name": "“愿者上钩”" },
         { "kind": "skill", "operator": "重岳", "room": "控制中枢", "name": "知我为我" },
+        { "kind": "skill", "operator": "重岳", "room": "控制中枢", "name": "孤光共照" },
         { "kind": "skill", "operator": "令", "room": "控制中枢", "name": "“山河远阔”" },
         { "kind": "skill", "operator": "夕", "room": "控制中枢", "name": "\"不以物喜\"" },
         { "kind": "skill", "operator": "桑葚", "room": "办公室", "name": "救援队·灾后普查" },
+        { "kind": "skill", "operator": "琴柳", "room": "控制中枢", "name": "感染力" },
+        { "kind": "skill", "operator": "截云", "room": "制造站", "name": "问枯荣" },
+        { "kind": "skill", "operator": "黍", "room": "制造站", "name": "稻禾厚，顺秋收" },
+        { "kind": "skill", "operator": "余", "room": "训练室", "name": "与人乐" },
+        { "kind": "skill", "operator": "赤刃明霄陈", "room": "会客室", "name": "扶危行侠" },
         { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "规则说明（25 条）"], "term": "人间烟火" }
       ]
     },
@@ -277,7 +288,8 @@
         { "kind": "skill", "operator": "帕拉斯", "room": "制造站", "name": "智慧之境" },
         { "kind": "skill", "operator": "帕拉斯", "room": "制造站", "name": "胜利之计" },
         { "kind": "skill", "operator": "刻俄柏", "room": "制造站", "name": "“都想要”" },
-        { "kind": "skill", "operator": "刻俄柏", "room": "制造站", "name": "“等不及”" }
+        { "kind": "skill", "operator": "刻俄柏", "room": "制造站", "name": "“等不及”" },
+        { "kind": "skill", "operator": "娜仁图亚", "room": "制造站", "name": "齐心沙盗" }
       ]
     },
     {
@@ -293,6 +305,17 @@
         { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "干员组（28 条）"], "term": "红松骑士团" },
         { "kind": "skill", "operator": "砾", "room": "制造站", "name": "金属工艺·β" },
         { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "干员组（28 条）"], "term": "骑士" }
+      ]
+    },
+    {
+      "file": "guides/制造站组合.md",
+      "headingPath": ["制造站组合", "作战记录制造组合", "怒潮凛冬：经验散件与指定队友条件"],
+      "scope": "section",
+      "objects": [
+        { "kind": "skill", "operator": "怒潮凛冬", "room": "制造站", "name": "情同手足" },
+        { "kind": "skill", "operator": "烈夏", "room": "制造站", "name": "患难拍档" },
+        { "kind": "skill", "operator": "古米", "room": "贸易站", "name": "交际" },
+        { "kind": "skill", "operator": "怒潮凛冬", "room": "控制中枢", "name": "“是，团长！”" }
       ]
     },
     {
@@ -317,7 +340,8 @@
       "objects": [
         { "kind": "skill", "operator": "泡泡", "room": "制造站", "name": "囤积者" },
         { "kind": "skill", "operator": "泡泡", "room": "制造站", "name": "大就是好！" },
-        { "kind": "skill", "operator": "火神", "room": "制造站", "name": "工匠精神·β" }
+        { "kind": "skill", "operator": "火神", "room": "制造站", "name": "工匠精神·β" },
+        { "kind": "skill", "operator": "贝娜", "room": "制造站", "name": "“可靠”助手" }
       ]
     },
     {
@@ -331,9 +355,14 @@
         { "kind": "skill", "operator": "杰西卡", "room": "制造站", "name": "标准化·β" },
         { "kind": "skill", "operator": "史都华德", "room": "制造站", "name": "标准化·β" },
         { "kind": "skill", "operator": "海沫", "room": "制造站", "name": "标准化·β" },
+        { "kind": "skill", "operator": "海沫", "room": "制造站", "name": "意识兼容" },
         { "kind": "skill", "operator": "罗比菈塔", "room": "制造站", "name": "标准化·β" },
         { "kind": "skill", "operator": "调香师", "room": "制造站", "name": "标准化·β" },
         { "kind": "skill", "operator": "涤火杰西卡", "room": "控制中枢", "name": "老友相聚" },
+        { "kind": "skill", "operator": "杏仁", "room": "制造站", "name": "小奇思" },
+        { "kind": "skill", "operator": "杏仁", "room": "制造站", "name": "挑大梁" },
+        { "kind": "skill", "operator": "焰尾", "room": "控制中枢", "name": "红松的骑士" },
+        { "kind": "skill", "operator": "薇薇安娜", "room": "控制中枢", "name": "烛骑士微光" },
         { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "技能组（5 条）"], "term": "标准化类技能" }
       ]
     },
@@ -393,6 +422,8 @@
       "scope": "section",
       "objects": [
         { "kind": "skill", "operator": "凯尔希·思衡托", "room": "办公室", "name": "“泰拉的方舟”" },
+        { "kind": "skill", "operator": "真言", "room": "贸易站", "name": "精英小队" },
+        { "kind": "skill", "operator": "电弧", "room": "控制中枢", "name": "无言的慈爱" },
         { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "干员组（28 条）"], "term": "精英干员" }
       ]
     },
@@ -478,6 +509,18 @@
         { "kind": "skill", "operator": "齐尔查克", "room": "贸易站", "name": "熟悉的味道" },
         { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "全局资源（6 条）"], "term": "魔物料理" },
         { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "干员组（28 条）"], "term": "莱欧斯小队" }
+      ]
+    },
+    {
+      "file": "guides/跨设施组合.md",
+      "headingPath": ["跨设施组合", "莱茵生命阵营：制造与发电双终端与阵营计数"],
+      "scope": "section",
+      "objects": [
+        { "kind": "skill", "operator": "娜斯提", "room": "制造站", "name": "造价高昂" },
+        { "kind": "skill", "operator": "娜斯提", "room": "制造站", "name": "莱茵科技·β" },
+        { "kind": "skill", "operator": "缪尔赛思", "room": "发电站", "name": "生态科主任" },
+        { "kind": "skill", "operator": "塞雷娅", "room": "会客室", "name": "守望者" },
+        { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "干员组（28 条）"], "term": "莱茵生命" }
       ]
     },
     {
