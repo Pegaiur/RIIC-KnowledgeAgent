@@ -29,7 +29,7 @@
 
 - [x] **语料工作流与术语规范调整落点** — 添加流程已迁至 skills/corpus-addition/SKILL.md，RAG 术语已迁至 docs/spec/rag-prose-terminology.md v1；AGENTS 保留明确的必读路由，skill 引用写作与术语 spec，迁移状态留在 plan。当前引用与脚本注释已同步，旧规则正文已移除；术语词表、检查逻辑和语料内容不变。 — 2026-09-18 — 已完成；验证记录见 docs/plan-knowledge-correctness-notes.md
 
-- [ ] **raw 临时定位与语料添加工作流** — 用户明确 knowledge/raw 仅为添加语料过程中的临时落点，完成后不保留原稿。skills/corpus-addition/SKILL.md 已规定选材、来源记录、facts/散文处理、正式落位、联合审阅、验证与清理的完整流程；写作 spec 升为 v3。当前 raw 含 11 份运行时 facts 输入和 8 份来源材料，按 ADR-024 与 docs/plan-facts-storage-and-raw-cleanup.md 将正式输入迁至 knowledge/facts，再清理已结束用途的来源稿；迁移不代替解包来源映射评估。 — 2026-09-18 — 本轮依用户选择只完善规范与迁移计划；迁移及删除尚未实施
+- [x] **raw 临时定位与语料添加工作流** — 用户明确 knowledge/raw 仅为添加语料过程中的临时落点，完成后不保留原稿。skills/corpus-addition/SKILL.md 已规定选材、来源记录、facts/散文处理、正式落位、联合审阅、验证与清理的完整流程；写作 spec 升为 v3。当前 raw 含 11 份运行时 facts 输入和 8 份来源材料，按 ADR-024 与 docs/plan-facts-storage-and-raw-cleanup.md 将正式输入迁至 knowledge/facts，再清理已结束用途的来源稿；迁移不代替解包来源映射评估。 — 2026-09-18 — 已实施（2026-09-19）：11 份正式输入迁至 knowledge/facts，加载器、维护脚本与 gold 定位同步；8 份来源稿删除 7 份、暂留 1 份（心情消耗恢复与工休时间.md，剩余工作时间面板口径待核验），结果与偏离见 docs/plan-facts-storage-and-raw-cleanup-notes.md
 
 - [x] **将散文写作示例提升为 Agent 必须遵循的 spec** — 已建立 docs/spec/rag-prose-writing.md，与 docs/spec/rag-prose-terminology.md 共同约束语料编写与审阅；根 AGENTS.md 已接入必读路由。v1 写作示例与独立审阅记录见 docs/plan-corpus-rebase-and-gaps-notes.md；v2 明确来源与联合审阅边界，v3 补 raw 临时定位并接入添加工作流，记录见 docs/plan-knowledge-correctness-notes.md。 — 2026-09-18 — v3 已生效；v1 的独立审阅结论仅适用于当时版本
 
@@ -72,6 +72,8 @@
 - [x] **语料验收流程约定** — 在 skills/corpus-addition/SKILL.md 与 skills/commit-convention/SKILL.md 明确材料一并送审、同批审查合并、适用验证复用、来源审阅后的清理时机，以及纯执行记录的处理；采用简洁的流程表述。 — 2026-09-19 — 已落入现有技能
 
 - [x] **语料迁入工作流口径** — 根据第二、三批验收经验，在 skills/corpus-addition/SKILL.md 明确本批结论所依赖的旧内容核查、同源转写与实际核查范围、篇目与对象计数，以及已安排后续验收时的材料保留与交付状态；沿用写作规范的来源分工和现有审查、验证规则。 — 2026-09-19 — 已落入现有技能
+
+- [x] **命中主口径限定为检索范围内可达键，并收束 raw 的正式输入与临时材料职责** — 2026-09-19 用户确定三件事：(1) 命中评分主口径不再包含 raw，因检索范围已由 ADR-021 固定为 base/guides，24 个 raw golden 键既不可达又占用分母，使主指标混合两种事实；已建 ADR-025（替代 ADR-021 决策 7）与 docs/plan-hitrate-reachable-scope.md，采用替换主口径而非并列第二指标，不可达键保持逐题与汇总可见。(2) facts 输入正式目录沿用 ADR-024 的 knowledge/facts（不采用 factsource 命名），按 docs/plan-facts-storage-and-raw-cleanup.md 迁移 11 份并同步消费者。(3) 处置 8 份来源材料后同步活动层引用与正文回指；docs/archive、docs/exp、bench/results 等历史记录保持原貌。口径变化属分母语义调整，不构成检索质量提升，引用新数值须同时说明口径。 — 2026-09-19 — 三项均已实施：口径复测 @3/@5/@10 = 67.2%/69.7%/80.0%（不可横比旧值 46.7%/49.2%/59.5%），记录见 docs/plan-hitrate-reachable-scope-notes.md；迁移与清理见 docs/plan-facts-storage-and-raw-cleanup-notes.md
 
 <!-- 格式: - [ ] **简短标题** — 描述 — 提出日期 — 可能路由 -->
 <!-- 完成后标记 [x]，发版时清理已完成条目；定期（如每季度）治理重估：确认暂缓原因仍成立、路由目标未悬空 -->

@@ -1,5 +1,5 @@
 /**
- * 统一投影 knowledge/raw 技能分片中的公共练度说明。
+ * 统一投影 knowledge/facts 技能分片中的公共练度说明。
  *
  * 上游解包生成器不在当前仓库内，因此把跨九个分片的公共说明收敛为
  * 一个可重跑、可检查的投影步骤；设施事实正文仍以各分片的版本控制文本为准。
@@ -53,10 +53,10 @@ export function projectText(sourceText) {
 }
 
 export function projectReferenceFragments(root, { write = true } = {}) {
-  const fragmentsDir = join(resolve(root), 'knowledge', 'raw')
+  const fragmentsDir = join(resolve(root), 'knowledge', 'facts')
   const changes = []
   for (const room of REFERENCE_ROOMS) {
-    const relativePath = `knowledge/raw/技能-${room}.md`
+    const relativePath = `knowledge/facts/技能-${room}.md`
     const filePath = join(fragmentsDir, `技能-${room}.md`)
     const sourceText = readFileSync(filePath, 'utf-8')
     const projectedText = projectText(sourceText)
@@ -73,11 +73,11 @@ function main() {
   const root = fileURLToPath(new URL('../../../', import.meta.url))
   const changes = projectReferenceFragments(root, { write: !checkOnly })
   if (checkOnly && changes.length > 0) {
-    throw new Error(`raw 技能分片公共练度说明未与统一投影一致：${changes.join('、')}`)
+    throw new Error(`facts 技能分片公共练度说明未与统一投影一致：${changes.join('、')}`)
   }
   process.stdout.write(checkOnly
-    ? 'raw 技能分片公共练度说明投影校验通过：9 个分片一致\n'
-    : `raw 技能分片公共练度说明已投影：${changes.length} 个分片更新\n`)
+    ? 'facts 技能分片公共练度说明投影校验通过：9 个分片一致\n'
+    : `facts 技能分片公共练度说明已投影：${changes.length} 个分片更新\n`)
 }
 
 const invokedPath = process.argv[1] ? pathToFileURL(resolve(process.argv[1])).href : ''

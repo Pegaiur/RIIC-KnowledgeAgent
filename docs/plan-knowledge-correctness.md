@@ -26,10 +26,10 @@
 | 对象 | 当前职责与状态 |
 |---|---|
 | facts 上游 | arkntools/arknights-toolbox-data 的解包数据为唯一真源；优先复用 RIIC-Web 与 base-vault 已有派生链路，转换实现不另立为数据真源。与本地 11 份输入的映射及差异评估尚未完成 |
-| 本地 facts | 名册、技能分片×9、技能等价组共 11 份仍由 knowledge/raw 供运行时读取；正式位置定为 knowledge/facts，迁移见 ADR-024 与 docs/plan-facts-storage-and-raw-cleanup.md |
+| 本地 facts | 名册、技能分片×9、技能等价组共 11 份位于 knowledge/facts 供运行时读取（2026-09-19 迁出完成，见 ADR-024 与 docs/plan-facts-storage-and-raw-cleanup.md） |
 | 散文 | lejciy/arknights-base-vault 的总结与本地实践理解进入 knowledge/base、knowledge/guides，由人类和 Agent 联合审阅 |
 | 长期规范与流程 | 写作及审阅见 docs/spec/rag-prose-writing.md，术语见 docs/spec/rag-prose-terminology.md；添加、验证与清理执行 skills/corpus-addition/SKILL.md |
-| 临时材料 | raw 只暂存添加过程材料；本计划新批次随交付清理。现存 8 份来源材料由独立迁移计划处置，不能把仍有正式消费者的 11 份输入按临时稿删除 |
+| 临时材料 | raw 只暂存添加过程材料；本计划新批次随交付清理。原 8 份来源材料由独立迁移计划处置，不把已有正式消费者的 11 份输入按临时稿删除 |
 
 既有 facts 检查覆盖结构与关系，check:reference-projection 只检查公共练度说明；prose-links 与离线 read 检查关联和送达。这些检查均不能代替解包映射证据或散文联合审阅。facts 暂缺不自动排除散文，采用时记录依据与关联缺口，不从散文反向补填机械事实。
 
@@ -130,7 +130,7 @@ base 承载机制、通则与资源，guides 承载组合、操作、布局与�
 - ADR-020 — 散文小节关联事实的引用、提示与显式展开。
 - ADR-021 — 当前 facts 输入与出口；位置由 ADR-024 迁移，其他边界保留。
 - ADR-022 — 关联格式 v2、scope 与精确技能／概念引用。
-- ADR-024 — 正式 facts 与 raw 临时材料分离，已决策、待实施。
+- ADR-024 — 正式 facts 与 raw 临时材料分离，迁移已实施（2026-09-19）。
 
 ---
 

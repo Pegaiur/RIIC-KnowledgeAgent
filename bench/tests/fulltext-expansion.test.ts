@@ -122,9 +122,11 @@ describe('原文扩展：命中文件扩展到文档范围（ADR-013 步骤 2）
     expect(item.injectedIds).toHaveLength(1)
   })
 
-  it('raw 目录不在检索范围：manifest 显式登记 raw 条目被拒绝', () => {
+  it('raw 与 facts 目录不在检索范围：manifest 显式登记条目被拒绝', () => {
     expect(() => buildCorpus({ 'raw/名册.md': '# 名册\n\n## 名册节\n\n名册关键词。\n' }))
       .toThrow('语料白名单只允许登记 base/ 与 guides/ 下的文件：raw/名册.md')
+    expect(() => buildCorpus({ 'facts/名册.md': '# 名册\n\n## 名册节\n\n名册关键词。\n' }))
+      .toThrow('语料白名单只允许登记 base/ 与 guides/ 下的文件：facts/名册.md')
   })
 
   it('关闭扩展时退回原块拼接（对照组合），不产生扩展范围', async () => {

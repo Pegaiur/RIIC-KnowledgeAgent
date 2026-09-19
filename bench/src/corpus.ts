@@ -2,7 +2,7 @@
  * 语料加载与分块
  *
  * 输入：corpusDir/corpus-manifest.json 显式登记的 Markdown（仅接受 base/ 与 guides/ 前缀）；未登记文件默认不进入检索。
- * gold 定位目录（loadGoldAnchorChunks）另行叠加显式声明的 raw 机械真源，与检索范围分离。
+ * gold 定位目录（loadGoldAnchorChunks）另行叠加显式声明的 facts 正式输入，与检索范围分离。
  * 散文语料已废弃（2026-09-03，见 docs/notes-corpus-purge.md），facts-first 重建后 facts 模式由 facts_search 取代
  * 输出：按 ## / ### 标题切分的 DocChunk 数组；超长标题节按段落二次切分。
  */
@@ -260,7 +260,7 @@ export function clampTexts(chunks: DocChunk[], maxChars: number): DocChunk[] {
   })
 }
 
-/** 原文扩展候选：manifest 登记的 base 与 guides 语料（ADR-013；raw 不进入检索与阅读目录）。 */
+/** 原文扩展候选：manifest 登记的 base 与 guides 语料（ADR-013；raw 与 facts 均不进入检索与阅读目录）。 */
 export function isFulltextFile(file: string): boolean {
   return file.startsWith('base/') || file.startsWith('guides/')
 }
@@ -273,18 +273,18 @@ export function loadCorpus(corpusRoot: string, maxChars?: number): DocChunk[] {
 }
 
 /**
- * gold 完整定位目录（ADR-021 步骤 6）：manifest 原文分块 + 显式传入的 raw 机械真源分块。
+ * gold 完整定位目录（ADR-021 步骤 6）：manifest 原文分块 + 显式传入的 facts 正式输入分块。
  * 与检索范围分离：只用于解析 gold 定位，不参与排序，也不进入模型原文阅读目录。
- * 只读调用方给出的显式清单，不递归扫描 raw；路径越界、非 raw/、符号链接或缺失都直接失败。
+ * 只读调用方给出的显式清单，不递归扫描目录；路径越界、非 facts/、符号链接或缺失都直接失败。
  */
-export function loadGoldAnchorChunks(corpusRoot: string, rawDocIds: readonly string[]): DocChunk[] {
+export function loadGoldAnchorChunks(corpusRoot: string, factsDocIds: readonly string[]): DocChunk[] {
   const root = resolve(corpusRoot)
-  const rawFiles = resolveRawSourceFiles(root, rawDocIds)
-  return [...loadCorpus(root), ...rawFiles.flatMap((file) => splitChunks(file, root))]
+  const factsFiles = resolveFactsSourceFiles(root, factsDocIds)
+  return [...loadCorpus(root), ...factsFiles.flatMap((file) => splitChunks(file, root))]
 }
 
-/** 校验并解析 raw 真源清单为绝对路径；与 manifest 白名单共用同样的越界与链接检查。 */
-function resolveRawSourceFiles(corpusRoot: string, docIds: readonly string[]): string[] {
+/** 校验并解析 facts 正式输入清单为绝对路径；与 manifest 白名单共用同样的越界与链接检查。 */
+function resolveFactsSourceFiles(corpusRoot: string, docIds: readonly string[]): string[] {
   let physicalRoot: string
   try {
     physicalRoot = realpathSync(corpusRoot)
@@ -303,8 +303,8 @@ function resolveRawSourceFiles(corpusRoot: string, docIds: readonly string[]): s
     if (isAbsolute(docId) || posix.isAbsolute(normalizedPath) || win32.isAbsolute(normalizedPath)) {
       throw new Error(`gold 定位真源必须是相对语料根目录的路径：${docId}`)
     }
-    if (!normalizedPath.startsWith('raw/')) {
-      throw new Error(`gold 定位真源只接受 raw/ 下的文件：${docId}`)
+    if (!normalizedPath.startsWith('facts/')) {
+      throw new Error(`gold 定位真源只接受 facts/ 下的正式输入：${docId}`)
     }
 
     const fullPath = resolve(corpusRoot, ...normalizedPath.split('/'))
@@ -332,8 +332,8 @@ function resolveRawSourceFiles(corpusRoot: string, docIds: readonly string[]): s
       throw new Error(`gold 定位真源不存在：${docId}`)
     }
     const physicalDocId = toDocumentId(relative(physicalRoot, physicalFilePath))
-    if (isOutsideRoot(relative(physicalRoot, physicalFilePath)) || !physicalDocId.startsWith('raw/')) {
-      throw new Error(`gold 定位真源路径越出 raw/ 目录：${docId}`)
+    if (isOutsideRoot(relative(physicalRoot, physicalFilePath)) || !physicalDocId.startsWith('facts/')) {
+      throw new Error(`gold 定位真源路径越出 facts/ 目录：${docId}`)
     }
 
     return fullPath

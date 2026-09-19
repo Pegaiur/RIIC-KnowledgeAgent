@@ -61,11 +61,11 @@ RIIC-KnowledgeAgent/
 ├── tsconfig.json                   ← TypeScript 严格模式（NodeNext/ESM）
 ├── knowledge/                      ← 明日方舟基建知识库（正式 facts 与人工散文分开维护）
 │   ├── AGENTS.md                   ← 查询 Agent 唯一人工指令源（所有检索模式注入）
-│   ├── corpus-manifest.json        ← 检索白名单真源（显式登记可检索语料；raw 默认不进入）
+│   ├── corpus-manifest.json        ← 检索白名单真源（显式登记可检索语料；raw 与 facts 默认不进入）
 │   ├── base/                       ← 机制基线语料（机制-*.md / 基建物流链.md）
 │   ├── guides/                     ← 已审定的 RAG 玩家散文（组合 / 新手 / 散件 / 类别 / 歧义）
-│   ├── facts/                      ← 规划的正式 facts 输入位置，迁移尚未实施（见 ADR-024）
-│   └── raw/                        ← 语料添加临时落点，完成后清理；现有 11 份 facts 输入待迁出
+│   ├── facts/                      ← 正式 facts 输入（名册 / 技能分片 / 技能等价组；单一维护位置，见 ADR-024）
+│   └── raw/                        ← 语料添加临时落点，完成后清理；不存正式输入
 ├── bench/                          ← 查询输出成本基准（简化版 Agent）
 │   ├── src/                        ← provider / retriever / agent / runner / report / cli
 │   ├── tests/                      ← vitest 单元测试

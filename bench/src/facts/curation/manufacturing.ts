@@ -31,7 +31,7 @@ export const MANUFACTURING_CURATIONS: CurationBatch = {
       operatorId: '多萝西',
       notes: '本卡属「莱茵科技」：重要增强成员为淬羽赫默、娜斯提（均精二）；其他持莱茵科技类技能的成员按解锁档加入；莱茵生命阵营成员不等同于本组成员。',
     },
-    // 来源：knowledge/guides/组合/制造站组合.md「水月标准化组：技能成员条件与中枢分工」；knowledge/raw/技能-制造站.md「水月 ☆6 · 特种」
+    // 来源：knowledge/guides/组合/制造站组合.md「水月标准化组：技能成员条件与中枢分工」；knowledge/facts/技能-制造站.md「水月 ☆6 · 特种」
     {
       operatorId: '水月',
       notes: '水月标准化组以水月精二为核心；同一制造站另配两名已解锁标准化类技能的干员，与水月共三人。可用 facts_search 搜索「标准化类技能」选择适配成员，按各自技能解锁条件核对。',

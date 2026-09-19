@@ -2,13 +2,13 @@
  * RAG + facts 20 题基准的跨文件完整性校验。
  *
  * questions、gold、spec 是同一份评测定义的三个投影：题号必须一一对应。
- * gold 在「完整定位目录」解析——manifest 登记的 base/guides 原文分块 + facts 加载器声明的 raw 机械真源（ADR-021 步骤 6）；
- * 命中文档不再等价于属于 manifest：raw 真源可定位但被检索范围排除，检索指标按 hitrate 的 excluded 口径保留分母。
+ * gold 在「完整定位目录」解析——manifest 登记的 base/guides 原文分块 + facts 声明的正式输入（ADR-021 步骤 6）；
+ * 命中文档不再等价于属于 manifest：facts 正式输入可定位但被检索范围排除，hitrate 按 ADR-025 排除这些键的 recall 分母与块的 nDCG 理想集合贡献，并单独计数。
  */
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { loadCorpus, loadCorpusManifest, loadGoldAnchorChunks } from './corpus.js'
-import { RAW_MACHINE_SOURCE_DOC_IDS } from './facts/references.js'
+import { FACTS_SOURCE_DOC_IDS } from './facts/references.js'
 import { checkGold, loadGold, type GoldMap } from './hitrate.js'
 import type { BenchQuery } from './types.js'
 import { readSnapshot } from './snapshot.js'
@@ -25,7 +25,7 @@ export interface BenchmarkIntegritySummary {
   corpusFileCount: number
   /** manifest 原文分块数（检索范围） */
   chunkCount: number
-  /** gold 完整定位目录文件数（manifest + raw 机械真源） */
+  /** gold 完整定位目录文件数（manifest + facts 正式输入） */
   anchorFileCount: number
   /** gold 完整定位目录分块数 */
   anchorChunkCount: number
@@ -113,9 +113,9 @@ export function validateBenchmarkIntegrity(root: string): BenchmarkIntegritySumm
   const corpusRoot = join(root, 'knowledge')
   const manifest = new Set(loadCorpusManifest(corpusRoot))
   const chunks = loadCorpus(corpusRoot)
-  // gold 先在完整定位目录解析：manifest 原文分块 + facts 声明的 raw 机械真源（ADR-021 步骤 6）。
-  // raw 真源可定位但不在检索范围内，其命中由 hitrate 的 excluded 口径保留 recall 分母。
-  const anchorChunks = loadGoldAnchorChunks(corpusRoot, RAW_MACHINE_SOURCE_DOC_IDS)
+  // gold 先在完整定位目录解析：manifest 原文分块 + facts 声明的正式输入（ADR-021 步骤 6）。
+  // facts 正式输入可定位但不在检索范围内，hitrate 按 ADR-025 只对可达键与块计量，排除项单独计数。
+  const anchorChunks = loadGoldAnchorChunks(corpusRoot, FACTS_SOURCE_DOC_IDS)
   const anchorFiles = new Set(anchorChunks.map((chunk) => chunk.file))
   const anchorKeys = new Set(anchorChunks.map((chunk) => `${chunk.file}#${chunk.heading}`))
   for (const [queryId, entry] of Object.entries(gold)) {

@@ -113,7 +113,7 @@ describe('collectTermIssues：导入前术语预检', () => {
   })
 })
 
-describe('parseSkillNames：raw 技能分片的技能名提取', () => {
+describe('parseSkillNames：facts 技能分片的技能名提取', () => {
   it('提取技能行中的所有「」名称，忽略公共说明与示例行', () => {
     const raw = [
       '<!-- 头部 -->',
@@ -200,11 +200,11 @@ describe('collectFactCandidates：命中本地对象候选', () => {
   })
 })
 
-describe('loadFactCatalog：raw 对照集读取', () => {
+describe('loadFactCatalog：facts 对照集读取', () => {
   it('读取名册标准名与指定设施分片的技能名', () => {
     withRoot((root) => {
-      writeFile(root, 'knowledge/raw/名册.md', '# 干员名册\n\n- 凯尔希 | ☆6 | 医疗 | 加工站\n')
-      writeFile(root, 'knowledge/raw/技能-加工站.md', '# 加工站基建技能\n\n- **初始解锁**「未知技术」：说明\n')
+      writeFile(root, 'knowledge/facts/名册.md', '# 干员名册\n\n- 凯尔希 | ☆6 | 医疗 | 加工站\n')
+      writeFile(root, 'knowledge/facts/技能-加工站.md', '# 加工站基建技能\n\n- **初始解锁**「未知技术」：说明\n')
 
       expect(loadFactCatalog(root, ['加工站'])).toEqual({
         rosterNames: ['凯尔希'],
@@ -221,7 +221,7 @@ describe('loadFactCatalog：raw 对照集读取', () => {
 
   it('指定设施的分片缺失时报中文错误', () => {
     withRoot((root) => {
-      writeFile(root, 'knowledge/raw/名册.md', '# 干员名册\n\n- 凯尔希 | ☆6 | 医疗 | 加工站\n')
+      writeFile(root, 'knowledge/facts/名册.md', '# 干员名册\n\n- 凯尔希 | ☆6 | 医疗 | 加工站\n')
       expect(() => loadFactCatalog(root, ['训练室'])).toThrow(/技能分片不存在/)
     })
   })
@@ -320,8 +320,8 @@ describe('external-corpus-scan CLI', () => {
   })
 
   function prepare(root) {
-    writeFile(root, 'knowledge/raw/名册.md', '# 干员名册\n\n- 凯尔希 | ☆6 | 医疗 | 加工站\n')
-    writeFile(root, 'knowledge/raw/技能-加工站.md', '# 加工站基建技能\n\n- **初始解锁**「未知技术」：副产品的产出概率提升70%\n')
+    writeFile(root, 'knowledge/facts/名册.md', '# 干员名册\n\n- 凯尔希 | ☆6 | 医疗 | 加工站\n')
+    writeFile(root, 'knowledge/facts/技能-加工站.md', '# 加工站基建技能\n\n- **初始解锁**「未知技术」：副产品的产出概率提升70%\n')
     return writeFile(root, 'dev-temp/work/外部稿/加工站机制.md', [
       '# 加工站机制',
       '',

@@ -10,7 +10,7 @@ import {
 } from '../src/facts/normalized.js'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '../..')
-const nameListText = readFileSync(join(ROOT, 'knowledge/raw/名册.md'), 'utf-8')
+const nameListText = readFileSync(join(ROOT, 'knowledge/facts/名册.md'), 'utf-8')
 
 function roster(...rows: string[]): OperatorDefinition[] {
   return parseOperatorRoster(rows.join('\n'))
@@ -112,7 +112,7 @@ describe('parseSkillFragment：技能分片规范化', () => {
   })
 
   it('当前制造站分片的 92 个干员小节和 146 条 grant 全部可消费', () => {
-    const source = readFileSync(join(ROOT, 'knowledge/raw/技能-制造站.md'), 'utf-8')
+    const source = readFileSync(join(ROOT, 'knowledge/facts/技能-制造站.md'), 'utf-8')
     const parsed = parseSkillFragment('制造站', source, parseOperatorRoster(nameListText))
     expect(parsed.stats).toEqual({ operatorSections: 92, grants: 146, indexEntries: 112 })
     expect(new Set(parsed.grants.map((grant) => grant.id)).size).toBe(146)
@@ -123,7 +123,7 @@ describe('parseSkillFragment：技能分片规范化', () => {
     ['发电站', '技能-发电站.md', '协律', '澎湃紊流'],
     ['训练室', '技能-训练室.md', '焰影苇草', '红龙之血'],
   ])('%s 的同名升级技能按效果区分并闭合替换边', (room, file, operatorId, skillName) => {
-    const source = readFileSync(join(ROOT, 'knowledge/raw', file), 'utf-8')
+    const source = readFileSync(join(ROOT, 'knowledge/facts', file), 'utf-8')
     const parsed = parseSkillFragment(room, source, parseOperatorRoster(nameListText))
     const grants = parsed.grants.filter((grant) => grant.operatorId === operatorId)
     const named = grants.filter((grant) => parsed.skillFacts.find((fact) => fact.id === grant.skillId)?.name === skillName)

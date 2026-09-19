@@ -9,12 +9,12 @@
  *   - 大纲：外部稿 1–3 级标题与行号，供选材、拆分与落点判断；front-matter 只在文件首行识别，正文的分隔线不参与。
  *   - 术语预检：命中本库禁词表（与合并门禁同表，scripts/lib/prose-terms.mjs）的位置与规范写法；
  *     另列门禁漏检的导入期提示（如带空格的“精 2”），只提示改写，不进入门禁。
- *   - 命中本地对象，待核对：外部稿中字面命中的技能名（对照 knowledge/raw/技能-<设施>.md）与干员标准名
- *     （始终对照 knowledge/raw/名册.md），按源行共享完整上下文，候选分别保留类型。表格行携带列名，省去对齐填充。字面命中只提示可能的重复劳动，
+ *   - 命中本地对象，待核对：外部稿中字面命中的技能名（对照 knowledge/facts/技能-<设施>.md）与干员标准名
+ *     （始终对照 knowledge/facts/名册.md），按源行共享完整上下文，候选分别保留类型。表格行携带列名，省去对齐填充。字面命中只提示可能的重复劳动，
  *     不代表该段数值、条件或关系已由 facts 覆盖，身份与上下文仍需人工核对。未指定设施时只跳过技能名核对。
  *   - 边界：长名命中不重复算其内部短名（短名在别处独立出现仍提示）；单字名不按长度一刀切排除——单字 ASCII 名按
  *     词边界匹配，中文单字名要求两侧都不是中日韩字符，均标为低置信，仍可能误报。
- * 只读边界：仅读取源文件与 raw 对照集，结果只输出终端；--json 也不写盘、不改正文。
+ * 只读边界：仅读取源文件与 facts 对照集，结果只输出终端；--json 也不写盘、不改正文。
  */
 
 import { existsSync, readFileSync } from 'node:fs'
@@ -117,7 +117,7 @@ export function collectTermIssues(text) {
 }
 
 /**
- * 从 raw 技能分片中提取技能名：只取技能行（以“- ”开头）中「」内的名称，去重保序。
+ * 从 facts 技能分片中提取技能名：只取技能行（以“- ”开头）中「」内的名称，去重保序。
  * 公共说明与“例：…”一类示例行不以“- ”开头，天然排除。
  * @param {string} rawText
  * @returns {string[]}
@@ -272,13 +272,13 @@ export function collectFactCandidates(text, { rosterNames = [], skillNames = [] 
 }
 
 /**
- * 读取 raw 对照集：名册标准名 + 指定设施分片的技能名。
+ * 读取 facts 对照集：名册标准名 + 指定设施分片的技能名。
  * 名册或指定分片缺失时报中文错误，不静默降级为“无命中”。
  * @param {string} root 仓库根
  * @param {string[]} rooms 设施名（可为空：只核对干员名）
  */
 export function loadFactCatalog(root, rooms = []) {
-  const rosterRelative = 'knowledge/raw/名册.md'
+  const rosterRelative = 'knowledge/facts/名册.md'
   const rosterPath = join(root, ...rosterRelative.split('/'))
   if (!existsSync(rosterPath)) {
     throw new Error(`名册不存在：${rosterRelative}`)
@@ -292,7 +292,7 @@ export function loadFactCatalog(root, rooms = []) {
   const skillNames = []
   const seen = new Set()
   for (const room of rooms) {
-    const roomRelative = `knowledge/raw/技能-${room}.md`
+    const roomRelative = `knowledge/facts/技能-${room}.md`
     const roomPath = join(root, ...roomRelative.split('/'))
     if (!existsSync(roomPath)) {
       throw new Error(`技能分片不存在：${roomRelative}（--room 请填设施名，如 加工站）`)

@@ -35,7 +35,7 @@
 - **证据条件先满足**：独立非 exp 工程用途的正式基准证据原件须在共享提交已可复核且相关工作已停止后清理；快照去留遵循文档生命周期规则。用途判断不替代现有清理器的保护检查，被跳过的对象说明原因，不绕过检查删除。
 - **收尾不制造新存量**：统计和预览只输出终端，确实准备执行才保存清单，不要求每次任务结束都生成清单。清单放在所有候选目标之外，成功执行自删除，部分失败保留供重试；放弃执行时只删除清单本身，不触碰目标。收尾结果简述已清理范围、尚未处理的原因及必要交接，不另存清理报告。
 
-语料添加中的 knowledge/raw 临时稿按 skills/corpus-addition/SKILL.md 随批次结束清理，已跟踪文件按普通版本控制删除；不交给仅管理 dev-temp 的 tooling tmp clean，也不为此扩大其目录权限。现有 11 份 facts 输入须先按 docs/plan-facts-storage-and-raw-cleanup.md 迁出，再落实 raw 的纯临时职责。
+语料添加中的 knowledge/raw 临时稿按 skills/corpus-addition/SKILL.md 随批次结束清理，已跟踪文件按普通版本控制删除；不交给仅管理 dev-temp 的 tooling tmp clean，也不为此扩大其目录权限。正式 facts 输入已按 ADR-024 迁至 knowledge/facts，raw 只保留进行中批次的来源稿与加工中间稿。
 
 ## lib 模块表
 
@@ -70,7 +70,7 @@
 
 - `tasks/git/head-diff.mjs` — 多 lib 基元组合范例（git + process + dev-workspace + output）
 - `tasks/git/show-file.mjs` — 只读边界 + 核心逻辑可测（runShowFile 注入 root）范例
-- `tasks/knowledge/update-reference-projection.mjs` — knowledge/raw 技能分片公共练度说明的统一投影与检查
+- `tasks/knowledge/update-reference-projection.mjs` — knowledge/facts 技能分片公共练度说明的统一投影与检查
 - `tasks/knowledge/external-corpus-scan.mjs` — 只读预检 + 术语表下沉 lib 复用（prose-terms）范例；按源行共享候选上下文，表格行带列名，JSON 使用 factCandidateGroups
 - `tasks/release/archive-plan.mjs` — 文档状态机机械实现 + dry-run/--apply 范例
 - `tasks/release/changelog.mjs` — 同源双视图 renderer（人类分类分节 / Agent 限行单行）+ 追加写防重范例

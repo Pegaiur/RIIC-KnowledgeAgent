@@ -9,7 +9,7 @@ description: 添加或导入知识库语料，编排选材、来源记录、fact
 ## 执行依据
 
 - 编写或审阅散文前，必须读取并遵循 `docs/spec/rag-prose-writing.md` 与 `docs/spec/rag-prose-terminology.md`；来源分工、写作要求、术语和联合审阅标准在这两份 spec 唯一维护。
-- 正式 facts 与 raw 的职责见 `docs/adr/ADR-024-facts-storage-and-raw-lifecycle.md`。涉及输入路径或清理时，先按对应实施计划和实际消费者确认当前状态，不把规划中的迁移当作已完成。
+- 正式 facts 与 raw 的职责见 `docs/adr/ADR-024-facts-storage-and-raw-lifecycle.md`：正式 facts 输入位于 `knowledge/facts/`（名册、技能分片、技能等价组），raw 只暂存本批来源稿与加工中间稿。涉及输入路径或清理时，按对应实施计划和实际消费者确认当前状态。
 - 脚本、工作副本与开发临时产物按 `scripts/INDEX.md` 处理；代码与测试改动遵循 `docs/rules/testing.md`，计划与记录遵循 `docs/rules/document-lifecycle.md`。
 
 ## 1. 确定本批范围
