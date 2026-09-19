@@ -57,7 +57,7 @@ knowledge/guides/类别.md、knowledge/guides/歧义.md 为直出层，保留原
 
 ### 示例一：成员与设施分工
 
-来源：knowledge/guides/贸易站组合.md「格拉斯哥帮组：同站成员计数与中枢协作」。
+来源：knowledge/guides/组合/贸易站组合.md「格拉斯哥帮组：同站成员计数与中枢协作」。
 
 > 摩根与推进之王进驻同一座贸易站，戴菲恩进驻控制中枢。
 
@@ -65,7 +65,7 @@ knowledge/guides/类别.md、knowledge/guides/歧义.md 为直出层，保留原
 
 ### 示例二：练度与技能成员条件
 
-来源：knowledge/guides/制造站组合.md「水月标准化组：技能成员条件与中枢分工」。
+来源：knowledge/guides/组合/制造站组合.md「水月标准化组：技能成员条件与中枢分工」。
 
 > 核心：水月精二。
 >
@@ -75,7 +75,7 @@ knowledge/guides/类别.md、knowledge/guides/歧义.md 为直出层，保留原
 
 ### 示例三：缺人后的剩余作用
 
-来源：knowledge/guides/贸易站组合.md「深巡＋乌尔比安：贸易站与基建挂件分工」。
+来源：knowledge/guides/组合/贸易站组合.md「深巡＋乌尔比安：贸易站与基建挂件分工」。
 
 > 缺少乌尔比安时，深巡按自身技能判断。
 

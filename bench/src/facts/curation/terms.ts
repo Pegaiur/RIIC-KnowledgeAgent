@@ -31,9 +31,9 @@ function combo(
   }
 }
 
-const trade = 'knowledge/guides/贸易站组合.md'
-const manufacturing = 'knowledge/guides/制造站组合.md'
-const crossFacility = 'knowledge/guides/跨设施组合.md'
+const trade = 'knowledge/guides/组合/贸易站组合.md'
+const manufacturing = 'knowledge/guides/组合/制造站组合.md'
+const crossFacility = 'knowledge/guides/组合/跨设施组合.md'
 const ambiguity = 'knowledge/guides/歧义.md'
 const substringSection = '一、子串包含对（31 组，自动生成）'
 

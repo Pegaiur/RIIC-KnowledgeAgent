@@ -29,15 +29,15 @@ describe('真实 knowledge 语料白名单', () => {
     expect(actual.has('base/机制-基建总览.md')).toBe(true)
     expect(actual.has('guides/类别.md')).toBe(true)
     expect(actual.has('guides/歧义.md')).toBe(true)
-    expect(actual.has('guides/贸易站组合.md')).toBe(true)
-    expect(actual.has('guides/新手培养.md')).toBe(true)
+    expect(actual.has('guides/组合/贸易站组合.md')).toBe(true)
+    expect(actual.has('guides/用人/新手培养.md')).toBe(true)
 
     const baseChunks = loadCorpus(KNOWLEDGE_ROOT).filter((chunk) => chunk.file.startsWith('base/'))
     expect(baseChunks.every((chunk) => chunk.anchor && chunk.anchor.length > 0)).toBe(true)
     expect(baseChunks.some((chunk) => chunk.heading === '公式与规则')).toBe(false)
 
     const unlockText = baseChunks
-      .filter((chunk) => chunk.file === 'base/机制-技能解锁与练度.md')
+      .filter((chunk) => chunk.file === 'base/通则/机制-技能解锁与练度.md')
       .map((chunk) => chunk.text)
       .join('\n')
     expect(unlockText).toContain('一星、二星')

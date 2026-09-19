@@ -2,7 +2,7 @@
   "version": 2,
   "links": [
     {
-      "file": "base/机制-后勤技能结算.md",
+      "file": "base/通则/机制-后勤技能结算.md",
       "headingPath": ["后勤技能结算机制", "订单上限、订单差值与他人效率的转化"],
       "scope": "section",
       "objects": [
@@ -13,7 +13,7 @@
       ]
     },
     {
-      "file": "base/机制-后勤技能结算.md",
+      "file": "base/通则/机制-后勤技能结算.md",
       "headingPath": ["后勤技能结算机制", "效率归零与自身心情清除的作用范围"],
       "scope": "section",
       "objects": [
@@ -23,7 +23,7 @@
       ]
     },
     {
-      "file": "guides/高效率散件.md",
+      "file": "guides/用人/高效率散件.md",
       "headingPath": ["高效率散件", "贸易站散件", "贸易散件的工作人数、会客室与宿舍条件"],
       "scope": "section",
       "objects": [
@@ -33,7 +33,7 @@
       ]
     },
     {
-      "file": "guides/高效率散件.md",
+      "file": "guides/用人/高效率散件.md",
       "headingPath": ["高效率散件", "办公室联络散件"],
       "scope": "section",
       "objects": [
@@ -44,7 +44,7 @@
       ]
     },
     {
-      "file": "guides/高效率散件.md",
+      "file": "guides/用人/高效率散件.md",
       "headingPath": ["高效率散件", "办公室联络散件", "联络速度与额外心情消耗的取舍"],
       "scope": "section",
       "objects": [
@@ -54,7 +54,7 @@
       ]
     },
     {
-      "file": "guides/高效率散件.md",
+      "file": "guides/用人/高效率散件.md",
       "headingPath": ["高效率散件", "办公室联络散件", "精英干员设施计数与联络加成"],
       "scope": "section",
       "objects": [
@@ -62,7 +62,7 @@
       ]
     },
     {
-      "file": "guides/高效率散件.md",
+      "file": "guides/用人/高效率散件.md",
       "headingPath": ["高效率散件", "办公室联络散件", "絮雨的记忆碎片与感知信息转换"],
       "scope": "section",
       "objects": [
@@ -71,7 +71,7 @@
       ]
     },
     {
-      "file": "guides/高效率散件.md",
+      "file": "guides/用人/高效率散件.md",
       "headingPath": ["高效率散件", "办公室联络散件", "焰狐龙梓兰的中枢岗位与办公室加成"],
       "scope": "section",
       "objects": [
@@ -79,7 +79,7 @@
       ]
     },
     {
-      "file": "guides/高效率散件.md",
+      "file": "guides/用人/高效率散件.md",
       "headingPath": ["高效率散件", "赤金散件的暖机、技能成员与贸易站数量条件"],
       "scope": "section",
       "objects": [
@@ -91,7 +91,7 @@
       ]
     },
     {
-      "file": "guides/高效率散件.md",
+      "file": "guides/用人/高效率散件.md",
       "headingPath": ["高效率散件", "通用制造散件的他人生产力与工程机器人条件"],
       "scope": "section",
       "objects": [
@@ -101,7 +101,7 @@
       ]
     },
     {
-      "file": "guides/高效率散件.md",
+      "file": "guides/用人/高效率散件.md",
       "headingPath": ["高效率散件", "经验散件的生产力、心情代价与队友条件"],
       "scope": "section",
       "objects": [
@@ -113,7 +113,7 @@
       ]
     },
     {
-      "file": "guides/高效率散件.md",
+      "file": "guides/用人/高效率散件.md",
       "headingPath": ["高效率散件", "源石碎片制造（搓玉）的名单、练度与布局前提"],
       "scope": "section",
       "objects": [
@@ -127,7 +127,7 @@
       ]
     },
     {
-      "file": "guides/贸易站组合.md",
+      "file": "guides/组合/贸易站组合.md",
       "headingPath": ["贸易站组合", "高效率贸易组合", "龙舌兰组：效率归零、裁缝概率与订单报酬"],
       "scope": "section",
       "objects": [
@@ -141,7 +141,7 @@
       ]
     },
     {
-      "file": "guides/贸易站组合.md",
+      "file": "guides/组合/贸易站组合.md",
       "headingPath": ["贸易站组合", "高效率贸易组合", "能天使组：双核心同站与成员边界"],
       "scope": "section",
       "objects": [
@@ -154,7 +154,7 @@
       ]
     },
     {
-      "file": "guides/贸易站组合.md",
+      "file": "guides/组合/贸易站组合.md",
       "headingPath": ["贸易站组合", "高效率贸易组合", "叙拉古：中枢与贸易站分工"],
       "scope": "section",
       "objects": [
@@ -166,7 +166,7 @@
       ]
     },
     {
-      "file": "guides/贸易站组合.md",
+      "file": "guides/组合/贸易站组合.md",
       "headingPath": ["贸易站组合", "高效率贸易组合", "喀兰贸易组：跨设施协作与订单上限适配"],
       "scope": "section",
       "objects": [
@@ -182,7 +182,7 @@
       ]
     },
     {
-      "file": "guides/贸易站组合.md",
+      "file": "guides/组合/贸易站组合.md",
       "headingPath": ["贸易站组合", "高效率贸易组合", "格拉斯哥帮组：同站成员计数与中枢协作"],
       "scope": "section",
       "objects": [
@@ -193,7 +193,7 @@
       ]
     },
     {
-      "file": "guides/贸易站组合.md",
+      "file": "guides/组合/贸易站组合.md",
       "headingPath": ["贸易站组合", "高效率贸易组合", "鸿雪杜林组：贸易核心与杜林挂件"],
       "scope": "section",
       "objects": [
@@ -205,7 +205,7 @@
       ]
     },
     {
-      "file": "guides/贸易站组合.md",
+      "file": "guides/组合/贸易站组合.md",
       "headingPath": ["贸易站组合", "高效率贸易组合", "人间烟火组：跨设施资源链与贸易用途"],
       "scope": "section",
       "objects": [
@@ -224,7 +224,7 @@
       ]
     },
     {
-      "file": "guides/贸易站组合.md",
+      "file": "guides/组合/贸易站组合.md",
       "headingPath": ["贸易站组合", "低效率或过渡贸易组合", "企鹅物流：同站协作与能天使的取舍"],
       "scope": "section",
       "objects": [
@@ -235,7 +235,7 @@
       ]
     },
     {
-      "file": "guides/贸易站组合.md",
+      "file": "guides/组合/贸易站组合.md",
       "headingPath": ["贸易站组合", "低效率或过渡贸易组合", "深巡＋乌尔比安：贸易站与基建挂件分工"],
       "scope": "section",
       "objects": [
@@ -243,7 +243,7 @@
       ]
     },
     {
-      "file": "guides/制造站组合.md",
+      "file": "guides/组合/制造站组合.md",
       "headingPath": ["制造站组合", "赤金制造组合", "自动化组：第三人、发电站协作与归零范围"],
       "scope": "section",
       "objects": [
@@ -259,7 +259,7 @@
       ]
     },
     {
-      "file": "guides/制造站组合.md",
+      "file": "guides/组合/制造站组合.md",
       "headingPath": ["制造站组合", "赤金制造组合", "赤金工艺组：同站技能成员与贵金属配方"],
       "scope": "section",
       "objects": [
@@ -274,7 +274,7 @@
       ]
     },
     {
-      "file": "guides/制造站组合.md",
+      "file": "guides/组合/制造站组合.md",
       "headingPath": ["制造站组合", "作战记录制造组合", "红云组：仓库容量转化与成员分支"],
       "scope": "section",
       "objects": [
@@ -293,7 +293,7 @@
       ]
     },
     {
-      "file": "guides/制造站组合.md",
+      "file": "guides/组合/制造站组合.md",
       "headingPath": ["制造站组合", "作战记录制造组合", "红松骑士团组：中枢与经验制造分工"],
       "scope": "section",
       "objects": [
@@ -308,7 +308,7 @@
       ]
     },
     {
-      "file": "guides/制造站组合.md",
+      "file": "guides/组合/制造站组合.md",
       "headingPath": ["制造站组合", "作战记录制造组合", "怒潮凛冬：经验散件与指定队友条件"],
       "scope": "section",
       "objects": [
@@ -319,13 +319,13 @@
       ]
     },
     {
-      "file": "guides/制造站组合.md",
+      "file": "guides/组合/制造站组合.md",
       "headingPath": ["制造站组合", "通用制造组合", "深海猎人组：中枢协作、制造席位与心情代价"],
       "scope": "section",
       "objects": [
         { "kind": "skill", "operator": "歌蕾蒂娅", "room": "控制中枢", "name": "集群狩猎·β" },
         { "kind": "skill", "operator": "歌蕾蒂娅", "room": "控制中枢", "name": "潮汐守望" },
-        { "kind": "concept", "file": "base/机制-制造站.md", "headingPath": ["制造站机制", "制造站等级对应的工位、仓库容量与耗电"] },
+        { "kind": "concept", "file": "base/设施/机制-制造站.md", "headingPath": ["制造站机制", "制造站等级对应的工位、仓库容量与耗电"] },
         { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "干员组（28 条）"], "term": "深海猎人" },
         { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "规则说明（25 条）"], "term": "特殊加成", "termOccurrence": 1 },
         { "kind": "concept", "file": "guides/类别.md", "headingPath": ["官方术语与类别", "规则说明（25 条）"], "term": "特殊加成", "termOccurrence": 2 },
@@ -334,7 +334,7 @@
       ]
     },
     {
-      "file": "guides/制造站组合.md",
+      "file": "guides/组合/制造站组合.md",
       "headingPath": ["制造站组合", "通用制造组合", "泡泡组：同站核心与仓库容量转化"],
       "scope": "section",
       "objects": [
@@ -345,7 +345,7 @@
       ]
     },
     {
-      "file": "guides/制造站组合.md",
+      "file": "guides/组合/制造站组合.md",
       "headingPath": ["制造站组合", "通用制造组合", "水月标准化组：技能成员条件与中枢分工"],
       "scope": "section",
       "objects": [
@@ -367,7 +367,7 @@
       ]
     },
     {
-      "file": "guides/制造站组合.md",
+      "file": "guides/组合/制造站组合.md",
       "headingPath": ["制造站组合", "通用制造组合", "莱茵科技：制造技能协作与阵营计数边界"],
       "scope": "section",
       "objects": [
@@ -381,7 +381,7 @@
       ]
     },
     {
-      "file": "guides/跨设施组合.md",
+      "file": "guides/组合/跨设施组合.md",
       "headingPath": ["跨设施组合", "感知信息组：资源用途与跨设施分工"],
       "scope": "section",
       "objects": [
@@ -407,7 +407,7 @@
       ]
     },
     {
-      "file": "guides/跨设施组合.md",
+      "file": "guides/组合/跨设施组合.md",
       "headingPath": ["跨设施组合", "龙门中枢组：中枢成员协作与制造站加成"],
       "scope": "section",
       "objects": [
@@ -417,7 +417,7 @@
       ]
     },
     {
-      "file": "guides/跨设施组合.md",
+      "file": "guides/组合/跨设施组合.md",
       "headingPath": ["跨设施组合", "凯尔希·思衡托与精英干员挂件：办公室联络与设施计数"],
       "scope": "section",
       "objects": [
@@ -428,7 +428,7 @@
       ]
     },
     {
-      "file": "guides/跨设施组合.md",
+      "file": "guides/组合/跨设施组合.md",
       "headingPath": ["跨设施组合", "怪猎中枢：木天蓼分工、练度与缺人后的剩余效果"],
       "scope": "section",
       "objects": [
@@ -443,7 +443,7 @@
       ]
     },
     {
-      "file": "guides/跨设施组合.md",
+      "file": "guides/组合/跨设施组合.md",
       "headingPath": ["跨设施组合", "彩虹小队：中枢心情恢复与成员计数"],
       "scope": "section",
       "objects": [
@@ -456,7 +456,7 @@
       ]
     },
     {
-      "file": "guides/跨设施组合.md",
+      "file": "guides/组合/跨设施组合.md",
       "headingPath": ["跨设施组合", "Mujica 中枢组：热情值、贸易与赤金加成"],
       "scope": "section",
       "objects": [
@@ -477,7 +477,7 @@
       ]
     },
     {
-      "file": "guides/跨设施组合.md",
+      "file": "guides/组合/跨设施组合.md",
       "headingPath": ["跨设施组合", "维什戴尔组：巴别塔系心情恢复与订单上限"],
       "scope": "section",
       "objects": [
@@ -495,7 +495,7 @@
       ]
     },
     {
-      "file": "guides/跨设施组合.md",
+      "file": "guides/组合/跨设施组合.md",
       "headingPath": ["跨设施组合", "魔物料理体系：宿舍等级资源链与三个消费端"],
       "scope": "section",
       "objects": [
@@ -512,7 +512,7 @@
       ]
     },
     {
-      "file": "guides/跨设施组合.md",
+      "file": "guides/组合/跨设施组合.md",
       "headingPath": ["跨设施组合", "莱茵生命阵营：制造与发电双终端与阵营计数"],
       "scope": "section",
       "objects": [
@@ -524,7 +524,7 @@
       ]
     },
     {
-      "file": "guides/贸易站组合.md",
+      "file": "guides/组合/贸易站组合.md",
       "headingPath": ["贸易站组合", "高效率贸易组合", "新约能天使组：拉特兰计数与第三席"],
       "scope": "section",
       "objects": [
@@ -538,7 +538,7 @@
       ]
     },
     {
-      "file": "guides/贸易站组合.md",
+      "file": "guides/组合/贸易站组合.md",
       "headingPath": ["贸易站组合", "高效率贸易组合", "泡影国狩猎小队：双核心效率与订单上限"],
       "scope": "section",
       "objects": [
@@ -594,7 +594,7 @@
       ]
     },
     {
-      "file": "guides/贸易站组合.md",
+      "file": "guides/组合/贸易站组合.md",
       "headingPath": ["贸易站组合", "但书、可露希尔的核心散件定位", "但书：违约订单与同站加速"],
       "scope": "section",
       "objects": [
@@ -604,7 +604,7 @@
       ]
     },
     {
-      "file": "guides/贸易站组合.md",
+      "file": "guides/组合/贸易站组合.md",
       "headingPath": ["贸易站组合", "但书、可露希尔的核心散件定位", "可露希尔：固定特别订单与队友选择"],
       "scope": "section",
       "objects": [
@@ -612,7 +612,7 @@
       ]
     },
     {
-      "file": "base/机制-贸易站.md",
+      "file": "base/设施/机制-贸易站.md",
       "headingPath": ["贸易站机制", "特殊订单的耗时、报酬与属性继承"],
       "scope": "section",
       "objects": [
@@ -625,7 +625,7 @@
       ]
     },
     {
-      "file": "base/机制-贸易站.md",
+      "file": "base/设施/机制-贸易站.md",
       "headingPath": ["贸易站机制", "赤金订单概率与高品质订单条件"],
       "scope": "section",
       "objects": [
@@ -635,7 +635,7 @@
       ]
     },
     {
-      "file": "base/机制-制造站.md",
+      "file": "base/设施/机制-制造站.md",
       "headingPath": ["制造站机制", "自动化与流程优化的归零范围"],
       "scope": "section",
       "objects": [
@@ -649,7 +649,7 @@
       ]
     },
     {
-      "file": "base/机制-制造站.md",
+      "file": "base/设施/机制-制造站.md",
       "headingPath": ["制造站机制", "配合意识的读取范围与上限"],
       "scope": "section",
       "objects": [
@@ -659,7 +659,7 @@
       ]
     },
     {
-      "file": "base/机制-控制中枢.md",
+      "file": "base/设施/机制-控制中枢.md",
       "headingPath": ["控制中枢机制", "权变的设施计数与分支切换"],
       "scope": "section",
       "objects": [
@@ -671,7 +671,7 @@
       ]
     },
     {
-      "file": "base/机制-控制中枢.md",
+      "file": "base/设施/机制-控制中枢.md",
       "headingPath": ["控制中枢机制", "热情值与贵金属配方加成"],
       "scope": "section",
       "objects": [
@@ -686,7 +686,7 @@
       ]
     },
     {
-      "file": "base/机制-办公室.md",
+      "file": "base/设施/机制-办公室.md",
       "headingPath": ["办公室机制", "感染力的联络阈值与中枢加成"],
       "scope": "section",
       "objects": [
@@ -697,7 +697,7 @@
       ]
     },
     {
-      "file": "base/机制-宿舍.md",
+      "file": "base/设施/机制-宿舍.md",
       "headingPath": ["宿舍机制", "菲亚梅塔的固定恢复与心情互换"],
       "scope": "section",
       "objects": [
@@ -706,7 +706,7 @@
       ]
     },
     {
-      "file": "guides/高效率散件.md",
+      "file": "guides/用人/高效率散件.md",
       "headingPath": ["高效率散件", "会客室的速度、心情与搭档取舍"],
       "scope": "section",
       "objects": [
@@ -719,7 +719,7 @@
       ]
     },
     {
-      "file": "guides/高效率散件.md",
+      "file": "guides/用人/高效率散件.md",
       "headingPath": ["高效率散件", "中枢席位的全局加成与组合取舍"],
       "scope": "section",
       "objects": [
@@ -731,7 +731,7 @@
       ]
     },
     {
-      "file": "guides/换班操作.md",
+      "file": "guides/操作/换班操作.md",
       "headingPath": ["换班操作", "队列轮换：手动编辑、批量切换与干员休整"],
       "scope": "section",
       "objects": [
@@ -739,7 +739,7 @@
       ]
     },
     {
-      "file": "guides/换班操作.md",
+      "file": "guides/操作/换班操作.md",
       "headingPath": ["换班操作", "定时换班：两班轮流、错班轮换与班制选择"],
       "scope": "section",
       "objects": [
@@ -748,7 +748,7 @@
       ]
     },
     {
-      "file": "guides/换班操作.md",
+      "file": "guides/操作/换班操作.md",
       "headingPath": ["换班操作", "动态换班：心情阈值与按组换人"],
       "scope": "section",
       "objects": [

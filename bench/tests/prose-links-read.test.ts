@@ -91,7 +91,7 @@ describe('read 关联事实送达', () => {
     const corpus = loadCorpus(corpusDir)
     const sections = buildSectionDirectory(corpusDir)
     const links = buildProseLinkIndex({ root: process.cwd() })
-    const section = sections.sections.find((item) => item.file === 'guides/高效率散件.md' && item.heading === '贸易站散件')!
+    const section = sections.sections.find((item) => item.file === 'guides/用人/高效率散件.md' && item.heading === '贸易站散件')!
     const executor = createKnowledgeToolExecutor({
       config: { ...loadConfig(), retriever: 'hybrid', expandFulltext: false },
       query: { id: 'PROSE-READ', category: 'fact', question: '会客室等级改变后如何计算伺夜的技能加成？' },

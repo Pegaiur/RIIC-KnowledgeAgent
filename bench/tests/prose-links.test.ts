@@ -653,7 +653,7 @@ describe('prose-links：真实语料核对', () => {
     expect(stacking.map((concept) => concept.termOccurrence)).toEqual([1])
     expect(stacking[0]!.definition).toContain('无法与配合意识进行叠加')
     const seats = concepts.find((concept) => concept.name === '制造站等级对应的工位、仓库容量与耗电')!
-    expect(seats.file).toBe('base/机制-制造站.md')
+    expect(seats.file).toBe('base/设施/机制-制造站.md')
     expect(seats.definition).toContain('进驻人员上限')
   })
 
@@ -662,9 +662,9 @@ describe('prose-links：真实语料核对', () => {
 
     expect(index.issues).toEqual([])
     const headings = index.links.map((link) => `${link.file}#${link.headingPath.join(' > ')}`)
-    expect(headings).toContain('guides/高效率散件.md#高效率散件 > 办公室联络散件')
-    expect(headings).toContain('guides/高效率散件.md#高效率散件 > 办公室联络散件 > 联络速度与额外心情消耗的取舍')
-    expect(headings).toContain('guides/高效率散件.md#高效率散件 > 源石碎片制造（搓玉）的名单、练度与布局前提')
+    expect(headings).toContain('guides/用人/高效率散件.md#高效率散件 > 办公室联络散件')
+    expect(headings).toContain('guides/用人/高效率散件.md#高效率散件 > 办公室联络散件 > 联络速度与额外心情消耗的取舍')
+    expect(headings).toContain('guides/用人/高效率散件.md#高效率散件 > 源石碎片制造（搓玉）的名单、练度与布局前提')
     for (const link of index.links) {
       expect(link.objects.length, `${link.sectionId} 的关联对象为空`).toBeGreaterThan(0)
       for (const object of link.objects) {

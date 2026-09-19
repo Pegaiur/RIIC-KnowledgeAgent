@@ -77,7 +77,7 @@ describe('facts 人工词条登记', () => {
   })
 
   it('来源缺失小节时明确报错', () => {
-    expect(() => sourceSection('knowledge/guides/贸易站组合.md', '__不存在的小节__'))
+    expect(() => sourceSection('knowledge/guides/组合/贸易站组合.md', '__不存在的小节__'))
       .toThrow('找不到来源小节')
   })
 
